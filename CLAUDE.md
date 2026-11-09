@@ -1,0 +1,6 @@
+# Claude へのルール(survive-chinatown)
+
+- まず `amataro3-dot/muddys-notes` の `CLAUDE.md` と `survive-chinatown/survive-chinatown_handoff.md` を読む(ルールと引き継ぎはそこが基準)
+- 「書いて」と言われるまで、コードは書かない
+- 上げるたびに `node tools/set-version.mjs 新しい番号` でキャッシュよけの番号をそろえる(番号は引き継ぎメモの version と同じ)
+- 変えたら必ずテストを通す: `node tests/solo_test.js`、`python3 tests/online_test.py . <画像フォルダ>`
