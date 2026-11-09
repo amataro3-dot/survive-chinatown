@@ -34,7 +34,7 @@ with sync_playwright() as p:
         ctx, pg, uid = phones.pop(name)
         for path, v in ondis.pop(uid, {}).items(): set_at(path, v)
         ctx.close()
-    wait = lambda pg, ms=400: pg.wait_for_timeout(ms)
+    wait = lambda pg, ms=700: pg.wait_for_timeout(ms)  # 街が重くなったので、待ち時間を長めに
     ev = lambda pg, js: pg.evaluate("(() => { const SC = window.SC; return " + js + "; })()")
     def warp(pg, x, z):
         pg.evaluate(f"(() => {{ const p = SC.player; if (p.car) {{ p.car.x = {x}; p.car.z = {z}; p.car.v = 0; }} p.x = {x}; p.z = {z}; }})()")
@@ -94,15 +94,15 @@ with sync_playwright() as p:
 
     # ---------- 届ける → 1点 ----------
     dest = get_at(rp + "/game/dest")
-    warp(c, dest["x"], dest["z"]); wait(c, 900)
+    warp(c, dest["x"], dest["z"]); wait(c, 1300)
     g = get_at(rp + "/game")
     check((g.get("scores") or {}).get("uid_C") == 1 and g["pkg"]["state"] == "free" and not g.get("dest"), "C が届け先に着くと1点。荷物は新しい場所へ")
     check("1点" in a.inner_text("#scores"), "点数の表示が変わる")
 
     # ---------- 3点取ったら勝ち ----------
     for k in range(2):
-        pk = get_at(rp + "/game/pkg"); warp(c, pk["x"], pk["z"]); wait(c, 700)
-        dest = get_at(rp + "/game/dest"); warp(c, dest["x"], dest["z"]); wait(c, 900)
+        pk = get_at(rp + "/game/pkg"); warp(c, pk["x"], pk["z"]); wait(c, 1100)
+        dest = get_at(rp + "/game/dest"); warp(c, dest["x"], dest["z"]); wait(c, 1300)
     g = get_at(rp + "/game")
     check(g["phase"] == "end" and g["winner"] == "uid_C" and g["scores"]["uid_C"] == 3, "C が3点で勝ち")
     wait(a, 400)

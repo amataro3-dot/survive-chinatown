@@ -8,7 +8,7 @@
        pkg:  { state: 'free' | 'held', x, z, holder: 持っている人のID, since: 持った時刻(ホストの時計) },
        dest: { x, z } (届け先。持っている人がいるときだけ),
        winner: 勝った人のID } */
-import { db, ref, set, update, onValue, onDisconnect } from "./firebase.js?v=2";
+import { db, ref, set, update, onValue, onDisconnect } from "./firebase.js?v=3";
 
 /* ===== 調整用の数字 ===== */
 export const RACE = {
@@ -29,9 +29,11 @@ const SC = window.SC;
 const SPOTS = (() => {
   const out = [];
   for (let k = 0; k <= 6; k++) for (let a = 0; a < 6; a++) {
-    const p = SC.P(a, k); out.push({ x: p.x + 26, z: p.z });
-    const q = SC.P(k, a); out.push({ x: q.x, z: q.z + 26 });
+    const p = SC.P(a, k), q = SC.P(k, a);
+    if (!SC.onRoad || SC.onRoad(p.x + 26, p.z)) out.push({ x: p.x + 26, z: p.z });
+    if (!SC.onRoad || SC.onRoad(q.x, q.z + 26)) out.push({ x: q.x, z: q.z + 26 });
   }
+  for (const p of SC.extraSpots || []) out.push({ x: Math.round(p.x * 10) / 10, z: Math.round(p.z * 10) / 10 }); // 市場・公園・ビルの前・駐車場
   return out;
 })();
 const dist = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
@@ -96,6 +98,7 @@ function stop() {
 // 「やめる」: ホストなら全員をロビーにもどす。ほかの人は自分だけ試合から抜ける
 function quit() {
   if (!cur || !room) return;
+  SC.onSend = null; // すぐに位置を送るのをやめる(消したあとに、自分の位置がまた書かれないように)
   const path = roomPath(cur.code);
   if (room.meta.host === cur.uid) update(ref(db, path), { "meta/started": false, game: null, pos: null }).catch(console.error);
   else update(ref(db, path), { ["game/players/" + cur.uid]: null, ["pos/" + cur.uid]: null }).catch(console.error);
