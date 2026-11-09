@@ -687,7 +687,8 @@ function gameClear() {
 }
 function busted() {
   G.money = Math.max(0, G.money - TUNE.police.fine); G.wanted = 0; G.bust = 0; removeAllPolice(); if (player.mode === 'car') exitCar(); player.x = startX; player.z = startZ;
-  if (G.mi < MISSIONS.length && !G.over && (G.si > 0 || MISSIONS[G.mi].steps[0].wanted)) failMission('逮捕された！ -$1000　ミッション失敗'); else toast('逮捕された！ -$1000', 2.6);
+  player.inv = ['fist']; player.wi = 0; player.ammo = 0; setHand(player.per, player, null); // 逮捕されても武器は没収
+  if (G.mi < MISSIONS.length && !G.over && (G.si > 0 || MISSIONS[G.mi].steps[0].wanted)) failMission('逮捕された！ -$1000　武器を没収　ミッション失敗'); else toast('逮捕された！ -$1000　武器を没収', 2.6);
 }
 function removeAllPolice() { for (let i = cars.length - 1; i >= 0; i--) if (cars[i].kind === 'police') removeCar(cars[i]); }
 
