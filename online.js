@@ -8,7 +8,7 @@
        pkg:  { state: 'free' | 'held', x, z, holder: 持っている人のID, since: 持った時刻(ホストの時計) },
        dest: { x, z } (届け先。持っている人がいるときだけ),
        winner: 勝った人のID } */
-import { db, ref, set, update, onValue, onDisconnect } from "./firebase.js?v=7";
+import { db, ref, set, update, onValue, onDisconnect } from "./firebase.js?v=8";
 
 /* ===== 調整用の数字 ===== */
 export const RACE = {
@@ -23,6 +23,7 @@ const COLORS = [0xff4a4a, 0x3c8cff, 0x3fd06a, 0xffb020];
 
 export const roomPath = code => "sc-rooms/" + code;
 const $ = id => document.getElementById(id);
+const tr = window.t || (k => k); // ことば(i18n.js)
 const SC = window.SC;
 
 // 荷物と届け先が出る場所(道路の真ん中あたり)
@@ -147,16 +148,16 @@ function showResult(g) {
   cur.resultShown = true;
   const iAmHost = room.meta.host === cur.uid;
   const name = id => (g.players[id] ? g.players[id].name : "?");
-  $("resTitle").textContent = g.winner === cur.uid ? "あなたの勝ち！" : name(g.winner) + " の勝ち！";
-  $("resNote").textContent = (g.target || RACE.target) + "点先取の配達競争";
+  $("resTitle").textContent = g.winner === cur.uid ? tr("あなたの勝ち！") : tr("{name} の勝ち！", { name: name(g.winner) });
+  $("resNote").textContent = tr("{n}点先取の配達競争", { n: g.target || RACE.target });
   const ol = $("resList"); ol.textContent = "";
   const ids = Object.keys(g.players).sort((a, b) => ((g.scores && g.scores[b]) || 0) - ((g.scores && g.scores[a]) || 0));
   for (const id of ids) {
     const li = document.createElement("li");
     const dot = document.createElement("span"); dot.className = "dot"; dot.style.background = "#" + g.players[id].color.toString(16).padStart(6, "0");
-    const t = document.createElement("span"); t.textContent = name(id) + "　" + ((g.scores && g.scores[id]) || 0) + "点";
+    const t = document.createElement("span"); t.textContent = name(id) + "　" + tr("{n}点", { n: (g.scores && g.scores[id]) || 0 });
     li.append(dot, t);
-    if (id === cur.uid) { const s = document.createElement("small"); s.textContent = " あなた"; li.append(s); }
+    if (id === cur.uid) { const s = document.createElement("small"); s.textContent = " " + tr("あなた"); li.append(s); }
     ol.append(li);
   }
   $("resAgain").classList.toggle("hidden", !iAmHost);

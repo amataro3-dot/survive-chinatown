@@ -13,7 +13,8 @@ SURVIVE CHINATOWN(チャイナタウンで生き延びろ)。Muddy's Games の�
 - `lobby.js` … ロビー(ルームを作る・参加・待合室)
 - `online.js` … 配達競争の通信。ホストが荷物・点数を決める
 - `firebase.js` … Firebase(fugo-daifugo プロジェクト)。ルームは `sc-rooms/1234`
+- `i18n.js` … ことば(日本語・英語・韓国語)。ホームページでえらんだ言語(`muddys-lang`)で出る
 - `backguard.js` … 戻るボタンの確認(全ゲーム共通)
-- `tests/` … テスト(`solo_test.js`・`combat_test.py`・`police_test.py`・`online_test.py`)。`tools/set-version.mjs` … キャッシュよけの番号をそろえる道具
+- `tests/` … テスト(`solo_test.js`・`combat_test.py`・`police_test.py`・`online_test.py`・`lang_check.js`・`lang_test.py`)。`tools/set-version.mjs` … キャッシュよけの番号をそろえる道具
 
 メモ: `amataro3-dot/muddys-notes` の `survive-chinatown/`

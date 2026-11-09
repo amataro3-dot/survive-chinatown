@@ -8,8 +8,8 @@
 import {
   db, auth, ref, get, set, update, remove, onValue,
   onDisconnect, serverTimestamp, runTransaction, signInAnonymously
-} from "./firebase.js?v=7";
-import { sync as syncGame, makeGame, roomPath } from "./online.js?v=7";
+} from "./firebase.js?v=8";
+import { sync as syncGame, makeGame, roomPath } from "./online.js?v=8";
 
 const MAX_PLAYERS = 4;
 const MIN_PLAYERS = 2;
@@ -17,6 +17,7 @@ const NAME_KEY = "sc_name"; // スマホが覚えておく名前
 const ROOM_KEY = "sc_room"; // 最後に入っていたルーム(ページを開き直したら戻れるように)
 
 const $ = id => document.getElementById(id);
+const tr = window.t || (k => k); // ことば(i18n.js)
 const store = {
   get(k) { try { return localStorage.getItem(k) || ""; } catch { return ""; } },
   set(k, v) { try { localStorage.setItem(k, v); } catch { /* 覚えられなくても遊べる */ } },
@@ -45,20 +46,20 @@ const entryMsg = text => { $("lbMsg").textContent = text || ""; };
 /* ---------- ログイン ---------- */
 const ready = signInAnonymously(auth)
   .then(cred => { uid = cred.user.uid; tryRejoin(); })
-  .catch(() => entryMsg("ネットにつながりませんでした。電波を確認して、ページを開き直してね"));
+  .catch(() => entryMsg(tr("ネットにつながりませんでした。電波を確認して、ページを開き直してね")));
 
 /* ---------- 入り口 ---------- */
 $("goOnline").addEventListener("click", () => {
   $("lbName").value = store.get(NAME_KEY);
-  entryMsg(uid ? "" : "接続中…");
+  entryMsg(uid ? "" : tr("接続中…"));
   showLobby("entry");
 });
 $("lbBack").addEventListener("click", backToStart);
 
 function readName() {
   const name = $("lbName").value.trim().slice(0, 10);
-  if (!name) { entryMsg("名前を入れてね"); return null; }
-  if (!uid) { entryMsg("接続中です。少し待ってね"); return null; }
+  if (!name) { entryMsg(tr("名前を入れてね")); return null; }
+  if (!uid) { entryMsg(tr("接続中です。少し待ってね")); return null; }
   store.set(NAME_KEY, name);
   return name;
 }
@@ -68,20 +69,20 @@ async function guard(fn) {
   if (busy) return;
   busy = true;
   try { await fn(); }
-  catch (e) { console.error(e); entryMsg("うまくいきませんでした。もう一度ためしてね"); }
+  catch (e) { console.error(e); entryMsg(tr("うまくいきませんでした。もう一度ためしてね")); }
   finally { busy = false; }
 }
 
 $("lbCreate").addEventListener("click", () => guard(async () => {
   const name = readName();
   if (!name) return;
-  entryMsg("ルームを作っています…");
+  entryMsg(tr("ルームを作っています…"));
   let newCode = null;
   for (let i = 0; i < 20 && !newCode; i++) {
     const c = String(Math.floor(Math.random() * 10000)).padStart(4, "0");
     if (!(await get(ref(db, roomPath(c) + "/meta"))).exists()) newCode = c;
   }
-  if (!newCode) return entryMsg("ルームを作れませんでした。もう一度ためしてね");
+  if (!newCode) return entryMsg(tr("ルームを作れませんでした。もう一度ためしてね"));
   await set(ref(db, roomPath(newCode)), {
     meta: { host: uid, started: false, created: serverTimestamp() },
     players: { [uid]: { name, joinedAt: serverTimestamp(), online: true } },
@@ -93,14 +94,14 @@ $("lbJoin").addEventListener("click", () => guard(async () => {
   const name = readName();
   if (!name) return;
   const c = $("lbCode").value.replace(/\D/g, "");
-  if (c.length !== 4) return entryMsg("ルームコードは数字4桁だよ");
-  entryMsg("さがしています…");
+  if (c.length !== 4) return entryMsg(tr("ルームコードは数字4桁だよ"));
+  entryMsg(tr("さがしています…"));
   const meta = (await get(ref(db, roomPath(c) + "/meta"))).val();
-  if (!meta) return entryMsg("そのルームはありません");
+  if (!meta) return entryMsg(tr("そのルームはありません"));
   const players = (await get(ref(db, roomPath(c) + "/players"))).val() || {};
   if (!players[uid]) {
-    if (meta.started) return entryMsg("もう始まっています。終わるまで待ってね");
-    if (Object.keys(players).length >= MAX_PLAYERS) return entryMsg(`満員です(最大${MAX_PLAYERS}人)`);
+    if (meta.started) return entryMsg(tr("もう始まっています。終わるまで待ってね"));
+    if (Object.keys(players).length >= MAX_PLAYERS) return entryMsg(tr("満員です(最大{n}人)", { n: MAX_PLAYERS }));
     await set(ref(db, roomPath(c) + "/players/" + uid), { name, joinedAt: serverTimestamp(), online: true });
   } else {
     await update(ref(db, roomPath(c) + "/players/" + uid), { name });
@@ -146,8 +147,8 @@ function enterRoom(c) {
   }
 }
 function changed() {
-  if (!room.meta) return leaveLocal("ルームがなくなりました");
-  if (!room.players || !room.players[uid]) return leaveLocal("ルームから外れました");
+  if (!room.meta) return leaveLocal(tr("ルームがなくなりました"));
+  if (!room.players || !room.players[uid]) return leaveLocal(tr("ルームから外れました"));
   ensureHost();
   // 試合中はゲーム画面、そうでなければ待合室
   const playing = syncGame(room, uid, code);
@@ -196,9 +197,9 @@ function render() {
     name.textContent = p.name || "?";
     li.append(name);
     const tags = [];
-    if (p.id === hostId) tags.push("ホスト");
-    if (p.id === uid) tags.push("あなた");
-    if (!isOnline(p)) tags.push("切断中");
+    if (p.id === hostId) tags.push(tr("ホスト"));
+    if (p.id === uid) tags.push(tr("あなた"));
+    if (!isOnline(p)) tags.push(tr("切断中"));
     if (tags.length) {
       const t = document.createElement("small");
       t.textContent = " " + tags.join("・");
@@ -206,12 +207,12 @@ function render() {
     }
     ol.append(li);
   }
-  $("lbCount").textContent = `${list.length} / ${MAX_PLAYERS}人`;
+  $("lbCount").textContent = tr("{a} / {b}人", { a: list.length, b: MAX_PLAYERS });
 
   let note;
-  if (started) note = "試合中です。終わるまで待ってね";
-  else if (iAmHost) note = onlineCount < MIN_PLAYERS ? `${MIN_PLAYERS}人以上そろったらスタートできます` : "みんなそろったらスタートを押してね";
-  else note = "ホストがスタートするのを待っています";
+  if (started) note = tr("試合中です。終わるまで待ってね");
+  else if (iAmHost) note = onlineCount < MIN_PLAYERS ? tr("{n}人以上そろったらスタートできます", { n: MIN_PLAYERS }) : tr("みんなそろったらスタートを押してね");
+  else note = tr("ホストがスタートするのを待っています");
   $("lbRoomMsg").textContent = note;
 
   $("lbStart").classList.toggle("hidden", !iAmHost || started);

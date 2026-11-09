@@ -12,6 +12,7 @@ global.innerWidth=800;global.innerHeight=400;let raf=null;global.requestAnimatio
 global.addEventListener=(t,f)=>{(global._l=global._l||{})[t]=f;};
 let now=0;global.performance={now:()=>now};global.setTimeout=(f,ms)=>{pending.push([now+ms,f]);};const pending=[];
 global.location={reload(){}};
+eval(fs.readFileSync(require('path').join(__dirname,'..','i18n.js'),'utf8'));
 eval(code);
 el('goSolo')._l.click();
 function step(n,keys){for(let i=0;i<n;i++){now+=16;for(let j=pending.length-1;j>=0;j--)if(pending[j][0]<=now){const f=pending[j][1];pending.splice(j,1);f();}raf(now);}}

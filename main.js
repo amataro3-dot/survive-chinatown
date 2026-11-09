@@ -4,8 +4,9 @@
    - 配達競争: SC.startRace(slot, color) → SC.setRace(state) / SC.setRemotes(pos) → SC.stopRace() */
 (function () {
 'use strict';
-window.addEventListener('error', e => { const d = document.getElementById('err'); d.style.display = 'block'; d.textContent = 'エラー: ' + e.message; });
-if (typeof THREE === 'undefined') { const d = document.getElementById('err'); d.style.display = 'block'; d.textContent = '3Dの道具(Three.js)を読みこめませんでした。ページを開き直してね'; return; }
+const tr = window.t || (k => k); // ことば(i18n.js)。日本語の文を入れると、えらんだ言語の文が返ってくる
+window.addEventListener('error', e => { const d = document.getElementById('err'); d.style.display = 'block'; d.textContent = tr('エラー: ') + e.message; });
+if (typeof THREE === 'undefined') { const d = document.getElementById('err'); d.style.display = 'block'; d.textContent = tr('3Dの道具(Three.js)を読みこめませんでした。ページを開き直してね'); return; }
 
 /* ===== 調整用の数字 ===== */
 const TUNE = {
@@ -587,7 +588,7 @@ function updatePickups(dt, t) {
     if (G.mode === 'solo' && player.hp > 0) { const d = Math.hypot(player.x - p.x, player.z - p.z); take = d < (player.mode === 'car' ? 2.6 : 1.6) && (p.kind === 'money' || player.mode === 'foot'); }
     if (take) {
       if (p.kind === 'money') { G.money += p.val; toast('+$' + p.val, 1); }
-      else { addWeapon(p.kind, p.val); toast(WEAPONS[p.kind].name + 'をひろった！' + (p.kind === 'pistol' ? ' (弾+' + p.val + ')' : ''), 1.4); }
+      else { addWeapon(p.kind, p.val); toast(tr('{w}をひろった！', { w: tr(WEAPONS[p.kind].name) }) + (p.kind === 'pistol' ? tr(' (弾+{n})', { n: p.val }) : ''), 1.4); }
     }
     if (take || p.life <= 0) { scene.remove(p.g); pickups.splice(i, 1); }
   }
@@ -666,15 +667,15 @@ function hurtPlayer(d) {
 }
 function playerDown() {
   G.downT = 2.6; if (player.mode === 'car') exitCar();
-  player.per.g.rotation.x = -Math.PI / 2; toast('やられた…', 2.4);
+  player.per.g.rotation.x = -Math.PI / 2; toast(tr('やられた…'), 2.4);
 }
 function wakeAtHospital() {
   const fine = Math.min(G.money, Math.max(100, Math.floor(G.money * TUNE.deathFine / 10) * 10));
   G.money -= fine; G.wanted = 0; G.bust = 0; removeAllPolice();
   confiscate();
   player.hp = TUNE.hp; player.per.g.rotation.x = 0; resetPlayerToFoot(HOSPITAL.x, HOSPITAL.z, HOSPITAL.h);
-  const lost = '病院で目がさめた… -$' + fine.toLocaleString() + '　武器を没収された';
-  if (G.mi < MISSIONS.length && !G.over && (G.si > 0 || MISSIONS[G.mi].steps[0].wanted)) failMission(lost + '　ミッション失敗'); else toast(lost, 3);
+  const lost = tr('病院で目がさめた… -${fine}　武器を没収された', { fine: fine.toLocaleString() });
+  if (G.mi < MISSIONS.length && !G.over && (G.si > 0 || MISSIONS[G.mi].steps[0].wanted)) failMission(lost + tr('　ミッション失敗')); else toast(lost, 3);
 }
 
 // 武器を没収(やられたとき・逮捕されたとき)。防弾チョッキもなくなる。持っておく回復は残る
@@ -706,7 +707,7 @@ function deployCops(c) {
 }
 // 主人公を車から引きずり出す
 function pullOut() {
-  exitCar(); G.stunT = 1.0; player.per.g.rotation.x = -Math.PI / 2; toast('車から引きずり出された！', 1.6);
+  exitCar(); G.stunT = 1.0; player.per.g.rotation.x = -Math.PI / 2; toast(tr('車から引きずり出された！'), 1.6);
 }
 function damageNpc(n, dmg, kx, kz) {
   if (n.hp <= 0) return;
@@ -770,7 +771,7 @@ function hitFoe(f, dmg, kx, kz) { if (f.npc) damageNpc(f, dmg, kx, kz); else dam
 function playerAttack() {
   if (!G.started || G.mode !== 'solo' || player.mode !== 'foot' || player.hp <= 0 || G.downT > 0 || G.stunT > 0 || player.atkCd > 0) return;
   const wk = player.inv[player.wi], W = WEAPONS[wk];
-  if (!W.melee && player.ammo <= 0) { toast('弾がない！', 1); return; }
+  if (!W.melee && player.ammo <= 0) { toast(tr('弾がない！'), 1); return; }
   player.atkCd = W.cd; player.swing = 0.22;
   let best = null, bd = 1e9;
   for (const g of foes()) {
@@ -787,8 +788,8 @@ function switchWeapon() { if (!G.started || G.mode !== 'solo' || player.hp <= 0)
 // 持っておく回復を使う(体力+50)
 function useHeal() {
   if (!G.started || G.mode !== 'solo' || player.hp <= 0 || G.downT > 0 || player.heals <= 0) return;
-  if (player.hp >= TUNE.hp) { toast('体力は満タン', 1); return; }
-  player.heals--; player.hp = Math.min(TUNE.hp, player.hp + TUNE.healItem); toast('回復した！ (のこり ' + player.heals + ')', 1.2);
+  if (player.hp >= TUNE.hp) { toast(tr('体力は満タン'), 1); return; }
+  player.heals--; player.hp = Math.min(TUNE.hp, player.hp + TUNE.healItem); toast(tr('回復した！ (のこり {n})', { n: player.heals }), 1.2);
 }
 function updateCombat(dt) {
   player.atkCd -= dt;
@@ -824,26 +825,26 @@ const G = { mode: 'menu', started: false, over: false, money: 0, wanted: 0, mi: 
 const R = { me: null, state: null, remotes: {}, avatars: {}, sendT: 0 };
 let toastT = 0;
 function toast(s, t) { const e = $('toast'); e.textContent = s; e.style.opacity = 1; toastT = t || 2.2; }
-function addWanted(n) { if (G.mode !== 'solo') return; const before = G.wanted; G.wanted = Math.min(5, G.wanted + n); G.evade = 0; if (G.wanted > before && before === 0) toast('警察に追われている！'); }
+function addWanted(n) { if (G.mode !== 'solo') return; const before = G.wanted; G.wanted = Math.min(5, G.wanted + n); G.evade = 0; if (G.wanted > before && before === 0) toast(tr('警察に追われている！')); }
 function beginStep() { const st = MISSIONS[G.mi].steps[G.si]; if (st.time) G.timeLeft = st.time; if (st.wanted) G.wanted = Math.max(G.wanted, st.wanted); marker.visible = st.type === 'go'; if (st.pos) marker.position.set(st.pos.x, 0, st.pos.z); }
-function beginMission() { G.si = 0; G.timeLeft = -1; toast('ミッション' + (G.mi + 1) + '：' + MISSIONS[G.mi].title, 2.6); beginStep(); }
+function beginMission() { G.si = 0; G.timeLeft = -1; toast(tr('ミッション{n}：{title}', { n: G.mi + 1, title: tr(MISSIONS[G.mi].title) }), 2.6); beginStep(); }
 function stepDone() {
   const m = MISSIONS[G.mi]; G.si++;
   if (G.si >= m.steps.length) {
-    G.money += m.reward; G.timeLeft = -1; toast('ミッション完了！ +$' + m.reward.toLocaleString(), 2.6); G.mi++; marker.visible = false;
-    if (G.mi >= MISSIONS.length) { setTimeout(gameClear, 1800); G.over = true; } else { G.failWait = 2.6; G.waitMsg = '次のミッションへ…'; }
-  } else { toast(m.steps[G.si - 1].done || 'チェックポイント通過！', 1.2); beginStep(); }
+    G.money += m.reward; G.timeLeft = -1; toast(tr('ミッション完了！ +${r}', { r: m.reward.toLocaleString() }), 2.6); G.mi++; marker.visible = false;
+    if (G.mi >= MISSIONS.length) { setTimeout(gameClear, 1800); G.over = true; } else { G.failWait = 2.6; G.waitMsg = tr('次のミッションへ…'); }
+  } else { toast(tr(m.steps[G.si - 1].done || 'チェックポイント通過！'), 1.2); beginStep(); }
 }
-function failMission(msg) { toast(msg, 2.6); G.timeLeft = -1; marker.visible = false; G.failWait = 2.8; G.waitMsg = 'もう一度挑戦…'; }
+function failMission(msg) { toast(msg, 2.6); G.timeLeft = -1; marker.visible = false; G.failWait = 2.8; G.waitMsg = tr('もう一度挑戦…'); }
 function gameClear() {
   const t = Math.floor(G.play);
-  $('clearPanel').innerHTML = '<h1>ゲームクリア！</h1><p>街いちばんの配達屋になった！</p><p>所持金：<b>$' + G.money.toLocaleString() + '</b><br>プレイ時間：<b>' + Math.floor(t / 60) + '分' + (t % 60) + '秒</b></p><p class="sub">このあと街は自由に走り回れます。</p><button class="btn-big" id="again">もう一度遊ぶ</button><button class="btn-big ghost" id="free">街を自由に走る</button>';
+  $('clearPanel').innerHTML = '<h1>' + tr('ゲームクリア！') + '</h1><p>' + tr('街いちばんの配達屋になった！') + '</p><p>' + tr('所持金：') + '<b>$' + G.money.toLocaleString() + '</b><br>' + tr('プレイ時間：') + '<b>' + tr('{m}分{s}秒', { m: Math.floor(t / 60), s: t % 60 }) + '</b></p><p class="sub">' + tr('このあと街は自由に走り回れます。') + '</p><button class="btn-big" id="again">' + tr('もう一度遊ぶ') + '</button><button class="btn-big ghost" id="free">' + tr('街を自由に走る') + '</button>';
   $('clear').classList.remove('hidden'); $('again').onclick = () => location.reload(); $('free').onclick = () => $('clear').classList.add('hidden');
 }
 function busted() {
   G.money = Math.max(0, G.money - TUNE.police.fine); G.wanted = 0; G.bust = 0; removeAllPolice(); if (player.mode === 'car') exitCar(); player.x = startX; player.z = startZ;
   confiscate(); G.stunT = 0; player.per.g.rotation.x = 0; // 逮捕されても武器は没収
-  if (G.mi < MISSIONS.length && !G.over && (G.si > 0 || MISSIONS[G.mi].steps[0].wanted)) failMission('逮捕された！ -$1000　武器を没収　ミッション失敗'); else toast('逮捕された！ -$1000　武器を没収', 2.6);
+  if (G.mi < MISSIONS.length && !G.over && (G.si > 0 || MISSIONS[G.mi].steps[0].wanted)) failMission(tr('逮捕された！ -$1000　武器を没収　ミッション失敗')); else toast(tr('逮捕された！ -$1000　武器を没収'), 2.6);
 }
 function removeAllPolice() {
   for (let i = cars.length - 1; i >= 0; i--) if (cars[i].kind === 'police') removeCar(cars[i]);
@@ -896,7 +897,7 @@ function nearestEnterable() { let best = null, bd = TUNE.enterDist; for (const c
 function toggleCar() {
   if (!G.started || G.stunT > 0 || G.downT > 0 || G.shop) return; if (player.mode === 'car') { exitCar(); return; }
   const c = nearestEnterable(); if (!c) return;
-  if (c.kind === 'traffic') { ejectDriver(c); if (Math.abs(c.v) > 1) { addWanted(1); if (G.mode === 'solo') toast('車を奪った！', 1.4); } }
+  if (c.kind === 'traffic') { ejectDriver(c); if (Math.abs(c.v) > 1) { addWanted(1); if (G.mode === 'solo') toast(tr('車を奪った！'), 1.4); } }
   enterCar(c);
 }
 function enterCar(c) { c.kind = 'player'; player.car = c; player.mode = 'car'; player.per.g.visible = false; releaseHeld(); }
@@ -925,7 +926,7 @@ function updatePlayer(dt) {
     player.v = sp;
     const per = player.per; per.g.position.set(player.x, onWalk(player.x, player.z) ? 0.3 : 0, player.z); per.g.rotation.y = player.h; animPerson(per, sp, dt);
     if (player.swing > 0) { player.swing -= dt; per.armR.rotation.x = -1.5; }
-    $('enterBtn').textContent = '乗る'; $('enterBtn').classList.toggle('near', !!nearestEnterable());
+    $('enterBtn').textContent = tr('乗る'); $('enterBtn').classList.toggle('near', !!nearestEnterable());
   } else {
     const c = player.car; const th = (input.acc ? 1 : 0) - (input.rev ? 1 : 0), st = input.jx;
     if (input.brake) { const b = Math.min(Math.abs(c.v), TUNE.carBrake * dt); c.v -= Math.sign(c.v) * b; }
@@ -936,7 +937,7 @@ function updatePlayer(dt) {
     c.x += Math.sin(c.h) * c.v * dt; c.z += Math.cos(c.h) * c.v * dt;
     if (resolveCar(c)) c.v *= Math.abs(c.v) > 3 ? -0.25 : 0.5;
     player.x = c.x; player.z = c.z; player.h = c.h; player.v = c.v;
-    $('enterBtn').textContent = '降りる'; $('enterBtn').classList.remove('near');
+    $('enterBtn').textContent = tr('降りる'); $('enterBtn').classList.remove('near');
   }
 }
 function updateTraffic(c, dt) {
@@ -1028,16 +1029,16 @@ function managePolice(dt) {
   }
   let nd = 1e9, nearCop = false; for (const c of pol) if (c.crew > 0) nd = Math.min(nd, Math.hypot(c.x - player.x, c.z - player.z));
   for (const n of npcs) { if (n.kind !== 'cop' || n.hp <= 0 || n.state !== 'chase') continue; const d = Math.hypot(n.x - player.x, n.z - player.z); nd = Math.min(nd, d); if (player.mode === 'foot' && d < TUNE.police.catchDist && n.stagger <= 0) nearCop = true; }
-  if (G.wanted > 0) { if (nd > TUNE.police.evadeDist) G.evade += dt; else G.evade = Math.max(0, G.evade - dt * 0.5); if (G.evade > TUNE.police.evadeTime) { G.wanted--; G.evade = 0; toast(G.wanted ? '手配度ダウン' : '逃げ切った！', 1.6); } }
+  if (G.wanted > 0) { if (nd > TUNE.police.evadeDist) G.evade += dt; else G.evade = Math.max(0, G.evade - dt * 0.5); if (G.evade > TUNE.police.evadeTime) { G.wanted--; G.evade = 0; toast(tr(G.wanted ? '手配度ダウン' : '逃げ切った！'), 1.6); } }
   // 逮捕: 歩いている主人公に、警察官がしばらくくっつく
   if (G.wanted > 0 && nearCop) G.bust += dt; else G.bust = Math.max(0, G.bust - dt);
-  $('warn').textContent = G.bust > 0.2 ? '逃げろ！ 捕まるぞ！' : ''; if (G.bust > TUNE.police.bustTime) busted();
+  $('warn').textContent = G.bust > 0.2 ? tr('逃げろ！ 捕まるぞ！') : ''; if (G.bust > TUNE.police.bustTime) busted();
 }
 function updateMission(dt) {
   if (G.over || G.mi >= MISSIONS.length) return;
   if (G.failWait > 0) { G.failWait -= dt; if (G.failWait <= 0) beginMission(); return; }
   const st = MISSIONS[G.mi].steps[G.si];
-  if (G.timeLeft > 0) { G.timeLeft -= dt; if (G.timeLeft <= 0) { failMission('時間切れ… ミッション失敗'); return; } }
+  if (G.timeLeft > 0) { G.timeLeft -= dt; if (G.timeLeft <= 0) { failMission(tr('時間切れ… ミッション失敗')); return; } }
   if (st.type === 'car' && player.mode === 'car') stepDone();
   else if (st.type === 'go' && Math.hypot(st.pos.x - player.x, st.pos.z - player.z) < 5.5) stepDone();
 }
@@ -1095,7 +1096,7 @@ const mapC = document.createElement('canvas'); mapC.width = mapC.height = 720;
   g.fillStyle = '#d6d6d6'; for (const b of buildings) g.fillRect(X(b.x - b.w / 2), X(b.z - b.d / 2), b.w * s, b.d * s);
   // 店と病院のしるし
   const icon = (x, z, bg, ch) => { g.fillStyle = bg; g.beginPath(); g.arc(X(x), X(z), 11, 0, Math.PI * 2); g.fill(); g.strokeStyle = '#fff'; g.lineWidth = 2; g.stroke(); g.fillStyle = '#fff'; g.font = 'bold 13px sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(ch, X(x), X(z) + 1); };
-  for (const sh of SHOPS) icon(sh.x, sh.z, sh.kind === 'gun' ? '#d6402a' : '#1f9a4a', sh.kind === 'gun' ? '武' : '薬');
+  for (const sh of SHOPS) icon(sh.x, sh.z, sh.kind === 'gun' ? '#d6402a' : '#1f9a4a', tr(sh.kind === 'gun' ? '武' : '薬'));
   icon(HOSPITAL.x, HOSPITAL.z + 8, '#ffffff', '');
   g.fillStyle = '#16a34a'; g.fillRect(X(HOSPITAL.x) - 2.5, X(HOSPITAL.z + 8) - 7, 5, 14); g.fillRect(X(HOSPITAL.x) - 7, X(HOSPITAL.z + 8) - 2.5, 14, 5);
 })();
@@ -1116,30 +1117,30 @@ function drawMinimap() {
 function updateHUD() {
   if (G.mode === 'race') { updateRaceHUD(); return; }
   const m = MISSIONS[G.mi]; let html = '';
-  if (G.over || !m) html = '<div class="t">フリー走行</div>街を自由に走り回ろう';
-  else if (G.failWait > 0) html = '<div class="t">ミッション' + (G.mi + 1) + '</div>' + G.waitMsg;
-  else { const st = m.steps[G.si]; html = '<div class="t">ミッション' + (G.mi + 1) + '/' + MISSIONS.length + '：' + m.title + '</div>' + st.text; if (st.type === 'go') { const d = Math.hypot(st.pos.x - player.x, st.pos.z - player.z); html += '<div class="d">あと ' + Math.round(d) + ' m</div>'; } }
+  if (G.over || !m) html = '<div class="t">' + tr('フリー走行') + '</div>' + tr('街を自由に走り回ろう');
+  else if (G.failWait > 0) html = '<div class="t">' + tr('ミッション{n}', { n: G.mi + 1 }) + '</div>' + G.waitMsg;
+  else { const st = m.steps[G.si]; html = '<div class="t">' + tr('ミッション{n}/{total}：{title}', { n: G.mi + 1, total: MISSIONS.length, title: tr(m.title) }) + '</div>' + tr(st.text); if (st.type === 'go') { const d = Math.hypot(st.pos.x - player.x, st.pos.z - player.z); html += '<div class="d">' + tr('あと {d} m', { d: Math.round(d) }) + '</div>'; } }
   $('mission').innerHTML = html; $('money').textContent = '$' + G.money.toLocaleString();
   let s = ''; for (let i = 0; i < 5; i++) s += '<span style="color:' + (i < G.wanted ? '#ffd23f' : 'rgba(255,255,255,.35)') + '">★</span>'; $('stars').innerHTML = s;
-  const hp = Math.max(0, player.hp); $('hpFill').style.width = hp + '%'; $('hpFill').style.background = hp < 30 ? '#e8463c' : ''; $('hpText').textContent = '体力 ' + Math.ceil(hp);
+  const hp = Math.max(0, player.hp); $('hpFill').style.width = hp + '%'; $('hpFill').style.background = hp < 30 ? '#e8463c' : ''; $('hpText').textContent = tr('体力 {n}', { n: Math.ceil(hp) });
   $('armorBar').style.display = player.armor > 0 ? 'block' : 'none'; $('armorFill').style.width = (player.armor / TUNE.armor * 100) + '%';
-  const hb = $('healBtn'); hb.style.display = player.heals > 0 ? 'flex' : 'none'; hb.textContent = '回復 ×' + player.heals;
-  const wk = player.inv[player.wi]; $('wpnBtn').textContent = WEAPONS[wk].name + (wk === 'pistol' ? ' ' + player.ammo : '') + (player.inv.length > 1 ? ' ⇄' : '');
-  $('timer').textContent = G.timeLeft > 0 ? '残り ' + Math.ceil(G.timeLeft) + ' 秒' : ''; $('speed').textContent = player.mode === 'car' ? Math.round(Math.abs(player.car.v) * 3.6) + ' km/h' : '';
+  const hb = $('healBtn'); hb.style.display = player.heals > 0 ? 'flex' : 'none'; hb.textContent = tr('回復 ×{n}', { n: player.heals });
+  const wk = player.inv[player.wi]; $('wpnBtn').textContent = tr(WEAPONS[wk].name) + (wk === 'pistol' ? ' ' + player.ammo : '') + (player.inv.length > 1 ? ' ⇄' : '');
+  $('timer').textContent = G.timeLeft > 0 ? tr('残り {n} 秒', { n: Math.ceil(G.timeLeft) }) : ''; $('speed').textContent = player.mode === 'car' ? Math.round(Math.abs(player.car.v) * 3.6) + ' km/h' : '';
 }
 function updateRaceHUD() {
-  const s = R.state; let html = '<div class="t">配達競争：' + ((s && s.target) || 3) + '点先取</div>';
-  if (!s) html += '準備中…';
-  else if (s.phase === 'end') html += 'おわり！';
+  const s = R.state; let html = '<div class="t">' + tr('配達競争：{n}点先取', { n: (s && s.target) || 3 }) + '</div>';
+  if (!s) html += tr('準備中…');
+  else if (s.phase === 'end') html += tr('おわり！');
   else {
     const holder = raceHolder();
-    if (!holder) { html += '荷物(黄色い光)を取りに行け！'; html += '<div class="d">あと ' + Math.round(Math.hypot(s.pkg.x - player.x, s.pkg.z - player.z)) + ' m</div>'; }
-    else if (holder === R.me) { html += '届け先(緑の光)へ急げ！<div class="d">ぶつかられると取られるぞ'; if (s.dest) html += '・あと ' + Math.round(Math.hypot(s.dest.x - player.x, s.dest.z - player.z)) + ' m'; html += '</div>'; }
-    else html += '<b style="color:' + raceColor(holder) + '">' + esc(raceName(holder)) + '</b> から荷物を奪え！<div class="d">赤い光の人にぶつかろう</div>';
+    if (!holder) { html += tr('荷物(黄色い光)を取りに行け！'); html += '<div class="d">' + tr('あと {d} m', { d: Math.round(Math.hypot(s.pkg.x - player.x, s.pkg.z - player.z)) }) + '</div>'; }
+    else if (holder === R.me) { html += tr('届け先(緑の光)へ急げ！') + '<div class="d">' + tr('ぶつかられると取られるぞ'); if (s.dest) html += tr('・あと {d} m', { d: Math.round(Math.hypot(s.dest.x - player.x, s.dest.z - player.z)) }); html += '</div>'; }
+    else html += tr('{name} から荷物を奪え！', { name: '<b style="color:' + raceColor(holder) + '">' + esc(raceName(holder)) + '</b>' }) + '<div class="d">' + tr('赤い光の人にぶつかろう') + '</div>';
   }
   $('mission').innerHTML = html;
   let sc = '';
-  if (s && s.players) for (const id of Object.keys(s.players).sort((a, b) => (s.players[a].slot || 0) - (s.players[b].slot || 0))) sc += '<div' + (id === R.me ? ' class="me"' : '') + '><span class="dot" style="background:' + raceColor(id) + '"></span>' + esc(s.players[id].name) + '　' + ((s.scores && s.scores[id]) || 0) + '点</div>';
+  if (s && s.players) for (const id of Object.keys(s.players).sort((a, b) => (s.players[a].slot || 0) - (s.players[b].slot || 0))) sc += '<div' + (id === R.me ? ' class="me"' : '') + '><span class="dot" style="background:' + raceColor(id) + '"></span>' + esc(s.players[id].name) + '　' + tr('{n}点', { n: (s.scores && s.scores[id]) || 0 }) + '</div>';
   $('scores').innerHTML = sc; $('money').textContent = ''; $('stars').innerHTML = ''; $('timer').textContent = '';
   $('speed').textContent = player.mode === 'car' ? Math.round(Math.abs(player.car.v) * 3.6) + ' km/h' : '';
 }
@@ -1148,23 +1149,23 @@ function updateRaceHUD() {
 // 売っている物と値段(あとで遊びながら直す)。can: 買えるか、why: 買えないときの理由
 const SHOP_ITEMS = {
   gun: [
-    { name: 'ピストル(弾12発つき)', price: 500, can: () => !player.inv.includes('pistol'), why: '持っている', buy: () => addWeapon('pistol', 12) },
-    { name: 'ピストルの弾 12発', price: 100, can: () => player.inv.includes('pistol'), why: 'ピストルがない', buy: () => { player.ammo += 12; } },
-    { name: '日本刀', price: 300, can: () => !player.inv.includes('katana'), why: '持っている', buy: () => addWeapon('katana') },
+    { name: () => tr('ピストル(弾12発つき)'), price: 500, can: () => !player.inv.includes('pistol'), why: () => tr('持っている'), buy: () => addWeapon('pistol', 12) },
+    { name: () => tr('ピストルの弾 12発'), price: 100, can: () => player.inv.includes('pistol'), why: () => tr('ピストルがない'), buy: () => { player.ammo += 12; } },
+    { name: () => tr('日本刀'), price: 300, can: () => !player.inv.includes('katana'), why: () => tr('持っている'), buy: () => addWeapon('katana') },
   ],
   drug: [
-    { name: 'その場で全回復', price: 150, can: () => player.hp < TUNE.hp, why: '体力は満タン', buy: () => { player.hp = TUNE.hp; } },
-    { name: '回復薬(体力+' + TUNE.healItem + '。' + TUNE.maxHeal + 'つまで持てる)', price: 200, can: () => player.heals < TUNE.maxHeal, why: 'もう' + TUNE.maxHeal + 'つ持っている', buy: () => { player.heals++; } },
-    { name: '防弾チョッキ(' + TUNE.armor + ')', price: 400, can: () => player.armor < TUNE.armor, why: 'もう着ている', buy: () => { player.armor = TUNE.armor; } },
+    { name: () => tr('その場で全回復'), price: 150, can: () => player.hp < TUNE.hp, why: () => tr('体力は満タン'), buy: () => { player.hp = TUNE.hp; } },
+    { name: () => tr('回復薬(体力+{hp}。{max}つまで持てる)', { hp: TUNE.healItem, max: TUNE.maxHeal }), price: 200, can: () => player.heals < TUNE.maxHeal, why: () => tr('もう{max}つ持っている', { max: TUNE.maxHeal }), buy: () => { player.heals++; } },
+    { name: () => tr('防弾チョッキ({n})', { n: TUNE.armor }), price: 400, can: () => player.armor < TUNE.armor, why: () => tr('もう着ている'), buy: () => { player.armor = TUNE.armor; } },
   ],
 };
 function renderShop() {
   const s = G.shop; if (!s) return;
-  $('shopName').textContent = s.name;
-  $('shopInfo').innerHTML = '所持金 <b>$' + G.money.toLocaleString() + '</b>　体力 ' + Math.ceil(player.hp) + (player.armor > 0 ? '　チョッキ ' + player.armor : '') + (player.heals ? '　回復薬 ' + player.heals : '') + (player.inv.includes('pistol') ? '　弾 ' + player.ammo : '');
+  $('shopName').textContent = tr(s.name);
+  $('shopInfo').innerHTML = tr('所持金 ${m}', { m: G.money.toLocaleString() }).replace(/\$([\d,]+)/, '<b>$$$1</b>') + '　' + tr('体力 {n}', { n: Math.ceil(player.hp) }) + (player.armor > 0 ? '　' + tr('チョッキ {n}', { n: player.armor }) : '') + (player.heals ? '　' + tr('回復薬 {n}', { n: player.heals }) : '') + (player.inv.includes('pistol') ? '　' + tr('弾 {n}', { n: player.ammo }) : '');
   $('shopList').innerHTML = SHOP_ITEMS[s.kind].map((it, i) => {
     const ok = it.can(), money = G.money >= it.price;
-    return '<button class="shopItem" data-i="' + i + '"' + (ok && money ? '' : ' disabled') + '><span>' + esc(it.name) + '</span><b>$' + it.price.toLocaleString() + '</b>' + (!ok ? '<small>' + esc(it.why) + '</small>' : !money ? '<small>お金がたりない</small>' : '') + '</button>';
+    return '<button class="shopItem" data-i="' + i + '"' + (ok && money ? '' : ' disabled') + '><span>' + esc(it.name()) + '</span><b>$' + it.price.toLocaleString() + '</b>' + (!ok ? '<small>' + esc(it.why()) + '</small>' : !money ? '<small>' + tr('お金がたりない') + '</small>' : '') + '</button>';
   }).join('');
 }
 function openShop(s) {
@@ -1249,7 +1250,7 @@ const SC = window.SC = {
     if (R.myCar) removeCar(R.myCar);
     const car = R.myCar = newCar('parked', x, z, h, color || 0xffffff);
     enterCar(car);
-    showOnly(null); setPlaying(true); toast('配達競争スタート！', 2.2);
+    showOnly(null); setPlaying(true); toast(tr('配達競争スタート！'), 2.2);
   },
   stopRace() {
     if (G.mode !== 'race') return;
@@ -1272,11 +1273,11 @@ const SC = window.SC = {
     if (!s || !prev) return;
     const ph = prev.pkg && prev.pkg.state === 'held' ? prev.pkg.holder : null, nh = s.pkg && s.pkg.state === 'held' ? s.pkg.holder : null;
     let scored = null; for (const id in s.scores || {}) if ((s.scores[id] || 0) > ((prev.scores && prev.scores[id]) || 0)) scored = id;
-    if (scored) toast((scored === R.me ? 'あなた' : raceName(scored)) + 'が配達成功！ ' + s.scores[scored] + '点', 2.4);
+    if (scored) toast(tr('{who}が配達成功！ {n}点', { who: scored === R.me ? tr('あなた') : raceName(scored), n: s.scores[scored] }), 2.4);
     else if (nh && nh !== ph) {
-      if (nh === R.me) toast(ph ? '荷物を奪った！' : '荷物ゲット！ 届け先へ急げ', 2);
-      else if (ph === R.me) toast(raceName(nh) + 'に荷物を奪われた！', 2);
-      else toast(raceName(nh) + 'が荷物を' + (ph ? '奪った' : '取った'), 2);
+      if (nh === R.me) toast(tr(ph ? '荷物を奪った！' : '荷物ゲット！ 届け先へ急げ'), 2);
+      else if (ph === R.me) toast(tr('{name}に荷物を奪われた！', { name: raceName(nh) }), 2);
+      else toast(tr(ph ? '{name}が荷物を奪った' : '{name}が荷物を取った', { name: raceName(nh) }), 2);
     }
   },
   getMe() { return { x: Math.round(player.x * 10) / 10, z: Math.round(player.z * 10) / 10, h: Math.round(player.h * 100) / 100, c: player.mode === 'car' ? 1 : 0, v: Math.round((player.v || 0) * 10) / 10 }; },
