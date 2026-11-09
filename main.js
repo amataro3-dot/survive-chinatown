@@ -15,7 +15,11 @@ const TUNE = {
   steer: 1.9,                      // ハンドルの効き
   enterDist: 4.8,                  // 車に乗れる距離
   trafficCars: 12, parkedCars: 10, peds: 22,
-  police: { maxCars: 4, speed: 28, evadeDist: 55, evadeTime: 10, bustTime: 1.6, fine: 1000 },
+  // 警察: パトカーの数・速さ、逃げ切る距離と秒、逮捕までの秒、罰金
+  //   警察官: 走る速さ・体力・つかまえる距離・車から引きずり出すまでの秒・パトカーが止まって警察官が降りる距離
+  police: { maxCars: 4, speed: 28, evadeDist: 55, evadeTime: 10, bustTime: 2.0, fine: 1000, copSpeed: 6.5, copHp: 80, catchDist: 1.8, pullTime: 0.7, deployDist: 16 },
+  driver: { hp: 60, angry: 1 / 3, speed: 4.4, flee: 6, dmg: 5 }, // 車を奪われた運転手: 体力・おそってくる割合・速さ・逃げる速さ・パンチ
+  armor: 50, healItem: 50, maxHeal: 3, // 防弾チョッキ・持っておく回復(体力+50、3つまで)
   posRate: 0.125,                  // 配達競争: 自分の位置を送る間隔(秒)
   hp: 100, deathFine: 0.1,         // 主人公の体力、やられたときに減るお金(所持金の1割。最低$100)
   gang: { count: 16, hp: 100, speed: 4.2, turf: 15, giveUp: 32, respawn: 30 }, // ギャング: 数(街)・体力・走る速さ・なわばりの広さ・あきらめる距離・生きかえるまでの秒
@@ -123,8 +127,13 @@ const inMerged = (x, z) => MERGES.some(m => inRect(mergeRect(m), x, z));
 const MK = mergeRect(MERGES[0]);
 const inMarket = (x, z) => inRect(MK, x, z);
 const blocks = [];
+// 病院と、チャイナタウンの外の店(建物はあとで buildSpecial で作る)
+const SPECIAL = { '5_4': 'hospital', '0_2': 'gun', '2_5': 'drug' };
+const specialBlocks = [];
 for (let i = 0; i < N; i++) for (let j = 0; j < N; j++) {
   const x0 = roadC(i) + 6, x1 = roadC(i + 1) - 6, z0 = roadC(j) + 6, z1 = roadC(j + 1) - 6, cx = (x0 + x1) / 2, cz = (z0 + z1) / 2;
+  const sp = SPECIAL[i + '_' + j];
+  if (sp) { blocks.push({ x0, x1, z0, z1, park: false }); addBox(40, 0.3, 40, cx, 0.15, cz, M(0xb8b8b8)); specialBlocks.push({ kind: sp, x0, x1, z0, z1, cx, cz }); continue; }
   const mg = mergeOf(i, j);
   if (mg && mg.kind !== 'market') { blocks.push({ x0, x1, z0, z1, park: mg.kind === 'park', merged: true }); continue; }
   if (isCT(i, j)) { blocks.push({ x0, x1, z0, z1, park: false, ct: true, market: isMarketBlock(i, j), i, j }); if (!isMarketBlock(i, j)) addBox(40, 0.3, 40, cx, 0.15, cz, M(0x8f857c)); continue; }
@@ -144,6 +153,7 @@ function canvasTex(w, h, draw) { const c = document.createElement('canvas'); c.w
 const FONT = '"Noto Sans CJK JP","Hiragino Sans","Yu Gothic",sans-serif';
 const LANTERNS = [], GLOWS = [], WIRES = [];
 const EXTRA_SPOTS = []; // 配達競争: 道路のほかに荷物・届け先が出る場所(市場・公園・ビルの前・駐車場)
+const SHOPS = []; // 店(武器屋・薬屋)の入口の光るマーク
 const SIGN_WORDS = ['龍', '福', '飯店', '麺', '茶', '酒', '点心', '金', '薬', '宝', '楼', '餃子', '粥', '華'];
 const SHOP_NAMES = ['金龍', '福満楼', '茶館', '点心', '麺家', '漢方', '雑貨', '飯店', '包子', '酒家', '宝石', '海鮮'];
 const NEON = ['#ff3b6b', '#3bf0ff', '#ffd23f', '#ff5a2a', '#7dff6a', '#ff7ae0'];
@@ -347,12 +357,60 @@ function market() {
   for (let r = 0; r < Rw; r++) for (const c of [1, 5, 9]) EXTRA_SPOTS.push({ x: ix0 + (c + 0.5 + (r % 2)) * cw, z: iz0 + (r + 0.5) * ch }); // 迷路の通路のまん中
   for (let r = 0; r < Rw; r++) { lanternString(ix0, 4.8, iz0 + (r + 0.5) * ch, ix1, 4.8, iz0 + (r + 0.5) * ch, 22, 0.8); for (let c = 0; c < C; c += 2) GLOWS.push([ix0 + (c + 0.5) * cw, iz0 + (r + 0.5) * ch, 4, 0]); }
 }
+/* ===== 病院・店 ===== */
+// 店や病院の建物(正面がローカルの +z。r で向きを変える)。1階は光る店先、正面に看板
+function specialBuilding(x, z, w, d, h, r, wall, word, bg, fg) {
+  const g = new THREE.Group(); g.position.set(x, 0.3, z); g.rotation.y = r;
+  const m = nightMat(Math.max(2, Math.round(w / 3)), Math.max(1, Math.round(h / 3.5)), wall, 0.5, false);
+  const body = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), [m, m, M(0x3a3a40), M(0x3a3a40), m, m]); body.position.y = h / 2; g.add(body);
+  const sf = new THREE.Mesh(BG(Math.min(w - 1, 8), 2.6, 0.1), shopMat); sf.position.set(0, 1.4, d / 2 + 0.06); g.add(sf);
+  const s = new THREE.Mesh(BG(word.length * 1.5 + 1, 1.5, 0.2), hSignMat(word, bg, fg)); s.position.set(0, 3.7, d / 2 + 0.15); g.add(s);
+  scene.add(g); colRot(x, z, w, d, r); return g;
+}
+// 店の入口の光るマーク(緑=薬屋、赤=武器屋)。ここに立つと買い物の画面が出る
+function shopMark(kind, name, x, z) {
+  const col = kind === 'gun' ? 0xff5a3a : 0x4cff6a, g = new THREE.Group();
+  const bm = new THREE.Mesh(new THREE.CylinderGeometry(1.2, 1.2, 5, 16, 1, true), new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.25, depthWrite: false, side: THREE.DoubleSide })); bm.position.y = 2.8; g.add(bm);
+  const rg = new THREE.Mesh(new THREE.TorusGeometry(1.3, 0.15, 6, 24), new THREE.MeshBasicMaterial({ color: col })); rg.rotation.x = Math.PI / 2; rg.position.y = 0.5; g.add(rg);
+  g.position.set(x, 0, z); scene.add(g); GLOWS.push([x, z, 3, kind === 'gun' ? 0 : 1]);
+  SHOPS.push({ kind, name, x, z, g, ring: rg });
+}
+const greenCrossMat = new THREE.MeshBasicMaterial({ map: canvasTex(64, 64, (g, w, h) => { g.fillStyle = '#ffffff'; g.fillRect(0, 0, w, h); g.fillStyle = '#16a34a'; g.fillRect(24, 8, 16, 48); g.fillRect(8, 24, 48, 16); }) });
+function buildSpecial(b) {
+  if (b.kind === 'hospital') { // 白い建物と緑の十字。正面は北(道路)
+    const z = b.z0 + 2 + 10;
+    specialBuilding(b.cx, z, 32, 20, 13, Math.PI, '#e8ecef', '病院', '#ffffff', '#16a34a');
+    for (const sx of [-11, 11]) { const c = addBox(3.2, 3.2, 0.2, b.cx + sx, 9, b.z0 + 1.9, greenCrossMat); c.rotation.y = Math.PI; }
+    addBox(8, 0.3, 3, b.cx, 3.2, b.z0 + 0.6, M(0xdddddd)); // 入口のひさし
+    GLOWS.push([b.cx, b.z0 + 1, 6, 2]);
+  } else if (b.kind === 'gun') { // 武器屋。正面は東(チャイナタウンの方)
+    const x = b.x1 - 2 - 5;
+    specialBuilding(x, b.cz, 14, 10, 7, Math.PI / 2, '#5a5a62', '武器', '#1a1a1a', '#ff5a3a');
+    makeBuilding(b.x0 + 12, b.cz, 18, 30, 16);
+    shopMark('gun', '武器屋', b.x1 - 1.2, b.cz);
+  } else if (b.kind === 'drug') { // 薬屋。正面は北
+    const z = b.z0 + 2 + 5;
+    specialBuilding(b.cx, z, 14, 10, 7, Math.PI, '#d8d2c4', '薬局', '#0e3a1e', '#9dffb0');
+    makeBuilding(b.cx, b.z1 - 10, 30, 18, 14);
+    shopMark('drug', '薬屋', b.cx, b.z0 + 0.8);
+  }
+}
 (function buildChinatown() {
   for (const b of blocks) {
     if (!b.ct || b.market) continue;
     if (b.i === 3 && b.j === 2) { pagoda((b.x0 + b.x1) / 2, (b.z0 + b.z1) / 2); continue; }
+    if (b.i === 3 && b.j === 4) { // チャイナタウンの中の薬屋(漢方の店)。北の通りに面している
+      const cx = (b.x0 + b.x1) / 2;
+      shopsAround(b.x0, b.x1, b.z0, b.z1, 9, 2, { n: [[cx - 7, cx + 7]] });
+      const g = specialBuilding(cx, b.z0 + 2 + 4.5, 14, 9, 9, Math.PI, '#3f6b5a', '漢方薬', '#0e3a1e', '#9dffb0');
+      const rf = new THREE.Mesh(roofGeo(15.4, 10.4, 2.2, 0.9), ctRoof(0x9a3324)); rf.position.y = 9; g.add(rf);
+      for (const sx of [-5.5, 5.5]) LANTERNS.push([cx + sx, 3.0, b.z0 + 1.4, 0.7, 1]);
+      shopMark('drug', '漢方薬局', cx, b.z0 + 0.8);
+      continue;
+    }
     shopsAround(b.x0, b.x1, b.z0, b.z1, 9, 2);
   }
+  for (const b of specialBlocks) buildSpecial(b);
   market();
   for (const m of MERGES) if (m.kind !== 'market') buildMerged(m);
   gate(roadC(1) + 8, roadC(4), Math.PI / 2); gate(roadC(4) - 8, roadC(3), Math.PI / 2); gate(roadC(2), roadC(2) + 8, 0); gate(roadC(3), roadC(5) - 8, 0);
@@ -443,7 +501,7 @@ function animPerson(p, speed, dt) { p.phase += dt * (2 + speed * 1.6); const s =
 /* ===== 車・歩行者・自分 ===== */
 const carColors = [0xd33c3c, 0x3c6fd3, 0xf0f0f0, 0x222222, 0xe0a020, 0x2f9e5a, 0x9a4fc4, 0x808890, 0xff7a30];
 const cars = [];
-function newCar(kind, x, z, h, color) { const m = makeCarMesh(color, kind === 'police'); const c = { kind, x, z, h, v: 0, mesh: m.g, lights: m.lights, stuck: 0, rev: 0, color }; cars.push(c); return c; }
+function newCar(kind, x, z, h, color) { const m = makeCarMesh(color, kind === 'police'); const c = { kind, x, z, h, v: 0, mesh: m.g, lights: m.lights, stuck: 0, rev: 0, color, crew: kind === 'police' ? 1 + Math.floor(Math.random() * 2) : 0 }; cars.push(c); return c; }
 function removeCar(c) { const i = cars.indexOf(c); if (i >= 0) cars.splice(i, 1); scene.remove(c.mesh); }
 // つなげた区画の間の道は、なくなる(車は通れない)
 const blockedEdge = (a, b) => MERGES.some(m => { const [p, q] = mergeEdge(m); return (a[0] === p[0] && a[1] === p[1] && b[0] === q[0] && b[1] === q[1]) || (a[0] === q[0] && a[1] === q[1] && b[0] === p[0] && b[1] === p[1]); });
@@ -480,17 +538,19 @@ const player = { mode: 'foot', x: startX, z: startZ, h: startH, car: null, per: 
 const WEAPONS = {
   fist: { name: '素手', dmg: 15, range: 1.9, cd: 0.45, melee: true },
   knife: { name: '刀', dmg: 30, range: 2.5, cd: 0.6, melee: true },
+  katana: { name: '日本刀', dmg: 40, range: 2.8, cd: 0.6, melee: true }, // 武器屋で買う
   pistol: { name: 'ピストル', dmg: 25, range: 38, cd: 0.35, melee: false },
 };
 // ギャングの武器
 const GANG_W = { fist: { dmg: 5, cd: 1.0, range: 1.8 }, knife: { dmg: 12, cd: 1.1, range: 2.2 }, pistol: { dmg: 8, cd: 1.5, range: 18 } };
-// 病院(②で建物を作る。いまは、やられたら東側のこの場所で目がさめる)
-const HOSPITAL = { x: roadC(5) + 20, z: roadC(4) + 2.5, h: -Math.PI / 2 };
-Object.assign(player, { hp: TUNE.hp, inv: ['fist'], wi: 0, ammo: 0, atkCd: 0, swing: 0, item: null });
+// 病院(東側の白い建物)。やられたら、この前で目がさめる(道路の方を向いて)
+const HOSPITAL = { x: roadC(5) + 26, z: roadC(4) + 6.8, h: Math.PI };
+Object.assign(player, { hp: TUNE.hp, inv: ['fist'], wi: 0, ammo: 0, atkCd: 0, swing: 0, item: null, armor: 0, heals: 0 });
 
 function handItem(type) {
   const g = new THREE.Group();
-  if (type === 'knife') { const b = new THREE.Mesh(BG(0.07, 0.07, 1.1), M(0xd8dce4)); b.position.z = 0.55; g.add(b); const h = new THREE.Mesh(BG(0.1, 0.1, 0.3), M(0x2a1a10)); h.position.z = -0.05; g.add(h); }
+  if (type === 'katana') { const b = new THREE.Mesh(BG(0.06, 0.1, 1.5), M(0xe8ecf2)); b.position.z = 0.8; g.add(b); const gd = new THREE.Mesh(BG(0.22, 0.05, 0.08), M(0xc8a040)); gd.position.z = 0.04; g.add(gd); const h = new THREE.Mesh(BG(0.09, 0.09, 0.4), M(0x1a1a2a)); h.position.z = -0.18; g.add(h); }
+  else if (type === 'knife') { const b = new THREE.Mesh(BG(0.07, 0.07, 1.1), M(0xd8dce4)); b.position.z = 0.55; g.add(b); const h = new THREE.Mesh(BG(0.1, 0.1, 0.3), M(0x2a1a10)); h.position.z = -0.05; g.add(h); }
   else if (type === 'pistol') { const b = new THREE.Mesh(BG(0.12, 0.14, 0.45), M(0x111111)); b.position.z = 0.15; g.add(b); const h = new THREE.Mesh(BG(0.1, 0.25, 0.12), M(0x222222)); h.position.set(0, -0.15, -0.02); g.add(h); }
   g.position.y = -0.85; return g;
 }
@@ -600,6 +660,7 @@ function updateGangs(dt) {
 let hurtT = 0;
 function hurtPlayer(d) {
   if (G.mode !== 'solo' || player.hp <= 0 || G.downT > 0) return;
+  if (player.armor > 0) { const a = Math.min(player.armor, d); player.armor -= a; d -= a; } // 防弾チョッキから先に減る
   player.hp = Math.max(0, player.hp - d); hurtT = 0.35;
   if (player.hp <= 0) playerDown();
 }
@@ -610,31 +671,125 @@ function playerDown() {
 function wakeAtHospital() {
   const fine = Math.min(G.money, Math.max(100, Math.floor(G.money * TUNE.deathFine / 10) * 10));
   G.money -= fine; G.wanted = 0; G.bust = 0; removeAllPolice();
-  player.inv = ['fist']; player.wi = 0; player.ammo = 0; setHand(player.per, player, null);
+  confiscate();
   player.hp = TUNE.hp; player.per.g.rotation.x = 0; resetPlayerToFoot(HOSPITAL.x, HOSPITAL.z, HOSPITAL.h);
   const lost = '病院で目がさめた… -$' + fine.toLocaleString() + '　武器を没収された';
   if (G.mi < MISSIONS.length && !G.over && (G.si > 0 || MISSIONS[G.mi].steps[0].wanted)) failMission(lost + '　ミッション失敗'); else toast(lost, 3);
 }
 
+// 武器を没収(やられたとき・逮捕されたとき)。防弾チョッキもなくなる。持っておく回復は残る
+function confiscate() { player.inv = ['fist']; player.wi = 0; player.ammo = 0; player.armor = 0; setHand(player.per, player, null); }
+
+/* ===== 車を奪われた運転手・パトカーから降りた警察官 ===== */
+const npcs = [];
+const SKINS = [0xf0c9a0, 0xc89870, 0x8a5a3a];
+function newNpc(kind, x, z, h) {
+  const cop = kind === 'cop', skin = SKINS[Math.floor(Math.random() * 3)];
+  const per = cop ? makePerson(0x2c56b8, 0x1a2a55, skin) : makePerson(shirts[Math.floor(Math.random() * shirts.length)], [0x2a3550, 0x333333, 0x5a4030][Math.floor(Math.random() * 3)], skin);
+  if (cop) { const cap = new THREE.Mesh(BG(0.64, 0.16, 0.72), M(0x14224a)); cap.position.set(0, 2.52, 0.05); per.g.add(cap); }
+  const n = { npc: true, kind, per, x, z, h, hp: cop ? TUNE.police.copHp : TUNE.driver.hp, state: cop ? 'chase' : 'flee', cd: 0.6, down: 0, stagger: 0, kx: 0, kz: 0, life: 0, dead: -1, swing: 0, hitCd: 0, pull: 0, car: null };
+  npcs.push(n); return n;
+}
+function removeNpc(n) { const i = npcs.indexOf(n); if (i >= 0) npcs.splice(i, 1); scene.remove(n.per.g); }
+// 車を奪ったとき: 運転手が車から転がり出る。たいていは逃げるが、おそってくる人もいる
+function ejectDriver(c) {
+  const rx = -Math.cos(c.h), rz = Math.sin(c.h);
+  const n = newNpc('driver', c.x - rx * 1.8, c.z - rz * 1.8, c.h + Math.PI / 2);
+  n.down = 0.9; n.kx = -rx * 5; n.kz = -rz * 5;
+  if (G.mode === 'solo' && Math.random() < TUNE.driver.angry) n.state = 'angry';
+}
+// パトカーが止まって、警察官が降りる
+function deployCops(c) {
+  const rx = -Math.cos(c.h), rz = Math.sin(c.h);
+  for (let k = 0; k < c.crew; k++) { const s = k ? -1 : 1, n = newNpc('cop', c.x - rx * 1.8 * s, c.z - rz * 1.8 * s, c.h); n.car = c; resolve(n, 0.45); }
+  c.crew = 0;
+}
+// 主人公を車から引きずり出す
+function pullOut() {
+  exitCar(); G.stunT = 1.0; player.per.g.rotation.x = -Math.PI / 2; toast('車から引きずり出された！', 1.6);
+}
+function damageNpc(n, dmg, kx, kz) {
+  if (n.hp <= 0) return;
+  n.hp -= dmg; n.kx = kx || 0; n.kz = kz || 0; n.stagger = 0.4; spark(n.x, 1.6, n.z);
+  if (n.kind === 'cop' && n.state !== 'chase') n.state = 'chase';
+  if (n.hp <= 0) {
+    n.dead = 0; n.per.g.rotation.x = -Math.PI / 2; n.per.g.position.y = 0.4; n.per.armR.rotation.x = 0;
+    if (n.kind === 'driver') dropPickup('money', n.x + 0.5, n.z, 10 + Math.floor(Math.random() * 3) * 10);
+    addWanted(1); // 運転手でも警察官でも、たおすと★+1
+  }
+}
+function updateNpcs(dt) {
+  const alive = G.mode === 'solo' && player.hp > 0 && G.downT <= 0;
+  for (let i = npcs.length - 1; i >= 0; i--) {
+    const n = npcs[i];
+    if (n.kind === 'cop' && G.mode !== 'solo') { removeNpc(n); continue; }
+    if (n.hp <= 0) { n.dead += dt; n.x += n.kx * dt; n.z += n.kz * dt; n.kx *= 1 - 3 * dt; n.kz *= 1 - 3 * dt; resolve(n, 0.45); n.per.g.position.set(n.x, 0.4, n.z); if (n.dead > 6) removeNpc(n); continue; }
+    n.cd -= dt; n.hitCd -= dt; n.life += dt; if (n.swing > 0) n.swing -= dt;
+    if (n.down > 0) { // 車から転がり出ている
+      n.down -= dt; n.x += n.kx * dt; n.z += n.kz * dt; n.kx *= 1 - 3 * dt; n.kz *= 1 - 3 * dt; resolve(n, 0.45);
+      n.per.g.rotation.x = -Math.PI / 2; n.per.g.position.set(n.x, 0.4, n.z); if (n.down <= 0) n.per.g.rotation.x = 0; continue;
+    }
+    const px = player.x, pz = player.z, dP = Math.hypot(px - n.x, pz - n.z);
+    let sp = 0, tx = px, tz = pz, faceP = false;
+    if (n.kind === 'driver') {
+      if (n.state === 'angry' && (!alive || dP > 30)) n.state = 'flee';
+      if (n.state === 'angry') {
+        faceP = true; if (dP > 1.5) sp = TUNE.driver.speed;
+        if (dP < 1.8 && n.cd <= 0 && player.mode === 'foot') { n.cd = 1.0; n.swing = 0.25; hurtPlayer(TUNE.driver.dmg); }
+      } else {
+        tx = n.x + (n.x - px); tz = n.z + (n.z - pz); sp = TUNE.driver.flee; // 主人公から逃げる
+        if (n.life > 12 && dP > 25) { removeNpc(n); continue; }
+      }
+    } else { // 警察官
+      const car = n.car, carOk = car && cars.indexOf(car) >= 0;
+      if (n.state === 'chase' && (!alive || dP > 45)) n.state = 'back';
+      if (n.state === 'back' && alive && dP < 25) n.state = 'chase';
+      if (n.state === 'chase') {
+        faceP = true; if (dP > (player.mode === 'car' ? 2.6 : 1.2)) sp = TUNE.police.copSpeed;
+        if (player.mode === 'car' && dP < 3.4 && Math.abs(player.car.v) < 4 && G.stunT <= 0) { n.pull += dt; if (n.pull > TUNE.police.pullTime) { n.pull = 0; pullOut(); } }
+        else n.pull = Math.max(0, n.pull - dt);
+      } else { // パトカーにもどる
+        if (!carOk) { if (dP > 40) { removeNpc(n); continue; } }
+        else { tx = car.x; tz = car.z; sp = TUNE.police.copSpeed; if (Math.hypot(car.x - n.x, car.z - n.z) < 3) { car.crew++; removeNpc(n); continue; } }
+      }
+    }
+    if (n.stagger > 0) { n.stagger -= dt; sp = 0; }
+    if (sp > 0) { n.h += angDiff(n.h, Math.atan2(tx - n.x, tz - n.z)) * Math.min(1, 8 * dt); n.x += Math.sin(n.h) * sp * dt; n.z += Math.cos(n.h) * sp * dt; }
+    else if (faceP) n.h += angDiff(n.h, Math.atan2(px - n.x, pz - n.z)) * Math.min(1, 8 * dt);
+    n.x += n.kx * dt; n.z += n.kz * dt; n.kx *= 1 - 6 * dt; n.kz *= 1 - 6 * dt;
+    resolve(n, 0.45);
+    if (G.mode === 'solo' && player.mode === 'car' && n.hitCd <= 0) { const c = player.car, d = Math.hypot(c.x - n.x, c.z - n.z); if (d < 2.4 && Math.abs(c.v) > 5) { n.hitCd = 0.6; damageNpc(n, Math.abs(c.v) * 4, Math.sin(c.h) * c.v * 0.5, Math.cos(c.h) * c.v * 0.5); } }
+    if (n.hp > 0) { n.per.g.position.set(n.x, onWalk(n.x, n.z) ? 0.3 : 0, n.z); n.per.g.rotation.y = n.h; animPerson(n.per, sp, dt); if (n.swing > 0 || n.pull > 0) n.per.armR.rotation.x = -1.5; }
+  }
+}
+
+// こうげきの相手(ギャング・運転手・警察官)
+function foes() { const a = []; for (const g of gangs) if (g.hp > 0 && g.per.g.visible) a.push(g); for (const n of npcs) if (n.hp > 0) a.push(n); return a; }
+function hitFoe(f, dmg, kx, kz) { if (f.npc) damageNpc(f, dmg, kx, kz); else damageGang(f, dmg, kx, kz); }
 // こうげき(素手・刀は近くの敵に。ピストルは向いている方へ。前の近くに敵がいたら、その敵をねらう)
 function playerAttack() {
-  if (!G.started || G.mode !== 'solo' || player.mode !== 'foot' || player.hp <= 0 || G.downT > 0 || player.atkCd > 0) return;
+  if (!G.started || G.mode !== 'solo' || player.mode !== 'foot' || player.hp <= 0 || G.downT > 0 || G.stunT > 0 || player.atkCd > 0) return;
   const wk = player.inv[player.wi], W = WEAPONS[wk];
   if (!W.melee && player.ammo <= 0) { toast('弾がない！', 1); return; }
   player.atkCd = W.cd; player.swing = 0.22;
   let best = null, bd = 1e9;
-  for (const g of gangs) {
-    if (g.hp <= 0 || !g.per.g.visible) continue;
+  for (const g of foes()) {
     const dx = g.x - player.x, dz = g.z - player.z, d = Math.hypot(dx, dz), a = Math.abs(angDiff(player.h, Math.atan2(dx, dz)));
     if (W.melee) { if (d > W.range + 0.4) continue; const score = d + a * 1.5; if (score < bd) { bd = score; best = g; } }
     else { if (d > W.range || a > 0.35 || !lineClear(player.x, player.z, g.x, g.z)) continue; if (d < bd) { bd = d; best = g; } }
   }
-  if (W.melee) { if (best) { player.h = Math.atan2(best.x - player.x, best.z - player.z); damageGang(best, W.dmg, Math.sin(player.h) * 4, Math.cos(player.h) * 4); } return; }
+  if (W.melee) { if (best) { player.h = Math.atan2(best.x - player.x, best.z - player.z); hitFoe(best, W.dmg, Math.sin(player.h) * 4, Math.cos(player.h) * 4); } return; }
   player.ammo--;
-  if (best) { player.h = Math.atan2(best.x - player.x, best.z - player.z); tracer(player.x, player.z, best.x, best.z); damageGang(best, W.dmg, Math.sin(player.h) * 2, Math.cos(player.h) * 2); }
+  if (best) { player.h = Math.atan2(best.x - player.x, best.z - player.z); tracer(player.x, player.z, best.x, best.z); hitFoe(best, W.dmg, Math.sin(player.h) * 2, Math.cos(player.h) * 2); }
   else { let ex = player.x, ez = player.z; for (let s = 1; s <= W.range; s++) { const nx = player.x + Math.sin(player.h) * s, nz = player.z + Math.cos(player.h) * s; if (pointBlocked(nx, nz)) break; ex = nx; ez = nz; } tracer(player.x, player.z, ex, ez); }
 }
 function switchWeapon() { if (!G.started || G.mode !== 'solo' || player.hp <= 0) return; player.wi = (player.wi + 1) % player.inv.length; setHand(player.per, player, player.inv[player.wi]); }
+// 持っておく回復を使う(体力+50)
+function useHeal() {
+  if (!G.started || G.mode !== 'solo' || player.hp <= 0 || G.downT > 0 || player.heals <= 0) return;
+  if (player.hp >= TUNE.hp) { toast('体力は満タン', 1); return; }
+  player.heals--; player.hp = Math.min(TUNE.hp, player.hp + TUNE.healItem); toast('回復した！ (のこり ' + player.heals + ')', 1.2);
+}
 function updateCombat(dt) {
   player.atkCd -= dt;
   if (G.downT > 0) { G.downT -= dt; if (G.downT <= 0) wakeAtHospital(); }
@@ -664,7 +819,7 @@ const MISSIONS = [
   { title: '最後の大仕事', reward: 10000, steps: [{ type: 'go', pos: P(3, 0), text: 'チェックポイント 1/4', time: 140, wanted: 3 }, { type: 'go', pos: P(6, 2), text: 'チェックポイント 2/4' }, { type: 'go', pos: P(4, 5), text: 'チェックポイント 3/4' }, { type: 'go', pos: P(1, 6), text: 'チェックポイント 4/4' }, { type: 'go', pos: { x: 168, z: -60 }, text: '港の船へ急げ！' }] },
 ];
 // mode: 'menu'(画面の後ろで街が動いている) / 'solo'(ひとり用) / 'race'(配達競争)
-const G = { mode: 'menu', started: false, over: false, money: 0, wanted: 0, mi: 0, si: 0, timeLeft: -1, play: 0, evade: 0, bust: 0, downT: 0, hitCd: 0, spawnCd: 0, failWait: 0, waitMsg: '', camYaw: Math.PI, camDrag: 0 };
+const G = { mode: 'menu', started: false, over: false, money: 0, wanted: 0, mi: 0, si: 0, timeLeft: -1, play: 0, evade: 0, bust: 0, downT: 0, stunT: 0, shop: null, shopLock: null, hitCd: 0, spawnCd: 0, failWait: 0, waitMsg: '', camYaw: Math.PI, camDrag: 0 };
 // 配達競争の状態(online.js から setRace でもらう)
 const R = { me: null, state: null, remotes: {}, avatars: {}, sendT: 0 };
 let toastT = 0;
@@ -687,13 +842,16 @@ function gameClear() {
 }
 function busted() {
   G.money = Math.max(0, G.money - TUNE.police.fine); G.wanted = 0; G.bust = 0; removeAllPolice(); if (player.mode === 'car') exitCar(); player.x = startX; player.z = startZ;
-  player.inv = ['fist']; player.wi = 0; player.ammo = 0; setHand(player.per, player, null); // 逮捕されても武器は没収
+  confiscate(); G.stunT = 0; player.per.g.rotation.x = 0; // 逮捕されても武器は没収
   if (G.mi < MISSIONS.length && !G.over && (G.si > 0 || MISSIONS[G.mi].steps[0].wanted)) failMission('逮捕された！ -$1000　武器を没収　ミッション失敗'); else toast('逮捕された！ -$1000　武器を没収', 2.6);
 }
-function removeAllPolice() { for (let i = cars.length - 1; i >= 0; i--) if (cars[i].kind === 'police') removeCar(cars[i]); }
+function removeAllPolice() {
+  for (let i = cars.length - 1; i >= 0; i--) if (cars[i].kind === 'police') removeCar(cars[i]);
+  for (let i = npcs.length - 1; i >= 0; i--) if (npcs[i].kind === 'cop') removeNpc(npcs[i]);
+}
 
 /* ===== 操作 ===== */
-const input = { jx: 0, jy: 0, dash: false, brake: false }; const keys = {};
+const input = { jx: 0, jy: 0, dash: false, brake: false, acc: false, rev: false }; const keys = {};
 addEventListener('keydown', e => { if (e.target && e.target.tagName === 'INPUT') return; keys[e.code] = true; if (e.code === 'KeyE' || e.code === 'KeyF') toggleCar(); if (e.code === 'KeyJ') playerAttack(); if (e.code === 'KeyQ') switchWeapon(); if (e.code === 'Space') e.preventDefault(); });
 addEventListener('keyup', e => { keys[e.code] = false; });
 let joy = null, camTouch = null, dashHeld = false;
@@ -713,35 +871,51 @@ touchEl.addEventListener('pointerup', endPtr); touchEl.addEventListener('pointer
 $('enterBtn').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); toggleCar(); });
 $('atkBtn').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); playerAttack(); });
 $('wpnBtn').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); switchWeapon(); });
-const db = $('dashBtn');
-db.addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); dashHeld = true; db.classList.add('on'); });
-['pointerup', 'pointercancel', 'pointerleave'].forEach(t => db.addEventListener(t, () => { dashHeld = false; db.classList.remove('on'); }));
+$('healBtn').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); useHeal(); });
+// 押している間だけ効くボタン(ダッシュ・アクセル・ブレーキ・バック)
+const held = { dash: false, acc: false, brk: false, rev: false };
+function holdBtn(id, k) {
+  const b = $(id);
+  b.addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); held[k] = true; b.classList.add('on'); try { b.setPointerCapture(e.pointerId); } catch (_) { /* なくてもよい */ } });
+  ['pointerup', 'pointercancel', 'lostpointercapture'].forEach(t => b.addEventListener(t, () => { held[k] = false; b.classList.remove('on'); }));
+}
+holdBtn('dashBtn', 'dash'); holdBtn('accBtn', 'acc'); holdBtn('brkBtn', 'brk'); holdBtn('revBtn', 'rev');
+function releaseHeld() { for (const k in held) held[k] = false; for (const id of ['dashBtn', 'accBtn', 'brkBtn', 'revBtn']) $(id).classList.remove('on'); }
 function readInput() {
   let jx = 0, jy = 0;
   if (keys.KeyA || keys.ArrowLeft) jx -= 1; if (keys.KeyD || keys.ArrowRight) jx += 1; if (keys.KeyW || keys.ArrowUp) jy += 1; if (keys.KeyS || keys.ArrowDown) jy -= 1;
   if (joy) { jx += joy.dx / 50; jy -= joy.dy / 50; }
   input.jx = clamp(jx, -1, 1); input.jy = clamp(jy, -1, 1);
-  input.dash = dashHeld || keys.ShiftLeft || keys.ShiftRight; input.brake = (dashHeld && player.mode === 'car') || keys.Space;
+  input.dash = held.dash || keys.ShiftLeft || keys.ShiftRight;
+  // 車: アクセル・ブレーキ・バックのボタン(スティックは左右のハンドルだけ)。パソコンのキーは今のまま(W・S・Space)
+  input.acc = held.acc || keys.KeyW || keys.ArrowUp; input.rev = held.rev || keys.KeyS || keys.ArrowDown; input.brake = held.brk || keys.Space;
 }
 
 /* ===== 車の乗り降り ===== */
 function nearestEnterable() { let best = null, bd = TUNE.enterDist; for (const c of cars) { if (c.kind === 'police') continue; const d = Math.hypot(c.x - player.x, c.z - player.z); if (d < bd) { bd = d; best = c; } } return best; }
 function toggleCar() {
-  if (!G.started) return; if (player.mode === 'car') { exitCar(); return; }
+  if (!G.started || G.stunT > 0 || G.downT > 0 || G.shop) return; if (player.mode === 'car') { exitCar(); return; }
   const c = nearestEnterable(); if (!c) return;
-  if (c.kind === 'traffic' && Math.abs(c.v) > 1) { addWanted(1); if (G.mode === 'solo') toast('車を奪った！', 1.4); }
+  if (c.kind === 'traffic') { ejectDriver(c); if (Math.abs(c.v) > 1) { addWanted(1); if (G.mode === 'solo') toast('車を奪った！', 1.4); } }
   enterCar(c);
 }
-function enterCar(c) { c.kind = 'player'; player.car = c; player.mode = 'car'; player.per.g.visible = false; }
+function enterCar(c) { c.kind = 'player'; player.car = c; player.mode = 'car'; player.per.g.visible = false; releaseHeld(); }
 function exitCar() {
   const c = player.car; if (!c) return; c.kind = 'parked';
   const rx = -Math.cos(c.h), rz = Math.sin(c.h); player.x = c.x - rx * 2.4; player.z = c.z - rz * 2.4; player.h = c.h; resolve(player, 0.5);
-  player.mode = 'foot'; player.car = null; player.per.g.visible = true;
+  player.mode = 'foot'; player.car = null; player.per.g.visible = true; releaseHeld();
 }
 
 /* ===== 毎フレームの動き ===== */
+let shownCar = null;
 function updatePlayer(dt) {
+  const inCar = player.mode === 'car'; if (inCar !== shownCar) { shownCar = inCar; document.body.classList.toggle('incar', inCar); } // 車のボタンに切りかえ
   if (G.downT > 0) { player.per.g.position.set(player.x, 0.4, player.z); return; } // やられて倒れている
+  if (G.stunT > 0) { // 車から引きずり出されて、たおれている
+    G.stunT -= dt; player.per.g.position.set(player.x, 0.4, player.z); player.v = 0;
+    if (G.stunT <= 0) player.per.g.rotation.x = 0;
+    return;
+  }
   if (player.mode === 'foot') {
     const a = G.camYaw; const fx = Math.sin(a), fz = Math.cos(a), rx = -Math.cos(a), rz = Math.sin(a);
     let mx = fx * input.jy + rx * input.jx, mz = fz * input.jy + rz * input.jx; const l = Math.hypot(mx, mz); let sp = 0;
@@ -751,9 +925,9 @@ function updatePlayer(dt) {
     player.v = sp;
     const per = player.per; per.g.position.set(player.x, onWalk(player.x, player.z) ? 0.3 : 0, player.z); per.g.rotation.y = player.h; animPerson(per, sp, dt);
     if (player.swing > 0) { player.swing -= dt; per.armR.rotation.x = -1.5; }
-    $('enterBtn').textContent = '乗る'; $('enterBtn').classList.toggle('near', !!nearestEnterable()); $('dashBtn').textContent = 'ダッシュ';
+    $('enterBtn').textContent = '乗る'; $('enterBtn').classList.toggle('near', !!nearestEnterable());
   } else {
-    const c = player.car; const th = input.jy, st = input.jx;
+    const c = player.car; const th = (input.acc ? 1 : 0) - (input.rev ? 1 : 0), st = input.jx;
     if (input.brake) { const b = Math.min(Math.abs(c.v), TUNE.carBrake * dt); c.v -= Math.sign(c.v) * b; }
     else if (th > 0.05) { if (c.v < 0) c.v += 40 * dt * th; else c.v += TUNE.carAccel * th * dt * (1 - c.v / TUNE.carMax); }
     else if (th < -0.05) { if (c.v > 0) c.v += 38 * th * dt; else c.v = Math.max(-TUNE.carReverse, c.v + 12 * th * dt); }
@@ -762,7 +936,7 @@ function updatePlayer(dt) {
     c.x += Math.sin(c.h) * c.v * dt; c.z += Math.cos(c.h) * c.v * dt;
     if (resolveCar(c)) c.v *= Math.abs(c.v) > 3 ? -0.25 : 0.5;
     player.x = c.x; player.z = c.z; player.h = c.h; player.v = c.v;
-    $('enterBtn').textContent = '降りる'; $('enterBtn').classList.remove('near'); $('dashBtn').textContent = 'ブレーキ';
+    $('enterBtn').textContent = '降りる'; $('enterBtn').classList.remove('near');
   }
 }
 function updateTraffic(c, dt) {
@@ -772,6 +946,7 @@ function updateTraffic(c, dt) {
   for (const id in R.avatars) { const a = R.avatars[id]; if (a.seen) others.push({ x: a.x, z: a.z, same: true }); }
   for (const o of others) { const rx = o.x - c.x, rz = o.z - c.z, ah = rx * fx + rz * fz, sd = Math.abs(rx * fz - rz * fx); if (ah > 0 && ah < 7.5 && sd < 2.4 && o.same) { blocked = true; break; } }
   if (!blocked) for (const g of gangs) { if (g.hp <= 0 || !g.per.g.visible) continue; const rx = g.x - c.x, rz = g.z - c.z, ah = rx * fx + rz * fz, sd = Math.abs(rx * fz - rz * fx); if (ah > 0 && ah < 6 && sd < 2) { blocked = true; break; } }
+  if (!blocked) for (const g of npcs) { if (g.hp <= 0) continue; const rx = g.x - c.x, rz = g.z - c.z, ah = rx * fx + rz * fz, sd = Math.abs(rx * fz - rz * fx); if (ah > 0 && ah < 6 && sd < 2) { blocked = true; break; } }
   if (!blocked) for (const p of peds) { if (p.down > 0) continue; const rx = p.x - c.x, rz = p.z - c.z, ah = rx * fx + rz * fz, sd = Math.abs(rx * fz - rz * fx); if (ah > 0 && ah < 6 && sd < 2) { blocked = true; break; } }
   const tv = blocked ? 0 : 11; c.v += clamp(tv - c.v, -30 * dt, 8 * dt); c.p += c.v * dt / CELL;
   if (c.p >= 1) { c.p -= 1; const nb = neighbors(c.b).filter(n => !sameNode(n, c.a)); const nx = nb.length ? nb[Math.floor(Math.random() * nb.length)] : c.a; c.a = c.b; c.b = nx; }
@@ -782,7 +957,19 @@ function updateTraffic(c, dt) {
 function updatePolice(c, dt, t) {
   const tx = player.x, tz = player.z, d = Math.hypot(tx - c.x, tz - c.z);
   if (c.lights) { const on = Math.floor(t * 6) % 2 === 0; c.lights[0].material.color.setHex(on ? 0xff2020 : 0x400000); c.lights[1].material.color.setHex(on ? 0x001040 : 0x2050ff); }
+  const out = npcs.some(n => n.car === c && n.hp > 0);
+  if (out || c.crew <= 0) { // 警察官が降りている間は止まっている。全員たおされたら、しばらくして消える
+    c.v *= 1 - 4 * dt; if (Math.abs(c.v) < 0.2) c.v = 0;
+    c.x += Math.sin(c.h) * c.v * dt; c.z += Math.cos(c.h) * c.v * dt; resolveCar(c);
+    if (!out && c.crew <= 0) { c.empty = (c.empty || 0) + dt; if (c.empty > 10) c.gone = true; }
+    return;
+  }
+  const slowP = player.mode === 'foot' || Math.abs(player.car.v) < 6;
   if (c.rev > 0) { c.rev -= dt; c.v = -7; c.h += 1.6 * dt; }
+  else if (d < TUNE.police.deployDist && slowP && G.stunT <= 0) { // 近くで止まって、警察官が降りる
+    c.v += clamp(-c.v, -35 * dt, 35 * dt);
+    if (Math.abs(c.v) < 1.5) { c.v = 0; deployCops(c); }
+  }
   else {
     let gx, gz;
     if (d < 30) { gx = tx; gz = tz; c.node = null; }
@@ -839,10 +1026,11 @@ function managePolice(dt) {
     for (let i = 0; i <= N; i++) for (let j = 0; j <= N; j++) { const q = P(i, j); const d = Math.hypot(q.x - player.x, q.z - player.z); if (d > 60 && d < 130) cand.push(q); }
     if (cand.length) { const q = cand[Math.floor(Math.random() * cand.length)]; const c = newCar('police', q.x, q.z, Math.atan2(player.x - q.x, player.z - q.z), 0); c.v = 10; }
   }
-  let nd = 1e9; for (const c of pol) nd = Math.min(nd, Math.hypot(c.x - player.x, c.z - player.z));
+  let nd = 1e9, nearCop = false; for (const c of pol) if (c.crew > 0) nd = Math.min(nd, Math.hypot(c.x - player.x, c.z - player.z));
+  for (const n of npcs) { if (n.kind !== 'cop' || n.hp <= 0 || n.state !== 'chase') continue; const d = Math.hypot(n.x - player.x, n.z - player.z); nd = Math.min(nd, d); if (player.mode === 'foot' && d < TUNE.police.catchDist && n.stagger <= 0) nearCop = true; }
   if (G.wanted > 0) { if (nd > TUNE.police.evadeDist) G.evade += dt; else G.evade = Math.max(0, G.evade - dt * 0.5); if (G.evade > TUNE.police.evadeTime) { G.wanted--; G.evade = 0; toast(G.wanted ? '手配度ダウン' : '逃げ切った！', 1.6); } }
-  const slow = player.mode === 'foot' || Math.abs(player.car.v) < 3; const near = player.mode === 'foot' ? nd < 4.5 : nd < 6.5;
-  if (G.wanted > 0 && slow && near) G.bust += dt; else G.bust = Math.max(0, G.bust - dt);
+  // 逮捕: 歩いている主人公に、警察官がしばらくくっつく
+  if (G.wanted > 0 && nearCop) G.bust += dt; else G.bust = Math.max(0, G.bust - dt);
   $('warn').textContent = G.bust > 0.2 ? '逃げろ！ 捕まるぞ！' : ''; if (G.bust > TUNE.police.bustTime) busted();
 }
 function updateMission(dt) {
@@ -905,6 +1093,11 @@ const mapC = document.createElement('canvas'); mapC.width = mapC.height = 720;
   for (const b of blocks) { g.fillStyle = b.park ? '#4f8f3a' : '#8d8d8d'; g.fillRect(X(b.x0), X(b.z0), 40 * s, 40 * s); }
   for (const m of MERGES) { const r = mergeRect(m); g.fillStyle = m.kind === 'park' ? '#4f8f3a' : m.kind === 'market' ? '#7a4a3a' : '#8d8d8d'; g.fillRect(X(r.x0), X(r.z0), (r.x1 - r.x0) * s, (r.z1 - r.z0) * s); }
   g.fillStyle = '#d6d6d6'; for (const b of buildings) g.fillRect(X(b.x - b.w / 2), X(b.z - b.d / 2), b.w * s, b.d * s);
+  // 店と病院のしるし
+  const icon = (x, z, bg, ch) => { g.fillStyle = bg; g.beginPath(); g.arc(X(x), X(z), 11, 0, Math.PI * 2); g.fill(); g.strokeStyle = '#fff'; g.lineWidth = 2; g.stroke(); g.fillStyle = '#fff'; g.font = 'bold 13px sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(ch, X(x), X(z) + 1); };
+  for (const sh of SHOPS) icon(sh.x, sh.z, sh.kind === 'gun' ? '#d6402a' : '#1f9a4a', sh.kind === 'gun' ? '武' : '薬');
+  icon(HOSPITAL.x, HOSPITAL.z + 8, '#ffffff', '');
+  g.fillStyle = '#16a34a'; g.fillRect(X(HOSPITAL.x) - 2.5, X(HOSPITAL.z + 8) - 7, 5, 14); g.fillRect(X(HOSPITAL.x) - 7, X(HOSPITAL.z + 8) - 2.5, 14, 5);
 })();
 const mm = $('mm'), mg = mm.getContext('2d');
 function drawMinimap() {
@@ -929,6 +1122,8 @@ function updateHUD() {
   $('mission').innerHTML = html; $('money').textContent = '$' + G.money.toLocaleString();
   let s = ''; for (let i = 0; i < 5; i++) s += '<span style="color:' + (i < G.wanted ? '#ffd23f' : 'rgba(255,255,255,.35)') + '">★</span>'; $('stars').innerHTML = s;
   const hp = Math.max(0, player.hp); $('hpFill').style.width = hp + '%'; $('hpFill').style.background = hp < 30 ? '#e8463c' : ''; $('hpText').textContent = '体力 ' + Math.ceil(hp);
+  $('armorBar').style.display = player.armor > 0 ? 'block' : 'none'; $('armorFill').style.width = (player.armor / TUNE.armor * 100) + '%';
+  const hb = $('healBtn'); hb.style.display = player.heals > 0 ? 'flex' : 'none'; hb.textContent = '回復 ×' + player.heals;
   const wk = player.inv[player.wi]; $('wpnBtn').textContent = WEAPONS[wk].name + (wk === 'pistol' ? ' ' + player.ammo : '') + (player.inv.length > 1 ? ' ⇄' : '');
   $('timer').textContent = G.timeLeft > 0 ? '残り ' + Math.ceil(G.timeLeft) + ' 秒' : ''; $('speed').textContent = player.mode === 'car' ? Math.round(Math.abs(player.car.v) * 3.6) + ' km/h' : '';
 }
@@ -949,26 +1144,71 @@ function updateRaceHUD() {
   $('speed').textContent = player.mode === 'car' ? Math.round(Math.abs(player.car.v) * 3.6) + ' km/h' : '';
 }
 
+/* ===== 店(武器屋・薬屋) ===== */
+// 売っている物と値段(あとで遊びながら直す)。can: 買えるか、why: 買えないときの理由
+const SHOP_ITEMS = {
+  gun: [
+    { name: 'ピストル(弾12発つき)', price: 500, can: () => !player.inv.includes('pistol'), why: '持っている', buy: () => addWeapon('pistol', 12) },
+    { name: 'ピストルの弾 12発', price: 100, can: () => player.inv.includes('pistol'), why: 'ピストルがない', buy: () => { player.ammo += 12; } },
+    { name: '日本刀', price: 300, can: () => !player.inv.includes('katana'), why: '持っている', buy: () => addWeapon('katana') },
+  ],
+  drug: [
+    { name: 'その場で全回復', price: 150, can: () => player.hp < TUNE.hp, why: '体力は満タン', buy: () => { player.hp = TUNE.hp; } },
+    { name: '回復薬(体力+' + TUNE.healItem + '。' + TUNE.maxHeal + 'つまで持てる)', price: 200, can: () => player.heals < TUNE.maxHeal, why: 'もう' + TUNE.maxHeal + 'つ持っている', buy: () => { player.heals++; } },
+    { name: '防弾チョッキ(' + TUNE.armor + ')', price: 400, can: () => player.armor < TUNE.armor, why: 'もう着ている', buy: () => { player.armor = TUNE.armor; } },
+  ],
+};
+function renderShop() {
+  const s = G.shop; if (!s) return;
+  $('shopName').textContent = s.name;
+  $('shopInfo').innerHTML = '所持金 <b>$' + G.money.toLocaleString() + '</b>　体力 ' + Math.ceil(player.hp) + (player.armor > 0 ? '　チョッキ ' + player.armor : '') + (player.heals ? '　回復薬 ' + player.heals : '') + (player.inv.includes('pistol') ? '　弾 ' + player.ammo : '');
+  $('shopList').innerHTML = SHOP_ITEMS[s.kind].map((it, i) => {
+    const ok = it.can(), money = G.money >= it.price;
+    return '<button class="shopItem" data-i="' + i + '"' + (ok && money ? '' : ' disabled') + '><span>' + esc(it.name) + '</span><b>$' + it.price.toLocaleString() + '</b>' + (!ok ? '<small>' + esc(it.why) + '</small>' : !money ? '<small>お金がたりない</small>' : '') + '</button>';
+  }).join('');
+}
+function openShop(s) {
+  G.shop = s; releaseHeld(); if (joy) { joy = null; setKnob(0, 0); } camTouch = null;
+  renderShop(); $('shop').classList.remove('hidden');
+}
+function closeShop() { if (!G.shop) return; G.shopLock = G.shop; G.shop = null; $('shop').classList.add('hidden'); updateHUD(); }
+$('shopList').addEventListener('click', e => {
+  const b = e.target.closest ? e.target.closest('.shopItem') : null; if (!b || !G.shop) return;
+  const it = SHOP_ITEMS[G.shop.kind][+b.dataset.i]; if (!it || !it.can() || G.money < it.price) return;
+  G.money -= it.price; it.buy(); renderShop();
+});
+$('shopExit').addEventListener('click', closeShop);
+// 店の光るマークに歩いて入ると、ゲームが止まって買い物の画面が出る(出たあとは、一度はなれるまで出ない)
+function checkShops(t) {
+  for (const s of SHOPS) { s.g.visible = G.mode === 'solo'; s.ring.position.y = 0.5 + Math.sin(t * 3) * 0.15; }
+  if (G.mode !== 'solo') return;
+  if (G.shopLock && Math.hypot(G.shopLock.x - player.x, G.shopLock.z - player.z) > 3) G.shopLock = null;
+  if (player.mode !== 'foot' || player.hp <= 0 || G.downT > 0 || G.stunT > 0) return;
+  for (const s of SHOPS) if (s !== G.shopLock && Math.hypot(s.x - player.x, s.z - player.z) < 1.8) { openShop(s); return; }
+}
+
 /* ===== ループ ===== */
 let last = performance.now(), T = 0, hudT = 0;
 function frame(now) {
   const dt = Math.min(0.05, (now - last) / 1000); last = now; T += dt;
-  if (G.started) {
+  if (G.started && G.shop) { /* 買い物中は止まる */ }
+  else if (G.started) {
     readInput(); updatePlayer(dt);
     for (const c of cars) { if (c.kind === 'traffic') updateTraffic(c, dt); else if (c.kind === 'police') updatePolice(c, dt, T); else if (c.kind === 'parked') updateParked(c, dt); }
     if (G.mode === 'race') updateAvatars(dt);
-    carPairs(); updatePeds(dt); updateGangs(dt); updatePickups(dt, T); updateFx(dt);
+    for (let i = cars.length - 1; i >= 0; i--) if (cars[i].gone) removeCar(cars[i]);
+    carPairs(); updatePeds(dt); updateGangs(dt); updateNpcs(dt); updatePickups(dt, T); updateFx(dt);
     if (G.mode === 'solo') updateCombat(dt);
     if (G.mode === 'solo') { managePolice(dt); updateMission(dt); }
     else { $('warn').textContent = ''; updateRaceMarks(T); R.sendT -= dt; if (R.sendT <= 0 && SC.onSend) { R.sendT = TUNE.posRate; SC.onSend(SC.getMe()); } }
-    G.hitCd -= dt; G.play += dt;
+    checkShops(T); G.hitCd -= dt; G.play += dt;
     for (const c of cars) { c.mesh.position.set(c.x, 0, c.z); c.mesh.rotation.y = c.h; }
     updateCamera(dt); marker.rotation.y += dt; ring.position.y = 0.4 + Math.sin(T * 3) * 0.2;
     hudT -= dt; if (hudT <= 0) { updateHUD(); hudT = 0.1; } drawMinimap();
     if (toastT > 0) { toastT -= dt; if (toastT <= 0) $('toast').style.opacity = 0; }
   } else {
     for (const c of cars) { if (c.kind === 'traffic') updateTraffic(c, dt); c.mesh.position.set(c.x, 0, c.z); c.mesh.rotation.y = c.h; }
-    updatePeds(dt); updateGangs(dt);
+    updatePeds(dt); updateGangs(dt); updateNpcs(dt);
     const a = T * 0.08; camera.position.set(Math.sin(a) * 150, 70, Math.cos(a) * 150); camera.lookAt(0, 0, 0); player.per.g.position.set(player.x, 0.3, player.z);
   }
   renderer.render(scene, camera); requestAnimationFrame(frame);
@@ -995,7 +1235,7 @@ $('quitBtn').addEventListener('click', () => { if (G.mode === 'solo') location.r
 if (window.BackGuard) BackGuard.set('home');
 
 const SC = window.SC = {
-  G, R, player, cars, peds, TUNE, MISSIONS, P, gangs, pickups,
+  G, R, player, cars, peds, TUNE, MISSIONS, P, gangs, pickups, npcs, SHOPS, HOSPITAL, SHOP_ITEMS, closeShop,
   onSend: null, onQuit: null,
   startSolo,
   showOnly, setPlaying,

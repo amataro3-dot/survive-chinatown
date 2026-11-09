@@ -52,7 +52,7 @@ with sync_playwright() as p:
         pg.wait_for_timeout(500)
         if ev("SC.G.downT") <= 0: break
     me = ev("SC.getMe()")
-    check(ev("SC.player.hp") == 100 and ev("JSON.stringify(SC.player.inv)") == '["fist"]' and abs(me["x"] - 124) < 1 and ev("SC.G.money") < m1, "病院の場所で目がさめる(体力100・武器没収・お金が減る)")
+    check(ev("SC.player.hp") == 100 and ev("JSON.stringify(SC.player.inv)") == '["fist"]' and abs(me["x"] - ev("SC.HOSPITAL.x")) < 1 and ev("SC.G.money") < m1, "病院の場所で目がさめる(体力100・武器没収・お金が減る)")
     pg.screenshot(path=SHOTS + "/c4_hospital.png")
     # 逮捕でも武器没収
     ev("(()=>{SC.player.inv=['fist','knife']; SC.player.wi=1; SC.G.wanted=2; return 0})()")

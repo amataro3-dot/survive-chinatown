@@ -6,7 +6,7 @@
 <!-- 作りかけなので Google の検索には出さない(完成してトップに載せるときに、この行を消す) -->
 <meta name="robots" content="noindex">
 <title>SURVIVE CHINATOWN</title>
-<link rel="stylesheet" href="style.css?v=6">
+<link rel="stylesheet" href="style.css?v=7">
 </head>
 <body>
 <canvas id="c"></canvas>
@@ -14,6 +14,7 @@
 
 <!-- ゲーム中の表示 -->
 <div id="hpBar" class="hud"><div id="hpFill"></div><span id="hpText"></span></div>
+<div id="armorBar" class="hud"><div id="armorFill"></div></div>
 <div id="mission" class="hud"></div>
 <div id="hurt"></div>
 <div id="topright" class="hud">
@@ -28,7 +29,9 @@
 <div id="warn" class="hud"></div>
 <button id="quitBtn" class="ingame">やめる</button>
 <div id="btns"><div class="btn" id="dashBtn">ダッシュ</div><div class="btn" id="enterBtn">乗る</div></div>
-<div id="atkBox"><div class="btn" id="wpnBtn">素手</div><div class="btn" id="atkBtn">こうげき</div></div>
+<div id="atkBox"><div class="btn" id="healBtn">回復</div><div class="btn" id="wpnBtn">素手</div><div class="btn" id="atkBtn">こうげき</div></div>
+<!-- 車に乗っているときのボタン -->
+<div id="carBox"><div class="btn" id="revBtn">バック</div><div class="btn" id="brkBtn">ブレーキ</div><div class="btn" id="accBtn">アクセル</div></div>
 <div id="joyBase"></div><div id="joyKnob"></div>
 
 <!-- スタート画面 -->
@@ -40,9 +43,9 @@
     <button class="btn-big online" id="goOnline">みんなで配達競争(オンライン)</button>
     <button class="btn-big" id="goSolo">ひとりで遊ぶ(ミッション)</button>
     <h2>操作</h2>
-    <p>左下のスティック：歩く／運転<br>それ以外の場所をドラッグ：カメラを回す<br>「乗る／降りる」：車の乗り降り<br>「ダッシュ」：走る(車ではブレーキ)<br>パソコン：WASD・矢印キー、E で乗り降り、Shift でダッシュ、Space でブレーキ</p>
+    <p>左下のスティック：歩く／車のハンドル(左右)<br>それ以外の場所をドラッグ：カメラを回す<br>「乗る／降りる」：車の乗り降り<br>「ダッシュ」：走る<br>車では「アクセル」「ブレーキ」「バック」のボタンで走る<br>パソコン：WASD・矢印キー、E で乗り降り、Shift でダッシュ、Space でブレーキ</p>
     <h2>ひとりで遊ぶ</h2>
-    <p>5つの配達ミッションに挑戦。人をはねたり、車にぶつけたりすると手配度(★)が上がって警察が追ってくる。パトカーの近くで止まると逮捕！</p>
+    <p>5つの配達ミッションに挑戦。人をはねたり、車にぶつけたりすると手配度(★)が上がって警察が追ってくる。警察官につかまると逮捕！<br>光るマークの店で、武器(赤)や薬(緑)が買える。</p>
     <h2>配達競争(2〜4人)</h2>
     <p>荷物を先に取って、届け先まで運ぶと1点。荷物を持っている人にぶつかると奪える。先に3点取った人の勝ち！</p>
     <p class="links"><a href="https://muddys-games.com/">Muddy's Games トップ</a>　<a href="https://muddys-games.com/privacy.html">プライバシーポリシー</a></p>
@@ -96,6 +99,16 @@
   </div>
 </section>
 
+<!-- 店(ひとり用) -->
+<section id="shop" class="overlay hidden">
+  <div class="panel">
+    <h1 id="shopName">店</h1>
+    <p class="sub" id="shopInfo"></p>
+    <div id="shopList"></div>
+    <button class="btn-big ghost" id="shopExit">出る</button>
+  </div>
+</section>
+
 <!-- ひとり用のクリア画面 -->
 <section id="clear" class="overlay hidden">
   <div class="panel" id="clearPanel"></div>
@@ -105,8 +118,8 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <!-- 縦に持ったときの警告(スタート・待合室・ゲーム中のどこでも出る。横にすると消える) -->
 <div id="rotate"><div class="rotBox"><div class="phone"></div><p class="rotT">⚠ 画面が縦になっています</p><p class="rotS">スマホを横にしてね</p></div></div>
-<script src="backguard.js?v=6"></script>
-<script src="main.js?v=6"></script>
-<script type="module" src="lobby.js?v=6"></script>
+<script src="backguard.js?v=7"></script>
+<script src="main.js?v=7"></script>
+<script type="module" src="lobby.js?v=7"></script>
 </body>
 </html>

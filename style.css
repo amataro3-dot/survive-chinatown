@@ -96,3 +96,30 @@ body.playing.solo #atkBox { display: flex; }
 body.solo #btns { right: 122px; }
 #atkBtn { width: 94px; height: 94px; background: rgba(230, 60, 50, .45); border-color: #ffb0a8; font-size: 16px; }
 #wpnBtn { width: 92px; height: 40px; border-radius: 20px; font-size: 12px; }
+
+/* 防弾チョッキ・回復(ひとり用だけ) */
+#armorBar { top: 26px; left: 10px; width: 180px; height: 7px; background: rgba(0, 0, 0, .6); border: 1px solid rgba(255, 255, 255, .6); border-radius: 4px; overflow: hidden; }
+#armorFill { height: 100%; width: 100%; background: linear-gradient(#8fc4ff, #3a7fe0); }
+body:not(.solo) #armorBar { display: none !important; }
+body.solo #mission { top: 38px; }
+#healBtn { width: 92px; height: 36px; border-radius: 18px; font-size: 12px; background: rgba(60, 200, 90, .4); border-color: #b6ffbe; display: none; }
+
+/* 車に乗っているとき: アクセル・ブレーキ・バック(こうげき・ダッシュは消える) */
+#carBox { position: fixed; right: 14px; bottom: 16px; width: 190px; height: 170px; display: none; pointer-events: none; }
+body.playing.incar #carBox { display: block; }
+#carBox .btn { position: absolute; pointer-events: auto; }
+#accBtn { right: 0; bottom: 0; width: 96px; height: 96px; background: rgba(70, 200, 90, .4); border-color: #b6ffbe; }
+#brkBtn { right: 106px; bottom: 0; width: 80px; height: 80px; background: rgba(230, 60, 50, .4); border-color: #ffb0a8; }
+#revBtn { right: 112px; bottom: 92px; width: 66px; height: 66px; font-size: 13px; }
+#accBtn.on { background: rgba(70, 220, 90, .75); }
+#brkBtn.on { background: rgba(240, 70, 60, .75); }
+body.incar #atkBox, body.incar #dashBtn { display: none !important; }
+body.playing.incar #btns { right: 22px; bottom: 124px; }
+
+/* 店の画面 */
+#shopList { margin-top: 6px; }
+.shopItem { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; width: 100%; margin-top: 8px; padding: 10px 12px; border-radius: 10px; border: 1px solid rgba(255, 255, 255, .3); background: rgba(255, 255, 255, .08); color: var(--fg); font-size: 15px; text-align: left; }
+.shopItem b { color: #7fe08a; font-size: 16px; }
+.shopItem small { flex-basis: 100%; color: var(--muted); font-size: 12px; }
+.shopItem:disabled { opacity: .45; }
+.shopItem:not(:disabled):active { background: rgba(255, 210, 63, .3); }
