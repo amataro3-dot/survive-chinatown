@@ -6,14 +6,16 @@
 <!-- 作りかけなので Google の検索には出さない(完成してトップに載せるときに、この行を消す) -->
 <meta name="robots" content="noindex">
 <title>SURVIVE CHINATOWN</title>
-<link rel="stylesheet" href="style.css?v=4">
+<link rel="stylesheet" href="style.css?v=5">
 </head>
 <body>
 <canvas id="c"></canvas>
 <div id="touch"></div>
 
 <!-- ゲーム中の表示 -->
+<div id="hpBar" class="hud"><div id="hpFill"></div><span id="hpText"></span></div>
 <div id="mission" class="hud"></div>
+<div id="hurt"></div>
 <div id="topright" class="hud">
   <div id="money"></div>
   <div id="stars"></div>
@@ -26,6 +28,7 @@
 <div id="warn" class="hud"></div>
 <button id="quitBtn" class="ingame">やめる</button>
 <div id="btns"><div class="btn" id="dashBtn">ダッシュ</div><div class="btn" id="enterBtn">乗る</div></div>
+<div id="atkBox"><div class="btn" id="wpnBtn">素手</div><div class="btn" id="atkBtn">こうげき</div></div>
 <div id="joyBase"></div><div id="joyKnob"></div>
 
 <!-- スタート画面 -->
@@ -102,8 +105,8 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <!-- 縦に持ったときの警告(スタート・待合室・ゲーム中のどこでも出る。横にすると消える) -->
 <div id="rotate"><div class="rotBox"><div class="phone"></div><p class="rotT">⚠ 画面が縦になっています</p><p class="rotS">スマホを横にしてね</p></div></div>
-<script src="backguard.js?v=4"></script>
-<script src="main.js?v=4"></script>
-<script type="module" src="lobby.js?v=4"></script>
+<script src="backguard.js?v=5"></script>
+<script src="main.js?v=5"></script>
+<script type="module" src="lobby.js?v=5"></script>
 </body>
 </html>

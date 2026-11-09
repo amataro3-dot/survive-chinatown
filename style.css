@@ -83,3 +83,16 @@ body.playing #joyBase, body.playing #joyKnob { display: block; }
 @keyframes scRot { 0%, 20% { transform: rotate(0); } 50%, 80% { transform: rotate(-90deg); } 100% { transform: rotate(0); } }
 .rotT { font-size: 18px; font-weight: bold; color: #ffd23f; margin: 0 0 8px; }
 .rotS { font-size: 15px; color: #ddd; margin: 0; }
+
+/* 体力・こうげき(ひとり用だけ) */
+#hpBar { top: 10px; left: 10px; width: 180px; height: 14px; background: rgba(0, 0, 0, .6); border: 1px solid rgba(255, 255, 255, .7); border-radius: 7px; overflow: hidden; }
+#hpFill { height: 100%; width: 100%; background: linear-gradient(#6fe68a, #2fa84a); transition: width .15s; }
+#hpText { position: absolute; inset: 0; font-size: 10px; line-height: 13px; text-align: center; font-weight: 700; }
+body.solo #mission { top: 32px; }
+body:not(.solo) #hpBar { display: none !important; }
+#hurt { position: fixed; inset: 0; pointer-events: none; box-shadow: inset 0 0 90px 30px rgba(255, 0, 0, .85); opacity: 0; z-index: 5; }
+#atkBox { position: fixed; right: 14px; bottom: 16px; display: none; flex-direction: column; gap: 10px; align-items: center; }
+body.playing.solo #atkBox { display: flex; }
+body.solo #btns { right: 122px; }
+#atkBtn { width: 94px; height: 94px; background: rgba(230, 60, 50, .45); border-color: #ffb0a8; font-size: 16px; }
+#wpnBtn { width: 92px; height: 40px; border-radius: 20px; font-size: 12px; }
