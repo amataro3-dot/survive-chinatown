@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>ブロックシティ・デリバリー</title>
+<style>
+html,body{margin:0;height:100%;overflow:hidden;background:#000;font-family:system-ui,-apple-system,"Hiragino Sans","Noto Sans JP",sans-serif;touch-action:none;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+#c{position:fixed;inset:0;width:100%;height:100%;display:block}
+#touch{position:fixed;inset:0;touch-action:none}
+.hud{position:fixed;pointer-events:none;color:#fff;text-shadow:0 1px 3px rgba(0,0,0,.85);display:none}
+body.playing .hud{display:block}
+#mission{top:10px;left:10px;max-width:56vw;background:rgba(0,0,0,.55);padding:8px 12px;border-radius:8px;font-size:14px;line-height:1.45}
+#mission .t{color:#ffd23f;font-weight:700;font-size:12px}
+#mission .d{color:#cfe0f2;font-size:12px}
+#topright{top:10px;right:10px;text-align:right}
+#money{font-size:20px;font-weight:700;color:#7fe08a}
+#stars{font-size:20px;letter-spacing:1px}
+#timer{font-size:18px;color:#ffb3b3;font-weight:700}
+#speed{font-size:16px;font-weight:700;margin-top:2px}
+#mm{position:fixed;left:14px;bottom:168px;width:112px;height:112px;border-radius:50%;border:2px solid rgba(255,255,255,.9);pointer-events:none;display:none}
+body.playing #mm{display:block}
+#toast{top:28%;left:0;right:0;text-align:center;font-size:24px;font-weight:800;opacity:0;transition:opacity .3s}
+#warn{top:40%;left:0;right:0;text-align:center;font-size:18px;font-weight:700;color:#ff8080}
+#btns{position:fixed;right:14px;bottom:16px;display:none;flex-direction:column;gap:12px;align-items:flex-end}
+body.playing #btns{display:flex}
+.btn{width:78px;height:78px;border-radius:50%;background:rgba(255,255,255,.18);border:2px solid rgba(255,255,255,.75);color:#fff;font-size:15px;font-weight:700;display:flex;align-items:center;justify-content:center;touch-action:none;text-shadow:0 1px 2px #000}
+.btn.on{background:rgba(255,210,63,.5)}
+#enterBtn.near{background:rgba(255,210,63,.6);border-color:#ffd23f}
+#joyBase,#joyKnob{position:fixed;border-radius:50%;pointer-events:none;display:none}
+body.playing #joyBase,body.playing #joyKnob{display:block}
+#joyBase{left:80px;bottom:80px;width:120px;height:120px;margin:0 0 -60px -60px;background:rgba(255,255,255,.12);border:2px solid rgba(255,255,255,.5)}
+#joyKnob{left:80px;bottom:80px;width:52px;height:52px;margin:0 0 -26px -26px;background:rgba(255,255,255,.55)}
+#overlay{position:fixed;inset:0;background:rgba(10,15,25,.78);display:flex;align-items:center;justify-content:center;color:#fff;z-index:10}
+#panel{max-width:420px;width:86vw;max-height:88vh;overflow:auto;background:rgba(20,28,40,.95);border:1px solid rgba(255,255,255,.2);border-radius:14px;padding:18px 20px;line-height:1.6;font-size:14px}
+#panel h1{margin:0 0 6px;font-size:22px;color:#ffd23f}
+#panel h2{margin:12px 0 2px;font-size:15px;color:#9fd0ff}
+#panel p{margin:4px 0}
+#panel button{margin-top:14px;width:100%;padding:12px;font-size:18px;font-weight:700;border:0;border-radius:10px;background:#ffd23f;color:#222}
+#err{position:fixed;bottom:0;left:0;right:0;color:#fff;background:#a00;font-size:12px;padding:4px;display:none;z-index:20}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="touch"></div>
+<div id="mission" class="hud"></div>
+<div id="topright" class="hud"><div id="money">$0</div><div id="stars"></div><div id="timer"></div><div id="speed"></div></div>
+<canvas id="mm" width="260" height="260"></canvas>
+<div id="toast" class="hud"></div>
+<div id="warn" class="hud"></div>
+<div id="btns"><div class="btn" id="dashBtn">ダッシュ</div><div class="btn" id="enterBtn">乗る</div></div>
+<div id="joyBase"></div><div id="joyKnob"></div>
+<div id="overlay"><div id="panel">
+<h1>ブロックシティ・デリバリー</h1>
+<p>あなたは街の配達屋。車を盗んで、走って、警察から逃げて、5つのミッションをクリアしよう。</p>
+<h2>スマホ</h2>
+<p>左下のスティック：歩く／運転<br>それ以外の場所をドラッグ：カメラを回す<br>「乗る／降りる」：車の乗り降り<br>「ダッシュ」：走る（車ではブレーキ）</p>
+<h2>パソコン</h2>
+<p>WASD・矢印キー：移動／運転　E：乗り降り<br>Shift：ダッシュ　Space：ブレーキ</p>
+<h2>注意</h2>
+<p>人をはねたり、車にぶつけたり、走っている車を奪うと手配度（★）が上がって警察が追ってくる。パトカーの近くで止まると逮捕！しばらく逃げ切ると★が下がる。</p>
+<button id="startBtn">スタート</button>
+</div></div>
+<div id="err"></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+window.addEventListener('error',e=>{const d=document.getElementById('err');d.style.display='block';d.textContent='エラー: '+e.message;});
+(function(){
+if(typeof THREE==='undefined'){const d=document.getElementById('err');d.style.display='block';d.textContent='3Dライブラリを読み込めませんでした。ページを再読み込みしてください。';return;}
+
+let seed=20261109;
+function rnd(){seed|=0;seed=seed+0x6D2B79F5|0;let t=Math.imul(seed^seed>>>15,1|seed);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;}
+const N=6,CELL=52,HALF=N*CELL/2,ROADW=12;
+const roadC=k=>k*CELL-HALF;
+const P=(ix,iz)=>({x:roadC(ix),z:roadC(iz)});
+const BX0=-168,BX1=172,BZ0=-168,BZ1=168;
+const clamp=(v,a,b)=>v<a?a:v>b?b:v;
+const angDiff=(a,b)=>{let d=(b-a)%(Math.PI*2);if(d>Math.PI)d-=Math.PI*2;if(d<-Math.PI)d+=Math.PI*2;return d;};
+
+const canvas=document.getElementById('c');
+const renderer=new THREE.WebGLRenderer({canvas,antialias:true});
+renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,2));
+const scene=new THREE.Scene();
+scene.background=new THREE.Color(0x8fc9ef);
+scene.fog=new THREE.Fog(0x8fc9ef,110,300);
+const camera=new THREE.PerspectiveCamera(62,1,0.5,700);
+let baseFov=62;
+function resize(){const w=innerWidth,h=innerHeight;renderer.setSize(w,h,false);camera.aspect=w/h;baseFov=w<h?78:62;camera.fov=baseFov;camera.updateProjectionMatrix();}
+addEventListener('resize',resize);resize();
+scene.add(new THREE.HemisphereLight(0xffffff,0x667755,0.8));
+const sun=new THREE.DirectionalLight(0xffffff,0.65);sun.position.set(80,150,40);scene.add(sun);
+
+const matCache={};
+function M(color){if(!matCache[color])matCache[color]=new THREE.MeshLambertMaterial({color});return matCache[color];}
+const geoCache={};
+function BG(w,h,d){const k=w+'_'+h+'_'+d;if(!geoCache[k])geoCache[k]=new THREE.BoxGeometry(w,h,d);return geoCache[k];}
+function addBox(w,h,d,x,y,z,mat){const m=new THREE.Mesh(BG(w,h,d),mat);m.position.set(x,y,z);scene.add(m);return m;}
+
+// ---------- world ----------
+const grass=new THREE.Mesh(new THREE.PlaneGeometry(1400,1400),M(0x6aa84f));grass.rotation.x=-Math.PI/2;grass.position.y=-0.05;scene.add(grass);
+const asphalt=new THREE.Mesh(new THREE.PlaneGeometry(HALF*2+ROADW,HALF*2+ROADW),M(0x4a4a4f));asphalt.rotation.x=-Math.PI/2;scene.add(asphalt);
+const water=new THREE.Mesh(new THREE.PlaneGeometry(600,1400),M(0x3b7fc4));water.rotation.x=-Math.PI/2;water.position.set(175+300,0.03,0);scene.add(water);
+addBox(13,0.4,340,168.5,0.2,0,M(0xa8a8a0));
+const colliders=[];
+function addCol(x0,x1,z0,z1){colliders.push({x0,x1,z0,z1});}
+addCol(175,400,-400,400);
+// crates and boats at harbor
+const crateCols=[0xc0763a,0x3a7cc0,0x4caf50,0xd0b040];
+for(let i=0;i<10;i++){const z=-150+i*30+(rnd()*8-4);if(Math.abs(z-60)<10||Math.abs(z+60)<10)continue;const c=crateCols[i%4];addBox(5,2.6,2.6,171,1.7,z,M(c));addCol(168.5,173.5,z-1.3,z+1.3);}
+function boat(z){addBox(8,2.4,22,181,1.2,z,M(0xeeeeee));addBox(6,2.5,7,181,3.6,z-4,M(0x2f5f9f));}
+boat(60);boat(-60);
+
+const texCache={};
+function winTex(cols,rows,base){const key=cols+'_'+rows+'_'+base;if(texCache[key])return texCache[key];
+ const c=document.createElement('canvas');c.width=cols*8;c.height=rows*8;const g=c.getContext('2d');
+ g.fillStyle=base;g.fillRect(0,0,c.width,c.height);
+ for(let r=0;r<rows;r++)for(let k=0;k<cols;k++){g.fillStyle=rnd()<0.12?'#ffe7a0':(rnd()<0.5?'#9fc3e6':'#86aed6');g.fillRect(k*8+2,r*8+2,4,4);}
+ g.fillStyle='rgba(0,0,0,.25)';g.fillRect(0,c.height-8,c.width,8);
+ const t=new THREE.CanvasTexture(c);t.magFilter=THREE.NearestFilter;texCache[key]=t;return t;}
+const palette=['#c98a5b','#b0b8c4','#6f84a3','#d9b26a','#9c7a6b','#8aa39b','#c4b49a','#7d6f8f','#a35d5d'];
+const roofMat=M(0x55585e);
+const buildings=[];
+function makeBuilding(x,z,w,d,h){const base=palette[Math.floor(rnd()*palette.length)];
+ const rows=Math.max(2,Math.round(h/4)),cw=Math.max(2,Math.round(w/4)),cd=Math.max(2,Math.round(d/4));
+ const mz=new THREE.MeshLambertMaterial({map:winTex(cw,rows,base)}),mx=new THREE.MeshLambertMaterial({map:winTex(cd,rows,base)});
+ const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),[mx,mx,roofMat,roofMat,mz,mz]);m.position.set(x,h/2+0.3,z);scene.add(m);
+ addCol(x-w/2,x+w/2,z-d/2,z+d/2);buildings.push({x,z,w,d});}
+const blocks=[];
+for(let i=0;i<N;i++)for(let j=0;j<N;j++){
+ const x0=roadC(i)+6,x1=roadC(i+1)-6,z0=roadC(j)+6,z1=roadC(j+1)-6,cx=(x0+x1)/2,cz=(z0+z1)/2;
+ const center=1-Math.hypot(cx,cz)/(HALF*1.3);
+ const park=(i===3&&j===3)?false:rnd()<0.12;
+ blocks.push({x0,x1,z0,z1,park});
+ addBox(40,0.3,40,cx,0.15,cz,park?M(0x5c9e45):M(0xb8b8b8));
+ if(park){for(let t=0;t<6;t++){const tx=x0+6+rnd()*28,tz=z0+6+rnd()*28;addBox(0.6,2.2,0.6,tx,1.4,tz,M(0x7a5230));addBox(3,3,3,tx,3.8,tz,M(0x2f7d32));addCol(tx-0.5,tx+0.5,tz-0.5,tz+0.5);}continue;}
+ if(rnd()<0.25){const w=30+rnd()*4,d=30+rnd()*4;makeBuilding(cx,cz,w,d,(18+rnd()*40)*(0.6+center));}
+ else{for(const ox of[-10,10])for(const oz of[-10,10]){if(rnd()<0.15)continue;const w=11+rnd()*5,d=11+rnd()*5;makeBuilding(cx+ox,cz+oz,w,d,(8+rnd()*30)*(0.6+center));}}
+}
+// lane dashes
+(function(){const pos=[];for(let k=0;k<=N;k++){for(let t=-HALF;t<=HALF;t+=6){let near=false;for(let m=0;m<=N;m++)if(Math.abs(t-roadC(m))<7)near=true;if(near)continue;pos.push([roadC(k),t,0]);pos.push([t,roadC(k),1]);}}
+ const g=new THREE.PlaneGeometry(0.35,3);g.rotateX(-Math.PI/2);const im=new THREE.InstancedMesh(g,M(0xf2d24b),pos.length);const o=new THREE.Object3D();
+ pos.forEach((p,i)=>{o.position.set(p[0],0.03,p[1]);o.rotation.set(0,p[2]?Math.PI/2:0,0);o.updateMatrix();im.setMatrixAt(i,o.matrix);});scene.add(im);})();
+
+// ---------- collision ----------
+function resolve(o,r){let hit=false;for(const c of colliders){if(o.x+r<c.x0||o.x-r>c.x1||o.z+r<c.z0||o.z-r>c.z1)continue;
+ const px=clamp(o.x,c.x0,c.x1),pz=clamp(o.z,c.z0,c.z1);let dx=o.x-px,dz=o.z-pz;const d=Math.hypot(dx,dz);
+ if(d<r){hit=true;if(d>0.0001){o.x=px+dx/d*r;o.z=pz+dz/d*r;}else{const l=o.x-c.x0,rr=c.x1-o.x,t=o.z-c.z0,b=c.z1-o.z,mn=Math.min(l,rr,t,b);if(mn===l)o.x=c.x0-r;else if(mn===rr)o.x=c.x1+r;else if(mn===t)o.z=c.z0-r;else o.z=c.z1+r;}}}
+ if(o.x<BX0){o.x=BX0;hit=true;}if(o.x>BX1){o.x=BX1;hit=true;}if(o.z<BZ0){o.z=BZ0;hit=true;}if(o.z>BZ1){o.z=BZ1;hit=true;}return hit;}
+function resolveCar(c){let hit=false;const fx=Math.sin(c.h),fz=Math.cos(c.h);for(const off of[1.5,-1.5,0]){const p={x:c.x+fx*off,z:c.z+fz*off};if(resolve(p,1.15)){hit=true;c.x+=p.x-(c.x+fx*off);c.z+=p.z-(c.z+fz*off);}}return hit;}
+
+// ---------- models ----------
+const wheelGeo=new THREE.CylinderGeometry(0.45,0.45,0.4,12);wheelGeo.rotateZ(Math.PI/2);
+function makeCarMesh(color,police){const g=new THREE.Group();
+ const body=new THREE.Mesh(BG(2.2,0.9,4.4),M(police?0x1a1a1a:color));body.position.y=0.8;g.add(body);
+ if(police){const s=new THREE.Mesh(BG(2.24,0.4,2.6),M(0xffffff));s.position.set(0,0.95,0.1);g.add(s);}
+ const cab=new THREE.Mesh(BG(1.9,0.7,2.2),M(0x2b3a4a));cab.position.set(0,1.6,-0.2);g.add(cab);
+ const roof=new THREE.Mesh(BG(1.95,0.12,2.0),M(police?0xffffff:color));roof.position.set(0,2.0,-0.2);g.add(roof);
+ for(const sx of[-1.05,1.05])for(const sz of[-1.4,1.4]){const w=new THREE.Mesh(wheelGeo,M(0x151515));w.position.set(sx,0.45,sz);g.add(w);}
+ for(const sx of[-0.7,0.7]){const hl=new THREE.Mesh(BG(0.45,0.25,0.06),M(0xfff6cc));hl.position.set(sx,0.9,2.21);g.add(hl);const tl=new THREE.Mesh(BG(0.45,0.25,0.06),M(0xd02020));tl.position.set(sx,0.9,-2.21);g.add(tl);}
+ let lights=null;if(police){const r=new THREE.Mesh(BG(0.6,0.25,0.4),new THREE.MeshBasicMaterial({color:0xff2020}));r.position.set(-0.35,2.18,-0.2);const b=new THREE.Mesh(BG(0.6,0.25,0.4),new THREE.MeshBasicMaterial({color:0x2050ff}));b.position.set(0.35,2.18,-0.2);g.add(r);g.add(b);lights=[r,b];}
+ scene.add(g);return{g,lights};}
+function makePerson(shirt,pants,skin){const g=new THREE.Group();
+ const body=new THREE.Mesh(BG(0.8,1.0,0.45),M(shirt));body.position.y=1.35;g.add(body);
+ const head=new THREE.Mesh(BG(0.55,0.55,0.55),M(skin));head.position.y=2.15;g.add(head);
+ const hair=new THREE.Mesh(BG(0.58,0.18,0.58),M(0x2a1d14));hair.position.y=2.45;g.add(hair);
+ function limb(x,y,w,h,col){const p=new THREE.Group();p.position.set(x,y,0);const m=new THREE.Mesh(BG(w,h,w+0.03),M(col));m.position.y=-h/2;p.add(m);g.add(p);return p;}
+ const legL=limb(-0.2,0.85,0.32,0.85,pants),legR=limb(0.2,0.85,0.32,0.85,pants),armL=limb(-0.53,1.82,0.24,0.85,shirt),armR=limb(0.53,1.82,0.24,0.85,shirt);
+ scene.add(g);return{g,legL,legR,armL,armR,phase:0};}
+function animPerson(p,speed,dt){p.phase+=dt*(2+speed*1.6);const s=Math.sin(p.phase)*Math.min(speed/4,1)*0.9;p.legL.rotation.x=s;p.legR.rotation.x=-s;p.armL.rotation.x=-s*0.8;p.armR.rotation.x=s*0.8;}
+
+// ---------- entities ----------
+const carColors=[0xd33c3c,0x3c6fd3,0xf0f0f0,0x222222,0xe0a020,0x2f9e5a,0x9a4fc4,0x808890,0xff7a30];
+const cars=[];
+function newCar(kind,x,z,h,color){const m=makeCarMesh(color,kind==='police');const c={kind,x,z,h,v:0,mesh:m.g,lights:m.lights,stuck:0,rev:0};cars.push(c);return c;}
+function neighbors(n){const r=[];const d=[[1,0],[-1,0],[0,1],[0,-1]];for(const[a,b]of d){const x=n[0]+a,z=n[1]+b;if(x>=0&&x<=N&&z>=0&&z<=N)r.push([x,z]);}return r;}
+const nodePos=n=>P(n[0],n[1]);
+const sameNode=(a,b)=>a[0]===b[0]&&a[1]===b[1];
+function nearestNode(x,z){return[clamp(Math.round((x+HALF)/CELL),0,N),clamp(Math.round((z+HALF)/CELL),0,N)];}
+// parked
+const startX=roadC(3)+26,startZ=roadC(3)+8.5;
+newCar('parked',startX+3,roadC(3)+4.3,Math.PI/2,0xd33c3c);
+for(let i=0;i<10;i++){const along=Math.floor(rnd()*N),k=Math.floor(rnd()*(N+1)),side=rnd()<0.5?-1:1,col=carColors[Math.floor(rnd()*carColors.length)];
+ if(rnd()<0.5)newCar('parked',roadC(along)+26,roadC(k)+side*4.3,side>0?Math.PI/2:-Math.PI/2,col);else newCar('parked',roadC(k)+side*4.3,roadC(along)+26,side>0?Math.PI:0,col);}
+// traffic
+for(let i=0;i<12;i++){const a=[Math.floor(rnd()*(N+1)),Math.floor(rnd()*(N+1))];const nb=neighbors(a);const b=nb[Math.floor(rnd()*nb.length)];
+ const c=newCar('traffic',0,0,0,carColors[Math.floor(rnd()*carColors.length)]);c.a=a;c.b=b;c.p=rnd();c.v=10;const A=nodePos(a),B=nodePos(b);const dx=(B.x-A.x)/CELL,dz=(B.z-A.z)/CELL;c.x=A.x+(B.x-A.x)*c.p+dz*3.2;c.z=A.z+(B.z-A.z)*c.p-dx*3.2;c.h=Math.atan2(dx,dz);}
+// peds
+const peds=[];const shirts=[0x3f7fd0,0xd04040,0x40a060,0xe0c040,0x9050c0,0xffffff,0x303030,0xff8040];
+function pedPos(p){const b=blocks[p.bi],o=1.3,x0=b.x0+o,z0=b.z0+o,L=40-2*o;let t=((p.t%(4*L))+4*L)%(4*L);const s=Math.floor(t/L),f=t-s*L;
+ if(s===0)return[x0+f,z0,Math.PI/2*(p.dir)];if(s===1)return[x0+L,z0+f,p.dir>0?0:Math.PI];if(s===2)return[x0+L-f,z0+L,p.dir>0?-Math.PI/2:Math.PI/2];return[x0,z0+L-f,p.dir>0?Math.PI:0];}
+for(let i=0;i<22;i++){const per=makePerson(shirts[i%shirts.length],[0x2a3550,0x333333,0x5a4030][i%3],[0xf0c9a0,0xc89870,0x8a5a3a][i%3]);
+ const p={per,bi:Math.floor(rnd()*blocks.length),t:rnd()*160,dir:rnd()<0.5?1:-1,speed:1.2+rnd()*0.8,down:0,x:0,z:0,h:0,push:{x:0,z:0}};peds.push(p);}
+// player
+const player={mode:'foot',x:startX,z:startZ,h:Math.PI,car:null,per:makePerson(0xffd23f,0x23324f,0xf0c9a0)};
+// marker
+const beam=new THREE.Mesh(new THREE.CylinderGeometry(3,3,40,20,1,true),new THREE.MeshBasicMaterial({color:0xffd23f,transparent:true,opacity:0.3,depthWrite:false,side:THREE.DoubleSide}));beam.position.y=20;
+const ring=new THREE.Mesh(new THREE.TorusGeometry(3.6,0.3,8,32),new THREE.MeshBasicMaterial({color:0xffd23f}));ring.rotation.x=Math.PI/2;ring.position.y=0.4;
+const marker=new THREE.Group();marker.add(beam);marker.add(ring);scene.add(marker);marker.visible=false;
+
+// ---------- game state ----------
+const MISSIONS=[
+ {title:'車に乗ろう',reward:300,steps:[{type:'car',text:'近くの赤い車に近づいて「乗る」（Eキー）で乗ろう'}]},
+ {title:'はじめての配達',reward:1500,steps:[{type:'go',pos:P(2,5),text:'荷物を受け取りに行こう（黄色い光）',done:'荷物ゲット！'},{type:'go',pos:P(5,1),text:'荷物を届けよう'}]},
+ {title:'急ぎの配達',reward:2500,steps:[{type:'go',pos:P(1,1),text:'急ぎの荷物を受け取ろう',done:'荷物ゲット！'},{type:'go',pos:P(5,5),text:'50秒以内に届けろ！',time:50}]},
+ {title:'あやしい荷物',reward:4000,steps:[{type:'go',pos:P(0,3),text:'あやしい荷物を受け取れ',done:'荷物ゲット！'},{type:'go',pos:{x:168,z:60},text:'警察をかわして港の船へ運べ！',wanted:2}]},
+ {title:'最後の大仕事',reward:10000,steps:[{type:'go',pos:P(3,0),text:'チェックポイント 1/4',time:140,wanted:3},{type:'go',pos:P(6,2),text:'チェックポイント 2/4'},{type:'go',pos:P(4,5),text:'チェックポイント 3/4'},{type:'go',pos:P(1,6),text:'チェックポイント 4/4'},{type:'go',pos:{x:168,z:-60},text:'港の船へ急げ！'}]}
+];
+const G={started:false,over:false,money:0,wanted:0,mi:0,si:0,timeLeft:-1,play:0,evade:0,bust:0,hitCd:0,spawnCd:0,failWait:0,camYaw:Math.PI,camDrag:0};
+const $=id=>document.getElementById(id);
+let toastT=0;function toast(s,t){const e=$('toast');e.textContent=s;e.style.opacity=1;toastT=t||2.2;}
+function addWanted(n){const before=G.wanted;G.wanted=Math.min(5,G.wanted+n);G.evade=0;if(G.wanted>before&&before===0)toast('警察に追われている！');}
+function beginStep(){const st=MISSIONS[G.mi].steps[G.si];if(st.time)G.timeLeft=st.time;if(st.wanted)G.wanted=Math.max(G.wanted,st.wanted);marker.visible=st.type==='go';if(st.pos)marker.position.set(st.pos.x,0,st.pos.z);}
+function beginMission(){G.si=0;G.timeLeft=-1;toast('ミッション'+(G.mi+1)+'：'+MISSIONS[G.mi].title,2.6);beginStep();}
+function stepDone(){const m=MISSIONS[G.mi];G.si++;if(G.si>=m.steps.length){G.money+=m.reward;G.timeLeft=-1;toast('ミッション完了！ +$'+m.reward.toLocaleString(),2.6);G.mi++;marker.visible=false;
+  if(G.mi>=MISSIONS.length){setTimeout(gameClear,1800);G.over=true;}else{G.failWait=2.6;G.waitMsg='次のミッションへ…';}}
+ else{toast(m.steps[G.si-1].done||'チェックポイント通過！',1.2);beginStep();}}
+function failMission(msg){toast(msg,2.6);G.timeLeft=-1;marker.visible=false;G.failWait=2.8;G.waitMsg='もう一度挑戦…';}
+function gameClear(){const t=Math.floor(G.play);$('panel').innerHTML='<h1>ゲームクリア！</h1><p>街いちばんの配達屋になった！</p><p>所持金：<b>$'+G.money.toLocaleString()+'</b><br>プレイ時間：<b>'+Math.floor(t/60)+'分'+(t%60)+'秒</b></p><p>このあと街は自由に走り回れます。</p><button id="again">もう一度遊ぶ</button><button id="free" style="background:#9fd0ff">街を自由に走る</button>';
+ $('overlay').style.display='flex';$('again').onclick=()=>location.reload();$('free').onclick=()=>{$('overlay').style.display='none';};}
+function busted(){G.money=Math.max(0,G.money-1000);G.wanted=0;G.bust=0;removeAllPolice();if(player.mode==='car')exitCar();player.x=roadC(3)+26;player.z=roadC(3)+8.5;
+ if(G.mi<MISSIONS.length&&!G.over&&(G.si>0||MISSIONS[G.mi].steps[0].wanted))failMission('逮捕された！ -$1000　ミッション失敗');else toast('逮捕された！ -$1000',2.6);}
+function removeAllPolice(){for(let i=cars.length-1;i>=0;i--)if(cars[i].kind==='police'){scene.remove(cars[i].mesh);cars.splice(i,1);}}
+
+// ---------- input ----------
+const input={jx:0,jy:0,dash:false,brake:false};const keys={};
+addEventListener('keydown',e=>{keys[e.code]=true;if(e.code==='KeyE'||e.code==='KeyF')toggleCar();if(e.code==='Space')e.preventDefault();});
+addEventListener('keyup',e=>{keys[e.code]=false;});
+let joy=null,camTouch=null,dashHeld=false;
+const touchEl=$('touch'),jb=$('joyBase'),jk=$('joyKnob');
+const JX=80,JB=80;
+function setKnob(dx,dy){jk.style.left=(JX+dx)+'px';jk.style.bottom=(JB-dy)+'px';}
+touchEl.addEventListener('pointerdown',e=>{if(!G.started)return;const cx=JX,cy=innerHeight-JB;
+ if(!joy&&Math.hypot(e.clientX-cx,e.clientY-cy)<130){joy={id:e.pointerId,sx:cx,sy:cy,dx:0,dy:0};moveJoy(e);}
+ else if(!camTouch){camTouch={id:e.pointerId,x:e.clientX};}try{touchEl.setPointerCapture(e.pointerId);}catch(_){}});
+function moveJoy(e){let dx=e.clientX-joy.sx,dy=e.clientY-joy.sy;const l=Math.hypot(dx,dy);if(l>50){dx*=50/l;dy*=50/l;}joy.dx=dx;joy.dy=dy;setKnob(dx,dy);}
+touchEl.addEventListener('pointermove',e=>{if(joy&&e.pointerId===joy.id){moveJoy(e);}
+ else if(camTouch&&e.pointerId===camTouch.id){G.camDrag-= (e.clientX-camTouch.x)*0.008;camTouch.x=e.clientX;}});
+function endPtr(e){if(joy&&e.pointerId===joy.id){joy=null;setKnob(0,0);}if(camTouch&&e.pointerId===camTouch.id)camTouch=null;}
+touchEl.addEventListener('pointerup',endPtr);touchEl.addEventListener('pointercancel',endPtr);
+$('enterBtn').addEventListener('pointerdown',e=>{e.preventDefault();e.stopPropagation();toggleCar();});
+const db=$('dashBtn');db.addEventListener('pointerdown',e=>{e.preventDefault();e.stopPropagation();dashHeld=true;db.classList.add('on');});
+['pointerup','pointercancel','pointerleave'].forEach(t=>db.addEventListener(t,()=>{dashHeld=false;db.classList.remove('on');}));
+function readInput(){let jx=0,jy=0;if(keys.KeyA||keys.ArrowLeft)jx-=1;if(keys.KeyD||keys.ArrowRight)jx+=1;if(keys.KeyW||keys.ArrowUp)jy+=1;if(keys.KeyS||keys.ArrowDown)jy-=1;
+ if(joy){jx+=joy.dx/50;jy-=joy.dy/50;}input.jx=clamp(jx,-1,1);input.jy=clamp(jy,-1,1);
+ input.dash=dashHeld||keys.ShiftLeft||keys.ShiftRight;input.brake=(dashHeld&&player.mode==='car')||keys.Space;}
+
+// ---------- car enter/exit ----------
+function nearestEnterable(){let best=null,bd=4.8;for(const c of cars){if(c.kind==='police')continue;const d=Math.hypot(c.x-player.x,c.z-player.z);if(d<bd){bd=d;best=c;}}return best;}
+function toggleCar(){if(!G.started)return;if(player.mode==='car'){exitCar();return;}const c=nearestEnterable();if(!c)return;
+ if(c.kind==='traffic'&&Math.abs(c.v)>1){addWanted(1);toast('車を奪った！',1.4);}
+ c.kind='player';player.car=c;player.mode='car';player.per.g.visible=false;}
+function exitCar(){const c=player.car;if(!c)return;c.kind='parked';const rx=-Math.cos(c.h),rz=Math.sin(c.h);player.x=c.x-rx*2.4;player.z=c.z-rz*2.4;player.h=c.h;resolve(player,0.5);player.mode='foot';player.car=null;player.per.g.visible=true;}
+
+function onWalk(x,z){if(x>162&&x<175)return true;for(const b of blocks)if(x>b.x0&&x<b.x1&&z>b.z0&&z<b.z1)return true;return false;}
+// ---------- updates ----------
+function updatePlayer(dt){
+ if(player.mode==='foot'){const a=G.camYaw;const fx=Math.sin(a),fz=Math.cos(a),rx=-Math.cos(a),rz=Math.sin(a);
+  let mx=fx*input.jy+rx*input.jx,mz=fz*input.jy+rz*input.jx;const l=Math.hypot(mx,mz);let sp=0;
+  if(l>0.08){mx/=l;mz/=l;sp=(input.dash?9.5:5)*Math.min(1,l);player.x+=mx*sp*dt;player.z+=mz*sp*dt;
+   player.h+=angDiff(player.h,Math.atan2(mx,mz))*Math.min(1,12*dt);}
+  resolve(player,0.5);
+  for(const c of cars){const dx=player.x-c.x,dz=player.z-c.z,d=Math.hypot(dx,dz);if(d<2.1&&d>0.001){player.x=c.x+dx/d*2.1;player.z=c.z+dz/d*2.1;}}
+  const per=player.per;per.g.position.set(player.x,onWalk(player.x,player.z)?0.3:0,player.z);per.g.rotation.y=player.h;animPerson(per,sp,dt);
+  $('enterBtn').textContent='乗る';$('enterBtn').classList.toggle('near',!!nearestEnterable());$('dashBtn').textContent='ダッシュ';
+ }else{const c=player.car;const th=input.jy,st=input.jx;
+  if(input.brake){const b=Math.min(Math.abs(c.v),45*dt);c.v-=Math.sign(c.v)*b;}
+  else if(th>0.05){if(c.v<0)c.v+=40*dt*th;else c.v+=19*th*dt*(1-c.v/35);}
+  else if(th<-0.05){if(c.v>0)c.v+=38*th*dt;else c.v=Math.max(-10,c.v+12*th*dt);}
+  else{c.v*=1-0.7*dt;if(Math.abs(c.v)<0.3)c.v=0;}
+  const tf=clamp(c.v/7,-1,1)*(Math.abs(c.v)>22?0.75:1);c.h-=st*1.9*dt*tf;
+  c.x+=Math.sin(c.h)*c.v*dt;c.z+=Math.cos(c.h)*c.v*dt;
+  if(resolveCar(c)){c.v*=Math.abs(c.v)>3?-0.25:0.5;}
+  player.x=c.x;player.z=c.z;player.h=c.h;
+  $('enterBtn').textContent='降りる';$('enterBtn').classList.remove('near');$('dashBtn').textContent='ブレーキ';}
+}
+function updateTraffic(c,dt){const A=nodePos(c.a),B=nodePos(c.b);const dx=(B.x-A.x)/CELL,dz=(B.z-A.z)/CELL;
+ const fx=Math.sin(c.h),fz=Math.cos(c.h);let blocked=false;
+ const others=[{x:player.x,z:player.z,same:false}];for(const o of cars){if(o!==c&&o.kind!=='player')others.push({x:o.x,z:o.z,same:o.kind!=='traffic'||(Math.sin(o.h)*fx+Math.cos(o.h)*fz)>0.5});}
+ for(const o of others){const rx=o.x-c.x,rz=o.z-c.z,ah=rx*fx+rz*fz,sd=Math.abs(rx*fz-rz*fx);if(ah>0&&ah<7.5&&sd<2.4&&(o.same||o===others[0])){blocked=true;break;}}
+ if(!blocked)for(const p of peds){if(p.down>0)continue;const rx=p.x-c.x,rz=p.z-c.z,ah=rx*fx+rz*fz,sd=Math.abs(rx*fz-rz*fx);if(ah>0&&ah<6&&sd<2){blocked=true;break;}}
+ const tv=blocked?0:11;c.v+=clamp(tv-c.v,-30*dt,8*dt);c.p+=c.v*dt/CELL;
+ if(c.p>=1){c.p-=1;const nb=neighbors(c.b).filter(n=>!sameNode(n,c.a));const nx=nb.length?nb[Math.floor(Math.random()*nb.length)]:c.a;c.a=c.b;c.b=nx;}
+ const A2=nodePos(c.a),B2=nodePos(c.b);const ex=(B2.x-A2.x)/CELL,ez=(B2.z-A2.z)/CELL;
+ const tx=A2.x+(B2.x-A2.x)*c.p+ez*3.2,tz=A2.z+(B2.z-A2.z)*c.p-ex*3.2;const k=1-Math.exp(-6*dt);c.x+=(tx-c.x)*k;c.z+=(tz-c.z)*k;
+ c.h+=angDiff(c.h,Math.atan2(ex,ez))*Math.min(1,5*dt);}
+function updatePolice(c,dt,t){const tx=player.x,tz=player.z,d=Math.hypot(tx-c.x,tz-c.z);
+ if(c.lights){const on=Math.floor(t*6)%2===0;c.lights[0].material.color.setHex(on?0xff2020:0x400000);c.lights[1].material.color.setHex(on?0x001040:0x2050ff);}
+ if(c.rev>0){c.rev-=dt;c.v=-7;c.h+=1.6*dt;}
+ else{let gx,gz;if(d<30){gx=tx;gz=tz;c.node=null;}else{if(!c.node)c.node=nearestNode(c.x,c.z);let np=nodePos(c.node);if(Math.hypot(np.x-c.x,np.z-c.z)<6){let best=null,bd=1e9;for(const n of neighbors(c.node)){const q=nodePos(n);const dd=Math.hypot(q.x-tx,q.z-tz);if(dd<bd){bd=dd;best=n;}}c.node=best;np=nodePos(best);}gx=np.x;gz=np.z;}
+  const dh=angDiff(c.h,Math.atan2(gx-c.x,gz-c.z));c.h+=clamp(dh,-2.6*dt,2.6*dt);const want=Math.abs(dh)>1.2?11:(d<8?Math.max(4,d*2):28);c.v+=clamp(want-c.v,-35*dt,15*dt);}
+ c.x+=Math.sin(c.h)*c.v*dt;c.z+=Math.cos(c.h)*c.v*dt;
+ if(resolveCar(c)){c.v*=0.3;c.stuck+=dt;}else c.stuck=Math.max(0,c.stuck-dt*0.5);
+ if(c.stuck>1.2&&c.rev<=0){c.rev=1.1;c.stuck=0;c.node=null;}}
+function updateParked(c,dt){if(Math.abs(c.v)>0.05){c.v*=1-2.5*dt;c.x+=Math.sin(c.h)*c.v*dt;c.z+=Math.cos(c.h)*c.v*dt;if(resolveCar(c))c.v=0;}else c.v=0;}
+function carPairs(){for(let i=0;i<cars.length;i++)for(let j=i+1;j<cars.length;j++){const a=cars[i],b=cars[j];
+ const inv=a.kind==='player'||b.kind==='player'||a.kind==='police'||b.kind==='police';if(!inv)continue;
+ const dx=b.x-a.x,dz=b.z-a.z,d=Math.hypot(dx,dz);if(d>3.6||d<0.001)continue;const push=(3.6-d)/2,nx=dx/d,nz=dz/d;
+ const pl=a.kind==='player'?a:b.kind==='player'?b:null;
+ if(pl){const o=pl===a?b:a;if(Math.abs(pl.v)>9&&G.hitCd<=0&&(o.kind==='traffic'||o.kind==='police')){addWanted(1);G.hitCd=3;}
+  if(Math.abs(pl.v)>4){if(o.kind==='parked'){o.v=pl.v*0.5;o.h=pl.h;}pl.v*=-0.3;}}
+ a.x-=nx*push;a.z-=nz*push;b.x+=nx*push;b.z+=nz*push;}}
+function updatePeds(dt){for(const p of peds){
+ if(p.down>0){p.down-=dt;p.x+=p.push.x*dt;p.z+=p.push.z*dt;p.push.x*=1-3*dt;p.push.z*=1-3*dt;p.per.g.position.set(p.x,0.3,p.z);if(p.down<=0){p.per.g.rotation.x=0;p.bi=Math.floor(Math.random()*blocks.length);p.t=Math.random()*160;}continue;}
+ const fleeing=G.wanted>=2;p.t+=p.dir*p.speed*(fleeing?2.2:1)*dt;const q=pedPos(p);p.x=q[0];p.z=q[1];p.h=q[2];
+ if(player.mode==='car'){const c=player.car;const d=Math.hypot(c.x-p.x,c.z-p.z);if(d<2.4&&Math.abs(c.v)>5){p.down=7;p.per.g.rotation.x=-Math.PI/2;p.push.x=Math.sin(c.h)*c.v*0.6;p.push.z=Math.cos(c.h)*c.v*0.6;addWanted(1);continue;}}
+ p.per.g.position.set(p.x,0.3,p.z);p.per.g.rotation.y=p.h;animPerson(p.per,p.speed*(fleeing?2.2:1),dt);}}
+function managePolice(dt){const want=G.wanted===0?0:Math.min(4,G.wanted);const pol=cars.filter(c=>c.kind==='police');
+ if(G.wanted===0&&pol.length){removeAllPolice();return;}
+ G.spawnCd-=dt;if(pol.length<want&&G.spawnCd<=0){G.spawnCd=2.5;const cand=[];for(let i=0;i<=N;i++)for(let j=0;j<=N;j++){const q=P(i,j);const d=Math.hypot(q.x-player.x,q.z-player.z);if(d>60&&d<130)cand.push(q);}
+  if(cand.length){const q=cand[Math.floor(Math.random()*cand.length)];const c=newCar('police',q.x,q.z,Math.atan2(player.x-q.x,player.z-q.z),0);c.v=10;}}
+ let nd=1e9;for(const c of pol)nd=Math.min(nd,Math.hypot(c.x-player.x,c.z-player.z));
+ if(G.wanted>0){if(nd>55)G.evade+=dt;else G.evade=Math.max(0,G.evade-dt*0.5);if(G.evade>10){G.wanted--;G.evade=0;toast(G.wanted?'手配度ダウン':'逃げ切った！',1.6);}}
+ const slow=player.mode==='foot'||Math.abs(player.car.v)<3;const near=player.mode==='foot'?nd<4.5:nd<6.5;
+ if(G.wanted>0&&slow&&near)G.bust+=dt;else G.bust=Math.max(0,G.bust-dt);
+ $('warn').textContent=G.bust>0.2?'逃げろ！ 捕まるぞ！':'';if(G.bust>1.6)busted();}
+function updateMission(dt){if(G.over||G.mi>=MISSIONS.length)return;
+ if(G.failWait>0){G.failWait-=dt;if(G.failWait<=0)beginMission();return;}
+ const st=MISSIONS[G.mi].steps[G.si];
+ if(G.timeLeft>0){G.timeLeft-=dt;if(G.timeLeft<=0){failMission('時間切れ… ミッション失敗');return;}}
+ if(st.type==='car'&&player.mode==='car')stepDone();
+ else if(st.type==='go'&&Math.hypot(st.pos.x-player.x,st.pos.z-player.z)<5.5)stepDone();}
+
+// ---------- camera ----------
+const camPos=new THREE.Vector3(startX,8,startZ+10),lookT=new THREE.Vector3();
+function updateCamera(dt){let dist,hgt,target=player.mode==='car'?player.car.h:player.h;
+ if(player.mode==='car'){G.camYaw+=angDiff(G.camYaw,target)*Math.min(1,4*dt);dist=11+Math.abs(player.car.v)*0.08;hgt=5;G.camDrag*=1-2*dt;}
+ else{if(input.jy>-0.3&&(Math.abs(input.jx)+Math.abs(input.jy))>0.1)G.camYaw+=angDiff(G.camYaw,target)*Math.min(1,1.2*dt);dist=7.5;hgt=3.8;
+  if(G.camDrag){G.camYaw+=G.camDrag;G.camDrag=0;}}
+ const yaw=G.camYaw+(player.mode==='car'?G.camDrag:0);
+ const want=new THREE.Vector3(player.x-Math.sin(yaw)*dist,hgt,player.z-Math.cos(yaw)*dist);
+ camPos.lerp(want,1-Math.exp(-6*dt));camera.position.copy(camPos);lookT.set(player.x+Math.sin(yaw)*3,1.6,player.z+Math.cos(yaw)*3);camera.lookAt(lookT);
+ const f=baseFov+(player.mode==='car'?Math.abs(player.car.v)*0.25:0);if(Math.abs(camera.fov-f)>0.1){camera.fov+=(f-camera.fov)*Math.min(1,3*dt);camera.updateProjectionMatrix();}}
+
+// ---------- minimap ----------
+const mapC=document.createElement('canvas');mapC.width=mapC.height=720;
+(function(){const g=mapC.getContext('2d'),s=2,o=180;const X=x=>(x+o)*s;g.fillStyle='#4f7f3e';g.fillRect(0,0,720,720);g.fillStyle='#3b7fc4';g.fillRect(X(175),0,720,720);
+ g.fillStyle='#a8a8a0';g.fillRect(X(162),X(-170),13*s,340*s);g.fillStyle='#555';g.fillRect(X(-HALF-6),X(-HALF-6),(HALF*2+12)*s,(HALF*2+12)*s);
+ for(const b of blocks){g.fillStyle=b.park?'#4f8f3a':'#8d8d8d';g.fillRect(X(b.x0),X(b.z0),40*s,40*s);}g.fillStyle='#d6d6d6';for(const b of buildings)g.fillRect(X(b.x-b.w/2),X(b.z-b.d/2),b.w*s,b.d*s);})();
+const mm=$('mm'),mg=mm.getContext('2d');
+function drawMinimap(){const W=260,R=130,sc=1.3;mg.clearRect(0,0,W,W);mg.save();mg.beginPath();mg.arc(R,R,R,0,Math.PI*2);mg.clip();mg.fillStyle='#222';mg.fillRect(0,0,W,W);
+ const a=G.camYaw,th=-Math.PI/2-Math.atan2(Math.cos(a),Math.sin(a));mg.translate(R,R);mg.rotate(th);mg.scale(sc,sc);mg.drawImage(mapC,(-180-player.x)*1,(-180-player.z)*1,360,360);
+ mg.rotate(Math.atan2(Math.cos(player.h),Math.sin(player.h))+Math.PI/2);mg.fillStyle='#fff';mg.beginPath();mg.moveTo(0,-7);mg.lineTo(5,5);mg.lineTo(0,2);mg.lineTo(-5,5);mg.closePath();mg.fill();mg.restore();
+ const ct=Math.cos(th),stn=Math.sin(th);function dot(x,z,col,r,clampIt){let dx=(x-player.x)*sc,dz=(z-player.z)*sc;let sx=dx*ct-dz*stn,sy=dx*stn+dz*ct;const l=Math.hypot(sx,sy);if(l>R-10){if(!clampIt)return;sx*=(R-10)/l;sy*=(R-10)/l;}mg.fillStyle=col;mg.beginPath();mg.arc(R+sx,R+sy,r,0,Math.PI*2);mg.fill();mg.strokeStyle='#000';mg.lineWidth=1.5;mg.stroke();}
+ for(const c of cars)if(c.kind==='police')dot(c.x,c.z,(Math.floor(performance.now()/250)%2)?'#ff3030':'#3060ff',6,false);
+ if(marker.visible)dot(marker.position.x,marker.position.z,'#ffd23f',9,true);}
+
+// ---------- HUD ----------
+function updateHUD(){const m=MISSIONS[G.mi];let html='';
+ if(G.over||!m)html='<div class="t">フリー走行</div>街を自由に走り回ろう';
+ else if(G.failWait>0)html='<div class="t">ミッション'+(G.mi+1)+'</div>'+G.waitMsg;
+ else{const st=m.steps[G.si];html='<div class="t">ミッション'+(G.mi+1)+'/'+MISSIONS.length+'：'+m.title+'</div>'+st.text;if(st.type==='go'){const d=Math.hypot(st.pos.x-player.x,st.pos.z-player.z);html+='<div class="d">あと '+Math.round(d)+' m</div>';}}
+ $('mission').innerHTML=html;$('money').textContent='$'+G.money.toLocaleString();
+ let s='';for(let i=0;i<5;i++)s+='<span style="color:'+(i<G.wanted?'#ffd23f':'rgba(255,255,255,.35)')+'">★</span>';$('stars').innerHTML=s;
+ $('timer').textContent=G.timeLeft>0?'残り '+Math.ceil(G.timeLeft)+' 秒':'';$('speed').textContent=player.mode==='car'?Math.round(Math.abs(player.car.v)*3.6)+' km/h':'';}
+
+// ---------- loop ----------
+let last=performance.now(),T=0,hudT=0;
+function frame(now){const dt=Math.min(0.05,(now-last)/1000);last=now;T+=dt;
+ if(G.started){readInput();updatePlayer(dt);
+  for(const c of cars){if(c.kind==='traffic')updateTraffic(c,dt);else if(c.kind==='police')updatePolice(c,dt,T);else if(c.kind==='parked')updateParked(c,dt);}
+  carPairs();updatePeds(dt);managePolice(dt);updateMission(dt);G.hitCd-=dt;G.play+=dt;
+  for(const c of cars){c.mesh.position.set(c.x,0,c.z);c.mesh.rotation.y=c.h;}
+  updateCamera(dt);marker.rotation.y+=dt;ring.position.y=0.4+Math.sin(T*3)*0.2;
+  hudT-=dt;if(hudT<=0){updateHUD();hudT=0.1;}drawMinimap();
+  if(toastT>0){toastT-=dt;if(toastT<=0)$('toast').style.opacity=0;}}
+ else{for(const c of cars){if(c.kind==='traffic')updateTraffic(c,dt);c.mesh.position.set(c.x,0,c.z);c.mesh.rotation.y=c.h;}updatePeds(dt);
+  const a=T*0.08;camera.position.set(Math.sin(a)*150,70,Math.cos(a)*150);camera.lookAt(0,0,0);player.per.g.position.set(player.x,0.3,player.z);}
+ renderer.render(scene,camera);requestAnimationFrame(frame);}
+$('startBtn').onclick=()=>{$('overlay').style.display='none';document.body.classList.add('playing');G.started=true;camPos.set(player.x,6,player.z+8);beginMission();};
+requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
