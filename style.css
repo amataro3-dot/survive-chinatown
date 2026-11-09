@@ -72,3 +72,14 @@ body.playing #joyBase, body.playing #joyKnob { display: block; }
 .players small, #resList small { color: var(--muted); }
 .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; vertical-align: middle; }
 #err { position: fixed; bottom: 0; left: 0; right: 0; color: #fff; background: #a00; font-size: 12px; padding: 4px; display: none; z-index: 20; }
+
+/* 横向きのお知らせ(スタート画面) */
+.landNote { display: inline-block; margin: 6px 0 4px !important; padding: 3px 12px; border-radius: 999px; background: rgba(255, 210, 63, .14); border: 1px solid rgba(255, 210, 63, .55); color: #ffd23f; font-size: 13px; }
+/* 縦に持ったときの警告(スマホ・タブレットだけ) */
+#rotate { position: fixed; inset: 0; z-index: 30; background: #0b0a12; display: none; align-items: center; justify-content: center; text-align: center; color: #fff; }
+@media (orientation: portrait) and (pointer: coarse) { #rotate { display: flex; } }
+.rotBox .phone { width: 56px; height: 96px; margin: 0 auto 26px; border: 4px solid #fff; border-radius: 12px; position: relative; animation: scRot 2.4s ease-in-out infinite; }
+.rotBox .phone::after { content: ""; position: absolute; left: 50%; bottom: 6px; width: 14px; height: 4px; margin-left: -7px; border-radius: 2px; background: #fff; }
+@keyframes scRot { 0%, 20% { transform: rotate(0); } 50%, 80% { transform: rotate(-90deg); } 100% { transform: rotate(0); } }
+.rotT { font-size: 18px; font-weight: bold; color: #ffd23f; margin: 0 0 8px; }
+.rotS { font-size: 15px; color: #ddd; margin: 0; }

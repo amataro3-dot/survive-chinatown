@@ -800,7 +800,15 @@ function frame(now) {
 function showOnly(id) { for (const s of ['start', 'lobby', 'result', 'clear']) $(s).classList.toggle('hidden', s !== id); }
 function setPlaying(on) { document.body.classList.toggle('playing', on); G.started = on; }
 function resetPlayerToFoot(x, z, h) { if (player.mode === 'car') exitCar(); player.x = x; player.z = z; player.h = h; player.per.g.visible = true; G.camYaw = h; camPos.set(x - Math.sin(h) * 8, 6, z - Math.cos(h) * 8); }
+// Android: スタートを押したら全画面にして横に固定する(iPhone はできないので、縦のときは「横にしてね」の警告だけ)
+function lockLandscape() {
+  if (typeof navigator === 'undefined' || !/Android/i.test(navigator.userAgent)) return;
+  const d = document.documentElement; if (!d.requestFullscreen || document.fullscreenElement) return;
+  d.requestFullscreen().then(() => screen.orientation && screen.orientation.lock && screen.orientation.lock('landscape')).catch(() => { /* できなくてもよい */ });
+}
+$('goOnline').addEventListener('click', lockLandscape);
 function startSolo() {
+  lockLandscape();
   G.mode = 'solo'; showOnly(null); setPlaying(true); resetPlayerToFoot(startX, startZ, startH); beginMission();
   if (window.BackGuard) BackGuard.set('game', () => location.reload());
 }

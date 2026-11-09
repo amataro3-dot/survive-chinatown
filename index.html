@@ -6,7 +6,7 @@
 <!-- 作りかけなので Google の検索には出さない(完成してトップに載せるときに、この行を消す) -->
 <meta name="robots" content="noindex">
 <title>SURVIVE CHINATOWN</title>
-<link rel="stylesheet" href="style.css?v=3">
+<link rel="stylesheet" href="style.css?v=4">
 </head>
 <body>
 <canvas id="c"></canvas>
@@ -33,6 +33,7 @@
   <div class="panel">
     <h1>SURVIVE CHINATOWN</h1>
     <p class="sub">チャイナタウンで生き延びろ</p>
+    <p class="landNote">📱 このゲームは<b>横向き</b>で遊びます</p>
     <button class="btn-big online" id="goOnline">みんなで配達競争(オンライン)</button>
     <button class="btn-big" id="goSolo">ひとりで遊ぶ(ミッション)</button>
     <h2>操作</h2>
@@ -99,8 +100,10 @@
 
 <div id="err"></div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-<script src="backguard.js?v=3"></script>
-<script src="main.js?v=3"></script>
-<script type="module" src="lobby.js?v=3"></script>
+<!-- 縦に持ったときの警告(スタート・待合室・ゲーム中のどこでも出る。横にすると消える) -->
+<div id="rotate"><div class="rotBox"><div class="phone"></div><p class="rotT">⚠ 画面が縦になっています</p><p class="rotS">スマホを横にしてね</p></div></div>
+<script src="backguard.js?v=4"></script>
+<script src="main.js?v=4"></script>
+<script type="module" src="lobby.js?v=4"></script>
 </body>
 </html>
