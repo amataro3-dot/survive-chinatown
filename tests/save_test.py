@@ -28,9 +28,9 @@ with sync_playwright() as p:
     # ---------- はじめて ----------
     pg.goto(URL); pg.wait_for_timeout(1200)
     check(not shown("#goCont") and pg.inner_text("#goSolo") == "ひとりで遊ぶ(ミッション)", "セーブがないときは「つづきから」は出ない")
-    H = ev("({x:SC.HOME.x,z:SC.HOME.z,sx:SC.HOME.sx,sz:SC.HOME.sz})"); F = ev("SC.FREE.map(f=>({id:f.id,x:f.at.x,z:f.at.z,r:f.reward,steps:f.steps.map(s=>({x:s.pos.x,z:s.pos.z}))}))")
+    H = ev("({x:SC.HOME.x,z:SC.HOME.z,sx:SC.HOME.sx,sz:SC.HOME.sz})"); F = ev("SC.FREE.map(f=>({id:f.id,x:f.at.x,z:f.at.z,r:f.reward,steps:f.steps.map(s=>({x:(s.pos||{}).x,z:(s.pos||{}).z}))}))")
     check(not ev("SC.pointBlocked(SC.HOME.x,SC.HOME.z)||SC.pointBlocked(SC.HOME.sx,SC.HOME.sz)"), "ホームの光と、その前は、かべの中ではない")
-    check(ev("SC.FREE.every(f=>!SC.pointBlocked(f.at.x,f.at.z)&&f.steps.every(s=>!SC.pointBlocked(s.pos.x,s.pos.z)))"), "紫のマークと行き先は、かべの中ではない")
+    check(ev("SC.FREE.every(f=>!SC.pointBlocked(f.at.x,f.at.z)&&f.steps.every(s=>!s.pos||!SC.pointBlocked(s.pos.x,s.pos.z)))"), "紫のマークと行き先は、かべの中ではない")
     check(ev("SC.FREE.every(f=>SC.SHOPS.every(s=>Math.hypot(s.x-f.at.x,s.z-f.at.z)>5)&&Math.hypot(SC.HOME.x-f.at.x,SC.HOME.z-f.at.z)>5)&&SC.SHOPS.every(s=>Math.hypot(s.x-SC.HOME.x,s.z-SC.HOME.z)>5)"), "光るマークどうしは重なっていない")
     pg.click("#goSolo"); pg.wait_for_timeout(800); quiet()
     check(ev("SC.G.mi") == 0 and "車に乗ろう" in pg.inner_text("#mission"), "はじめからは、ミッション1「車に乗ろう」")
@@ -68,6 +68,7 @@ with sync_playwright() as p:
     # ---------- 紫のマーク ----------
     ev("(()=>{ SC.G.mi=SC.MISSIONS.length-1; SC.G.failWait=0; SC.G.si=SC.MISSIONS[SC.G.mi].steps.length-1; SC.G.wanted=0; SC.G.timeLeft=-1; const s=SC.MISSIONS[SC.G.mi].steps[SC.G.si]; SC.player.x=s.pos.x; SC.player.z=s.pos.z; return 0 })()"); pg.wait_for_timeout(500)
     check(ev("SC.G.mi") == 5 and saved()['mi'] == 5, "お使い(大きな仕事まで)が終わった")
+    check(shown("#story"), "大きな仕事のあとに、お話が出る"); pg.click("#storySkip"); pg.wait_for_timeout(200)
     ev("(()=>{ SC.G.wanted=0; for(const c of SC.cars.slice()) if(c.kind==='police') c.gone=true; return 0 })()")
     pg.wait_for_timeout(3600)
     check("紫の光" in pg.inner_text("#toast") and "紫の光" in pg.inner_text("#mission") and ev("SC.FREE[0].g.visible"), "紫のマークが出て「好きなミッションを受けよう」と出る")
@@ -92,7 +93,7 @@ with sync_playwright() as p:
     tp(F[0]['x'], F[0]['z']); check(not shown("#offer") and not ev("SC.FREE[0].g.visible"), "クリアしたミッションのマークは、もう出ない")
 
     # ---------- つづきから(クリアしたミッションも覚えている)・こわれたセーブ ----------
-    pg.reload(); pg.wait_for_timeout(1200); check("6/6" in pg.inner_text("#goCont"), "スタート画面にクリアした数が出る(" + pg.inner_text("#goCont").replace("\n", " / ") + ")")
+    pg.reload(); pg.wait_for_timeout(1200); check("6/17" in pg.inner_text("#goCont"), "スタート画面にクリアした数が出る(" + pg.inner_text("#goCont").replace("\n", " / ") + ")")
     pg.click("#goCont"); pg.wait_for_timeout(800)
     check(ev("SC.G.mi") == 5 and ev("!!SC.G.done.market") and not ev("SC.FREE[0].g.visible") and "フリー走行" in pg.inner_text("#mission"), "つづきから: クリアしたミッションを覚えている")
     pg.evaluate("localStorage.setItem('sc-save', JSON.stringify({v:1,money:'x',mi:99,done:'a',inv:['fist','nuke','pig','mg'],ammo:-5,mg:1e12,heals:99,armor:-1,play:null}))")

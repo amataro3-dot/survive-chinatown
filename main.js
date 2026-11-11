@@ -24,6 +24,7 @@ const TUNE = {
   driver: { hp: 60, angry: 1 / 3, speed: 4.4, flee: 6, dmg: 5 }, // 車を奪われた運転手: 体力・おそってくる割合・速さ・逃げる速さ・パンチ
   armor: 50, healItem: 50, maxHeal: 3, // 防弾チョッキ・持っておく回復(体力+50、3つまで)
   posRate: 0.125,                  // 配達競争: 自分の位置を送る間隔(秒)
+  peace: true,                     // お使いの間(大きな仕事が終わるまで)は、マフィアがおそってこない
   hp: 100, deathFine: 0.1,         // 主人公の体力、やられたときに減るお金(所持金の1割。最低$100)
   gang: { count: 16, hp: 100, speed: 4.2, turf: 15, giveUp: 32, respawn: 30 }, // ギャング: 数(街)・体力・走る速さ・なわばりの広さ・あきらめる距離・生きかえるまでの秒
   // 昼と夜(v=12): 1日の秒・夕方が始まる秒・夜が始まる秒・ひとり用が始まる秒・配達競争とスタート画面の時間(夜)・時間の速さ(0 で止まる)
@@ -333,6 +334,16 @@ function buildMerged(m) {
     for (let k = 0; k < 4; k++) { const lz = r.z0 + 12 + k * 23; addBox(0.25, 6, 0.25, cx, 3.3, lz, M(0x333333)); addBox(0.9, 0.3, 0.9, cx, 6.3, lz, MB(0xfff0c8)); GLOWS.push([cx, lz, 10, 2]); }
   }
 }
+// 港の奥の倉庫(v=15)。とびらは西。船員のたのみの届け先
+const WAREHOUSE = { x: 169.5, z: 151 };
+function warehouse() {
+  const m = nightMat(7, 2, '#5a6068', 0.55, false), top = M(0x3a3e44);
+  const b = new THREE.Mesh(new THREE.BoxGeometry(9, 8, 26), [m, m, top, top, m, m]); b.position.set(WAREHOUSE.x, 4.4, WAREHOUSE.z); scene.add(b);
+  addCol(165, 174, 138, 164); buildings.push({ x: WAREHOUSE.x, z: WAREHOUSE.z, w: 9, d: 26 });
+  addBox(0.2, 4.6, 6, 164.92, 2.7, WAREHOUSE.z, M(0x2a2e33)); addBox(0.24, 4.6, 0.2, 164.9, 2.7, WAREHOUSE.z, M(0x15171a)); // 鉄のとびら
+  addBox(0.2, 1.3, 3.6, 164.9, 6.1, WAREHOUSE.z, hSignMat('倉庫', '#1a1a1a', '#c8d0d8'));
+  GLOWS.push([163.2, WAREHOUSE.z, 5, 2]);
+}
 function crates(x, z) { const h = 1.2 + rnd() * 1.2; addBox(1.6, h, 1.6, x, 0.34 + h / 2, z, M(pick([0x7a5230, 0x8a6a40, 0x5a4a3a]))); addCol(x - 0.8, x + 0.8, z - 0.8, z + 0.8); }
 function market() {
   addBox(MK.x1 - MK.x0, 0.34, MK.z1 - MK.z0, (MK.x0 + MK.x1) / 2, 0.17, (MK.z0 + MK.z1) / 2, M(0x5e3a30));
@@ -426,6 +437,7 @@ function buildSpecial(b) {
     shopsAround(b.x0, b.x1, b.z0, b.z1, 9, 2);
   }
   for (const b of specialBlocks) buildSpecial(b);
+  warehouse();
   market();
   for (const m of MERGES) if (m.kind !== 'market') buildMerged(m);
   gate(roadC(1) + 8, roadC(4), Math.PI / 2); gate(roadC(4) - 8, roadC(3), Math.PI / 2); gate(roadC(2), roadC(2) + 8, 0); gate(roadC(3), roadC(5) - 8, 0);
@@ -680,17 +692,17 @@ function damageGang(g, dmg, kx, kz) {
     g.dead = 0; g.per.g.rotation.x = -Math.PI / 2; g.per.g.position.y = 0.4;
     dropPickup('money', g.x + 0.6, g.z, 20 + Math.floor(Math.random() * 7) * 10);
     if (g.weapon !== 'fist') { dropPickup(g.weapon, g.x - 0.6, g.z + 0.4, g.weapon === 'pistol' ? 12 : 0); setHand(g.per, g, null); }
-    addWanted(1);
+    if (!g.temp) addWanted(1); // ミッションの相手は、たおしても★は上がらない
   }
 }
 function updateGangs(dt) {
   const fight = G.mode === 'solo' && G.started && player.hp > 0;
   for (const g of gangs) {
     if (G.mode === 'race' || g.off) { g.per.g.visible = false; continue; }
-    if (g.hp <= 0) { g.dead += dt; g.x += g.kx * dt; g.z += g.kz * dt; g.kx *= 1 - 3 * dt; g.kz *= 1 - 3 * dt; resolve(g, 0.45); g.per.g.position.set(g.x, 0.4, g.z); if (g.dead > 6) g.per.g.visible = false; if (g.dead > TUNE.gang.respawn) respawnGang(g); continue; }
+    if (g.hp <= 0) { g.dead += dt; g.x += g.kx * dt; g.z += g.kz * dt; g.kx *= 1 - 3 * dt; g.kz *= 1 - 3 * dt; resolve(g, 0.45); g.per.g.position.set(g.x, 0.4, g.z); if (g.dead > 6) g.per.g.visible = false; if (g.dead > TUNE.gang.respawn && !g.temp) respawnGang(g); continue; }
     g.per.g.visible = true; g.cd -= dt; g.hitCd -= dt; if (g.swing > 0) g.swing -= dt;
     const px = player.x, pz = player.z, dP = Math.hypot(px - g.x, pz - g.z), dHome = Math.hypot(px - g.home.x, pz - g.home.z);
-    if (g.state === 'idle' && fight && dHome < TUNE.gang.turf) g.state = 'chase';
+    if (g.state === 'idle' && fight && !peace() && dHome < TUNE.gang.turf) g.state = 'chase'; // お使いの間は、なわばりに入ってもおそってこない(なぐれば、やり返す)
     if (g.state === 'chase' && (!fight || dHome > TUNE.gang.giveUp)) g.state = 'idle';
     let sp = 0, tx = g.tx, tz = g.tz;
     const dis = statusTick(g, dt); // 1 = 豚の頭で前が見えない、2 = ヘビで動けない
@@ -829,7 +841,7 @@ function updateNpcs(dt) {
 function foes() { const a = []; for (const g of gangs) if (g.hp > 0 && g.per.g.visible) a.push(g); for (const n of npcs) if (n.hp > 0) a.push(n); return a; }
 function hitFoe(f, dmg, kx, kz) { if (f.npc) damageNpc(f, dmg, kx, kz); else damageGang(f, dmg, kx, kz); }
 // こうげきできるか(歩いていて、たおれていない)
-function canAttack() { return G.started && G.mode === 'solo' && player.mode === 'foot' && player.hp > 0 && G.downT <= 0 && G.stunT <= 0 && !G.shop && !G.offer; }
+function canAttack() { return G.started && G.mode === 'solo' && player.mode === 'foot' && player.hp > 0 && G.downT <= 0 && G.stunT <= 0 && !paused(); }
 const curWeapon = () => player.inv[player.wi];
 const isGun = wk => !WEAPONS[wk].melee; // ねらって使う武器(銃・投げる物)
 const isThrown = wk => !!WEAPONS[wk].thrown;
@@ -1049,7 +1061,7 @@ function makeVip(kind, o) {
 
 /* ===== 街の人との会話(v=13) ===== */
 // 話せる距離・ふきだしが出ている秒・Q&A になる割合(街の人)・おやじが2回目からQ&Aになる割合・ヒントがまざる割合・こたえを待つ秒・はなれると終わる距離・屋台の人の数
-//   later = まだ出てこない物(幹部・白いスーツ・ボス・港の倉庫)の話もするか。それを作る回(⑤⑥)で true にする
+//   later = まだ出てこない物(幹部・白いスーツ・ボス・黒と白のケンカ・「あの屋台だけは…」)の話もするか。それを作る回(⑥)で true にする
 const TALK = { dist: 2.8, show: 3.2, qa: 0.3, oyajiQa: 0.5, hint: 0.3, wait: 12, leave: 7, vendors: 6, later: false };
 // ひとこと。hint = ヒント・うわさ、self = 屋台のおやじの話(おやじ本人は言わない)
 const LINES = [
@@ -1069,12 +1081,12 @@ const LINES = [
   { text: '黒と白、また道でケンカしてたよ。近くにいると巻きこまれる', hint: 1, later: 1 },
   { text: '幹部がいなくなったチームは、おとなしくなるらしい', hint: 1, later: 1 },
   { text: '幹部が2人ともやられたら、ボスが塔に出てくるってうわさだ', hint: 1, later: 1 },
-  { text: 'この街を出たいなら港へ。残りたいなら…てっぺんを取るしかないね', hint: 1, later: 1 },
+  { text: 'この街を出たいなら港へ。残りたいなら…てっぺんを取るしかないね', hint: 1 },
   { text: '市場の屋台にヘビがいる。投げつけると、相手がかたまるんだって', hint: 1 },
   { text: '豚の頭は、警察に取られないらしい。証拠品にしたくないんだろう', hint: 1 },
   { text: 'あの屋台だけは、黒も白も手を出さないんだ。なんでだろうね', hint: 1, self: 1, later: 1 },
   { text: '屋台のおやじ、30年あそこにいるらしい。街が変わっても、あの鍋だけは同じだ', hint: 1, self: 1 },
-  { text: '港の奥の倉庫、夜も明かりがついてる。何を積んでるんだか', hint: 1, later: 1 },
+  { text: '港の奥の倉庫、夜も明かりがついてる。何を積んでるんだか', hint: 1 },
   { text: '前にもいたよ、あんたみたいな運び屋。若い女の子だった。急に見なくなったけど', hint: 1 },
 ];
 // Q&A。ok = ふつうのこたえ、ng = 相手がおこるこたえ(おそってくる)。who: 'shop' = 屋台の人がよく聞く、'oyaji' = 屋台のおやじだけ
@@ -1185,49 +1197,187 @@ const pkgMesh = new THREE.Group();
 scene.add(pkgMesh); pkgMesh.visible = false;
 
 /* ===== ゲームの状態 ===== */
+// お使い(黒マフィア)。say = 始まるときに、画面の下に出るひとこと
 const MISSIONS = [
   { title: '車に乗ろう', reward: 300, steps: [{ type: 'car', text: '近くの赤い車に近づいて「乗る」(Eキー)で乗ろう' }] },
-  { title: 'はじめての配達', reward: 1500, steps: [{ type: 'go', pos: P(2, 5), text: '荷物を受け取りに行こう(黄色い光)', done: '荷物ゲット！' }, { type: 'go', pos: P(5, 1), text: '荷物を届けよう' }] },
-  { title: '急ぎの配達', reward: 2500, steps: [{ type: 'go', pos: P(1, 1), text: '急ぎの荷物を受け取ろう', done: '荷物ゲット！' }, { type: 'go', pos: P(5, 5), text: '50秒以内に届けろ！', time: 50 }] },
-  { title: 'あやしい荷物', reward: 4000, steps: [{ type: 'go', pos: P(0, 3), text: 'あやしい荷物を受け取れ', done: '荷物ゲット！' }, { type: 'go', pos: { x: 168, z: 60 }, text: '警察をかわして港の船へ運べ！', wanted: 2 }] },
-  { title: '大きな仕事', reward: 10000, steps: [{ type: 'go', pos: P(3, 0), text: 'チェックポイント 1/4', time: 140, wanted: 3 }, { type: 'go', pos: P(6, 2), text: 'チェックポイント 2/4' }, { type: 'go', pos: P(4, 5), text: 'チェックポイント 3/4' }, { type: 'go', pos: P(1, 6), text: 'チェックポイント 4/4' }, { type: 'go', pos: { x: 168, z: -60 }, text: '港の船へ急げ！' }] },
+  { title: 'はじめての配達', reward: 1500, say: { name: '黒の男', text: '中身は聞くな。届けろ。それだけだ' }, steps: [{ type: 'go', pos: P(2, 5), text: '荷物を受け取りに行こう(黄色い光)', done: '荷物ゲット！' }, { type: 'go', pos: P(5, 1), text: '荷物を届けよう' }] },
+  { title: '急ぎの配達', reward: 2500, say: { name: '黒の男', text: '遅れた分は、利子につける' }, steps: [{ type: 'go', pos: P(1, 1), text: '急ぎの荷物を受け取ろう', done: '荷物ゲット！' }, { type: 'go', pos: P(5, 5), text: '50秒以内に届けろ！', time: 50 }] },
+  { title: 'あやしい荷物', reward: 4000, say: { name: '黒の男', text: '警察に止められても、うちの名前は出すな' }, steps: [{ type: 'go', pos: P(0, 3), text: 'あやしい荷物を受け取れ', done: '荷物ゲット！' }, { type: 'go', pos: { x: 168, z: 60 }, text: '警察をかわして港の船へ運べ！', wanted: 2 }] },
+  { title: '大きな仕事', reward: 10000, say: { name: '黒の男', text: 'これが済んだら、あの女のことを教えてやる' }, steps: [{ type: 'go', pos: P(3, 0), text: 'チェックポイント 1/4', time: 140, wanted: 3 }, { type: 'go', pos: P(6, 2), text: 'チェックポイント 2/4' }, { type: 'go', pos: P(4, 5), text: 'チェックポイント 3/4' }, { type: 'go', pos: P(1, 6), text: 'チェックポイント 4/4' }, { type: 'go', pos: { x: 168, z: -60 }, text: '港の船へ急げ！' }] },
 ];
-// 自由なミッション(v=14): MISSIONS(黒マフィアのお使い。順番どおり)が全部終わると、紫の光るマーク(at)で受けられる。好きな順番でよい
-// id はセーブに残すので変えない。v=14 は1つだけ(のこり10こは v=15)
+// お話の場面(文字が1行ずつ出る。「」で始まる行はセリフ)
+/* story:start */
+const STORY = {
+  big: ['荷物は届けた。言われた場所に、言われた時間に。', 'だが、受け取ったのは白いスーツの男たちだった。', '「黒の連中が、うちに届け物とはな」', '電話が鳴った。', '「…お前、どこに届けた」', '渡された地図は、たしかにこの場所をさしていた。', 'その夜から、黒も白も敵になった。', '妹の手がかりは、また消えた。'],
+  caught: ['「まままままままま待つのね…！！」', '「メニメニマネー足りない！ミー死にたくないザンス！！＄10000貸してプリーズミー！」', '「ボクチン無償とは言わないエレガントマン。この街の事ならな〜んでも知ってんねん」', '「ユーちゃんは、ひ・と・さ・が・しって感じかしら？フェイスにライティングよ」'],
+  lend: ['「ユーちゃん！ありがとう！！夜の時間に港の前のパークにいらっしゃい。こう見えてもボクチン情報屋なの」', '「ユーちゃんの探し物はアリンコちゃんのままじゃ分からないわよ。大空飛べる鳥になるしかないわ」'],
+  refuse: ['「んまぁ〜！人でなし！ノーヒューマン！！」', '男は連れて行かれた。二度と会うことはなかった。'],
+  sis: ['鉄のとびらの向こうに、人がいた。', 'そのひとりは、写真と同じ顔をしていた。', 'とびらは開かない。声も届かない。', '「かぎを持っているのは、この街でいちばん上の男だけだ」', '「それでも船に乗るなら、乗せてやる。決めるのはお前だ」'],
+  end1: ['$20,000。船員は、数えもせずに受け取った。', '船が岸をはなれる。街の明かりが小さくなっていく。', '妹のことは、何もわからなかった。', 'それでも、生きて出た。'],
+  end2: ['コンテナのかげで、人が働かされていた。', 'そのひとりが、顔を上げた。', '「…うそ。なんで、ここに」', '「話はあとだ。走れるか」', '船は、夜のうちに出た。', '何も持たずに来て、何も持たずに出ていく。', 'となりに妹がいる。それで充分だった。'],
+};
+/* story:end */
+// 港の場所: 船員(船員のたのみ)・船(船代をはらう)・忍び込みの入口・忍び込む船
+const PORT = { sailor: { x: 165, z: 52 }, boat: { x: 169.5, z: 66 }, sneak: { x: 163.5, z: -8 }, ship: { x: 170, z: -60 } };
+const DEBT = 10000, FARE = 20000; // 情報屋に貸すお金・船代
+// 自由なミッション: MISSIONS(黒マフィアのお使い。順番どおり)が全部終わると、紫の光るマーク(at)で受けられる。好きな順番でよい
+// id はセーブに残すので変えない
+//   when = 'night'(夜だけ)・'day'(昼だけ)、after = このミッションのあとに出る、need = 出る条件、say・endSay = 始まり・終わりのひとこと
+//   steps の type: go(そこへ行く。car: 1 = 車で、2 = ミッションの車で。foot = 歩いて。fragile = ぶつけてよい回数)・kill(n人たおす)・collect(items を全部拾う)
+//     ram(逃げる車に n回ぶつける)・getin(ミッションの車に乗る)・survive(time 秒、★wanted のまま逃げる)・sneak(警察官のライトをよけて歩く)
+//     hook(next) = その段が終わったときにすること(お話など)。終わったら next() を呼ぶ
 const FREE = [
   { id: 'market', title: '市場のおつかい', desc: '市場の奥で品物を受け取って、店に届ける。市場には歩いてしか入れない。', reward: 2000, at: { x: roadC(2), z: MK.z0 + 3.2 }, steps: [{ type: 'go', pos: MK_DEEP, text: '市場の奥で品物を受け取ろう(歩いて入る)', done: '品物ゲット！' }, { type: 'go', pos: { x: roadC(4) - 7.5, z: roadC(2) + 26 }, text: '品物を店に届けよう' }] },
+  { id: 'guard', title: '用心棒', desc: '店をおそいに来るマフィアを、5人たおす。', reward: 3000, at: { x: -90, z: 57.3 }, steps: [{ type: 'kill', pos: { x: -76, z: 52 }, n: 5, text: '店をおそうマフィアをたおせ(のこり {n}人)' }] },
+  { id: 'taxi', title: 'お客さんを送る', desc: 'お客さんを車に乗せて、時間内に病院へ送る。ぶつけすぎると失敗。', reward: 2500, at: { x: -90, z: -98.7 }, steps: [{ type: 'go', car: 1, guest: 1, pos: { x: -76, z: -100.5 }, text: '車に乗って、お客さん(黄色い光)をむかえに行こう', done: 'お客さんが乗った！' }, { type: 'go', car: 1, pos: { x: roadC(5) + 26, z: roadC(4) + 2.5 }, time: 70, fragile: 3, text: '時間内に病院へ！ ぶつけすぎると失敗' }] },
+  { id: 'debt', title: '借金の取り立て', desc: '金を借りて逃げた男の車を追いかけて、車でぶつけて止める。', reward: 1500, at: { x: 66, z: 109.3 }, need: () => G.money >= DEBT && !G.lent, say: { name: '金貸し', text: '金を借りて逃げた男がいる。車を止めろ。生きたまま連れてこい' }, steps: [{ type: 'ram', n: 3, time: 150, text: '逃げる車(赤い光)に、車でぶつけて止めろ(あと {n}回)', hook: debtHook }] },
+  { id: 'bao', title: '小籠包のピンチ', desc: '小籠包が冷める前に、3か所へ配る。', reward: 2500, at: { x: -5.3, z: 66 }, steps: [{ type: 'go', pos: { x: roadC(2) + 20, z: roadC(2) }, time: 70, text: '冷める前に小籠包を配ろう 1/3', done: 'あつあつ！' }, { type: 'go', pos: { x: roadC(1), z: roadC(3) + 20 }, text: '冷める前に小籠包を配ろう 2/3', done: 'あつあつ！' }, { type: 'go', pos: { x: roadC(3) + 20, z: roadC(5) }, text: '冷める前に小籠包を配ろう 3/3' }] },
+  { id: 'snake', when: 'night', title: 'ヘビが逃げた', desc: '市場から逃げたヘビを3匹つかまえて、市場に返す。', reward: 2000, at: { x: -74, z: 46.7 }, steps: [{ type: 'collect', items: [{ x: -100, z: 30 }, { x: -52, z: -4 }, { x: -20, z: 55 }], text: '逃げたヘビをつかまえろ(のこり {n}匹。歩いて近づく)', done: 'ヘビを全部つかまえた！' }, { type: 'go', pos: { x: -74, z: 46.7 }, text: 'ヘビを市場に返そう' }] },
+  { id: 'valet', when: 'night', title: '車を届ける', desc: '駐車場の車を、ぶつけずに港まで運ぶ。', reward: 3500, at: { x: -109.3, z: 90 }, steps: [{ type: 'getin', text: '駐車場の光っている車に乗ろう', done: 'この車を港へ！' }, { type: 'go', car: 2, pos: { x: 156, z: -30 }, fragile: 1, text: 'ぶつけずに港まで運べ' }] },
+  { id: 'decoy', when: 'day', title: 'おとり', desc: 'わざと警察に追われて、★3のまま2分逃げ切る。', reward: 5000, wantedOff: 1, at: { x: 118, z: -98.7 }, steps: [{ type: 'survive', wanted: 3, time: 120, text: '★3のまま、2分逃げ切れ' }] },
+  { id: 'sailor1', title: '船員のたのみ 1', desc: '箱を受け取って、港の倉庫まで運ぶ。', reward: 3000, at: PORT.sailor, say: { name: '船員', text: '運び屋か。口がかたいなら、仕事がある。この箱を倉庫まで。中は見るな' }, endSay: { name: '船員', text: '…見なかったな。また来い' }, steps: [{ type: 'go', pos: { x: roadC(1), z: roadC(1) + 20 }, text: '箱を受け取りに行こう', done: '箱ゲット！' }, { type: 'go', pos: { x: 162.5, z: 151 }, text: '箱を港の倉庫へ運ぼう' }] },
+  { id: 'sailor2', after: 'sailor1', title: '船員のたのみ 2', desc: '市場の奥で箱を受け取って、港まで運ぶ。警察に追われる。', reward: 4000, at: PORT.sailor, say: { name: '船員', text: '次は市場の奥から、港までだ。追われても、箱は落とすな' }, endSay: { name: '船員', text: 'この港には、表に出せない荷物もある。知りたきゃ、もっと深い所まで来い' }, steps: [{ type: 'go', pos: MK_DEEP, text: '市場の奥で箱を受け取ろう(歩いて入る)', done: '箱ゲット！' }, { type: 'go', pos: PORT.sailor, wanted: 2, text: '警察をかわして、箱を港の船員に届けろ' }] },
+  { id: 'sailor3', after: 'sailor2', need: () => !G.tru, title: '船員のたのみ 3', desc: '最後の荷物を、時間内に港の船まで運ぶ。警察に追われる。', reward: 5000, at: PORT.sailor, say: { name: '船員', text: '最後だ。これを船まで運べ。済んだら、荷物にまぎれて乗せてやる' }, endSay: { name: '船員', text: '約束だ。夜、コンテナの間を抜けてこい。見つかるなよ' }, steps: [{ type: 'go', pos: { x: roadC(0) + 20, z: roadC(6) }, text: '最後の荷物を受け取りに行こう', done: '荷物ゲット！' }, { type: 'go', pos: { x: 168, z: -60 }, time: 150, wanted: 3, text: '時間内に港の船へ運べ！' }] },
+  // 船員のたのみを2つクリアしてから情報屋に貸すと、3つ目がこれに変わる(裏のトゥルーエンドの入口。つづきは⑥)
+  { id: 'sailor3t', alt: 1, after: 'sailor2', need: () => !!G.tru && !G.done.sailor3, title: '倉庫への届け物', desc: '港の奥の倉庫へ、飯を届ける。', reward: 5000, at: PORT.sailor, say: [{ name: '船員', text: 'お前、あの情報屋と組んだのか。なら、見せておくものがある' }, { name: '船員', text: 'この飯を、奥の倉庫へ届けろ' }], onDone: () => { G.done.sailor3 = 1; G.sis = 1; }, steps: [{ type: 'go', foot: 1, pos: { x: 162.5, z: 151 }, text: '飯を、港の奥の倉庫へ届けよう(歩いて)', hook: next => story(STORY.sis, next) }] },
+  { id: 'sneak', after: 'sailor3', when: 'night', ending: 2, title: '船に忍び込む', desc: '夜のうちに、警察官のライトをよけて船まで歩く。船に乗ると、街を出てゲームが終わる。セーブは消える。', reward: 0, at: PORT.sneak, steps: [{ type: 'sneak', foot: 1, pos: PORT.ship, text: '警察官のライトに入らないように、船まで歩け' }] },
 ];
 for (const f of FREE) Object.assign(f, glowMark(0xb06bff, f.at.x, f.at.z));
+// 船代をはらって街を出る(水色の光。お使いが終わると出る)
+const BOAT = { id: 'boat', title: '船で街を出る', desc: '船代をはらうと、街を出てゲームが終わる。セーブは消える。', pay: FARE, yes: 'はらう', at: PORT.boat, onYes: () => { G.money -= FARE; story(STORY.end1, () => finish(1)); } };
+Object.assign(BOAT, glowMark(0x7fe8ff, BOAT.at.x, BOAT.at.z));
+// 港の船員(立っているだけ)
+const sailorPer = makePerson(0x1f3a6e, 0x1a1a2a, 0xc89870); part(sailorPer, 0.62, 0.16, 0.62, 0xffffff, 0, 2.5, 0); sailorPer.g.position.set(PORT.sailor.x + 1.8, 0.3, PORT.sailor.z - 1.6); sailorPer.g.rotation.y = -Math.PI / 2; sailorPer.g.visible = false;
 // mode: 'menu'(画面の後ろで街が動いている) / 'solo'(ひとり用) / 'race'(配達競争)
-const G = { mode: 'menu', started: false, over: false, money: 0, wanted: 0, mi: 0, si: 0, timeLeft: -1, play: 0, evade: 0, bust: 0, downT: 0, stunT: 0, shop: null, shopLock: null, hitCd: 0, spawnCd: 0, failWait: 0, waitMsg: '', free: null, done: {}, offer: null, markLock: null, freeT: 0, bosses: [], camYaw: Math.PI, camDrag: 0, clock: DAY.race, phase: 'night' };
+//   lent = 情報屋に 0: まだ会っていない、1: 貸した、2: 貸さなかった。tru = トゥルーエンドの順番で貸した。sis = 倉庫で妹を見た
+const G = { mode: 'menu', started: false, over: false, money: 0, wanted: 0, mi: 0, si: 0, timeLeft: -1, play: 0, evade: 0, bust: 0, downT: 0, stunT: 0, shop: null, shopLock: null, hitCd: 0, spawnCd: 0, failWait: 0, waitMsg: '', free: null, done: {}, offer: null, markLock: null, freeT: 0, bosses: [], lent: 0, tru: 0, sis: 0, left: 0, bumps: 0, bumpCd: 0, ramCd: 0, busy: false, tp: null, story: null, sleep: false, camYaw: Math.PI, camDrag: 0, clock: DAY.race, phase: 'night' };
 // 配達競争の状態(online.js から setRace でもらう)
 const R = { me: null, state: null, remotes: {}, avatars: {}, sendT: 0 };
 let toastT = 0;
 function toast(s, t) { const e = $('toast'); e.textContent = s; e.style.opacity = 1; toastT = t || 2.2; }
 function addWanted(n) { if (G.mode !== 'solo') return; const before = G.wanted; G.wanted = Math.min(5, G.wanted + n); G.evade = 0; if (G.wanted > before && before === 0) toast(tr('警察に追われている！')); }
+// お使いの間(大きな仕事が終わるまで)は、マフィアはおそってこない
+const peace = () => TUNE.peace && G.mi < MISSIONS.length;
+// ゲームが止まっている間(買い物・ミッションをえらぶ・お話・ねる)
+const paused = () => !!(G.shop || G.offer || G.story || G.sleep);
+function stopInput() { releaseHeld(); if (joy) { joy = null; setKnob(0, 0); } camTouch = null; }
+
+/* ===== お話の場面・ひとこと(v=15) ===== */
+// お話: 文字が1行ずつ出る。タップで次へ。「とばす」で終わりまで。出ている間はゲームが止まる。終わったら done()
+function story(lines, done) { G.story = { lines, i: 0, done }; stopInput(); document.body.classList.add('story'); $('story').classList.remove('hidden'); drawStory(); }
+function drawStory() {
+  const s = G.story, a = Math.max(0, s.i - 4), show = s.lines.slice(a, s.i + 1);
+  $('storyLines').innerHTML = show.map((l, k) => '<p class="' + (l[0] === '「' ? 'q' : '') + (k < show.length - 1 ? ' old' : '') + '">' + esc(tr(l)) + '</p>').join('');
+}
+function storyNext(skip) {
+  const s = G.story; if (!s) return;
+  if (!skip && s.i < s.lines.length - 1) { s.i++; drawStory(); return; }
+  G.story = null; document.body.classList.remove('story'); $('story').classList.add('hidden'); if (s.done) s.done();
+}
+$('story').addEventListener('click', () => storyNext(false));
+$('storySkip').addEventListener('click', e => { e.stopPropagation(); storyNext(true); });
+// ひとこと: 画面の下に、名前つきの字幕(ゲームは止まらない)。s = { name, text } か、そのならび
+const subQ = []; let subT = 0;
+function say(s, now) { if (now) { subQ.length = 0; subT = 0; } for (const l of Array.isArray(s) ? s : [s]) subQ.push(l); } // now = 前のひとことが残っていたら、入れかえる
+function updateSub(dt) {
+  const e = $('sub'); if (subT > 0) { subT -= dt; if (subT > 0) return; e.style.opacity = 0; }
+  if (subQ.length) { const l = subQ.shift(); $('subName').textContent = tr(l.name); $('subText').textContent = tr(l.text); e.style.opacity = 1; subT = 4.6; }
+}
+// 終わり(n = 1: 船代をはらう、2: 忍び込む)。セーブは消える。見た終わりは sc-ends に残す
+function finish(n) {
+  clearSave(); try { const a = JSON.parse(localStorage.getItem('sc-ends') || '[]'); if (!a.includes(n)) a.push(n); localStorage.setItem('sc-ends', JSON.stringify(a)); } catch (e) { /* 残せなくてもよい */ }
+  G.over = true; marker.visible = false; setPlaying(false);
+  $('clearPanel').innerHTML = '<h1>SURVIVE CHINATOWN</h1><p class="sub">' + tr('おわり {n}/4', { n }) + '</p><h2>' + tr(n === 1 ? '船代をはらって、ひとりで街を出た' : '妹といっしょに、街を出た') + '</h2><p>' + tr('所持金 ${m}', { m: G.money.toLocaleString() }) + '　' + tr('遊んだ時間 {m}分', { m: Math.floor(G.play / 60) }) + '</p><p class="sub">' + tr('終わり方は、ほかにもある。') + '</p><button class="btn-big" id="clearBtn">' + tr('タイトルへ') + '</button>';
+  showOnly('clear'); $('clearBtn').addEventListener('click', () => location.reload());
+}
+
+/* ===== ミッションの進み方 ===== */
+// ミッションの間だけ出るもの: たおす相手・拾う物・立っている人・見はりの警察官・逃げる車・運ぶ車
+const MX = { foes: [], items: [], props: [], guards: [], runner: null, mcar: null };
+const SNEAK = { x: 166, z0: -82, z1: -38, speed: 3.2, see: 8, half: 0.5 }; // 見はりが歩く所・速さ・ライトのとどく距離・広がり
+function aim(x, z) { marker.visible = true; marker.position.set(x, 0, z); G.tp = { x, z }; }
+// その段だけのものを消す
+function clearStep() {
+  for (const g of MX.foes) { const i = gangs.indexOf(g); if (i >= 0) gangs.splice(i, 1); scene.remove(g.per.g); }
+  for (const it of MX.items) scene.remove(it.g); for (const p of MX.props) scene.remove(p); for (const g of MX.guards) scene.remove(g.per.g);
+  MX.foes.length = MX.items.length = MX.props.length = MX.guards.length = 0;
+}
+// ミッションが終わったとき(クリア・失敗): 逃げる車・運ぶ車も消す(主人公が乗っている車は残す)
+function clearMission() {
+  clearStep();
+  for (const k of ['runner', 'mcar']) { const c = MX[k]; MX[k] = null; if (!c) continue; if (player.car === c) { c.flee = false; continue; } removeCar(c); }
+  G.busy = false; G.tp = null; markerColor(0xffd23f);
+}
 // いまのミッション(自由なミッションを受けていればそれ。なければ、お使いの次の1つ。全部終わっていれば null)
 function curM() { return G.free || (G.mi < MISSIONS.length ? MISSIONS[G.mi] : null); }
 // やられた・逮捕されたときに、ミッション失敗になるか(お使いは、まだ最初の所なら失敗にしない)
 function missionOn() { const m = curM(); return !!m && !G.over && (!!G.free || G.si > 0 || !!m.steps[0].wanted); }
-function freeOpen(f) { return G.mi >= MISSIONS.length && !G.free && !G.done[f.id]; }
-function beginStep() { const st = curM().steps[G.si]; if (st.time) G.timeLeft = st.time; if (st.wanted) G.wanted = Math.max(G.wanted, st.wanted); marker.visible = st.type === 'go'; if (st.pos) marker.position.set(st.pos.x, 0, st.pos.z); }
-function beginMission() { G.si = 0; G.timeLeft = -1; const m = curM(); toast(G.free ? tr('ミッション：{title}', { title: tr(m.title) }) : tr('ミッション{n}：{title}', { n: G.mi + 1, title: tr(m.title) }), 2.6); beginStep(); }
-function stepDone() {
-  const m = curM(); G.si++;
-  if (G.si >= m.steps.length) {
-    G.money += m.reward; G.timeLeft = -1; toast(tr('ミッション完了！ +${r}', { r: m.reward.toLocaleString() }), 2.6); marker.visible = false;
-    if (G.free) { G.done[G.free.id] = 1; G.markLock = G.free; G.free = null; }
-    else { G.mi++; if (G.mi >= MISSIONS.length) G.freeT = 3; else { G.failWait = 2.6; G.waitMsg = tr('次のミッションへ…'); } }
-    save(); // クリアしたら自動でセーブ
-  } else { toast(tr(m.steps[G.si - 1].done || 'チェックポイント通過！'), 1.2); beginStep(); }
+function freeOpen(f) { return G.mi >= MISSIONS.length && !G.free && !G.done[f.id] && (!f.after || !!G.done[f.after]) && (!f.need || f.need()); }
+const boatOpen = () => G.mi >= MISSIONS.length && !G.free && !G.over;
+function beginStep() {
+  const st = curM().steps[G.si]; G.left = st.n || 0; G.bumps = 0; G.tp = null;
+  if (st.time) G.timeLeft = st.time; if (st.wanted) G.wanted = Math.max(G.wanted, st.wanted);
+  markerColor(0xffd23f); marker.visible = false; if (st.pos) aim(st.pos.x, st.pos.z);
+  if (st.guest) { const per = makePerson(0xff8040, 0x333333, 0xc89870); per.g.position.set(st.pos.x, 0, st.pos.z + 2.3); per.g.rotation.y = Math.PI; MX.props.push(per.g); } // 待っているお客さん
+  if (st.type === 'kill') for (let k = 0; k < st.n; k++) { // おそってくるマフィア
+    const a = k / st.n * 6.28, g = newGang(st.pos.x + Math.cos(a) * 5, st.pos.z + Math.sin(a) * 3);
+    g.temp = true; g.tier = 0; g.weapon = k === 0 ? 'pistol' : k % 2 ? 'knife' : 'fist'; setHand(g.per, g, g.weapon); g.state = 'chase'; MX.foes.push(g);
+  }
+  if (st.type === 'collect') { // 逃げたヘビ
+    for (const p of st.items) { const g = new THREE.Group(), it = marketItem('snake'); it.scale.set(1.5, 1.5, 1.5); g.add(it); const rg = new THREE.Mesh(new THREE.TorusGeometry(0.9, 0.08, 6, 20), MB(0xffd23f)); rg.rotation.x = Math.PI / 2; rg.position.y = -0.7; g.add(rg); g.position.set(p.x, 1.1, p.z); scene.add(g); MX.items.push({ x: p.x, z: p.z, g }); }
+    G.left = st.items.length;
+  }
+  if (st.type === 'ram') { // 逃げる車(交差点 (5,5) から北へ走り出す)
+    const c = MX.runner = newCar('traffic', roadC(5) - 3.2, roadC(5) - 16, Math.PI, 0x8a2be2); c.flee = true; c.a = [5, 5]; c.b = [5, 4]; c.p = 0.3; c.v = 12; markerColor(0xff4a4a); aim(c.x, c.z);
+  }
+  if (st.type === 'getin') { const r = mergeRect(MERGES[3]), c = MX.mcar = newCar('parked', r.x0 + 14, (r.z0 + r.z1) / 2, 0, 0xffd23f); aim(c.x, c.z); } // 運ぶ車(駐車場の、車のならびの間)
+  if (st.type === 'sneak') for (const s of [1, -1]) { // 見はりの警察官(ライトを持って、行ったり来たりする)
+    const per = makePerson(0x2c56b8, 0x1a2a55, 0xc89870), cap = new THREE.Mesh(BG(0.64, 0.16, 0.72), M(0x14224a)); cap.position.set(0, 2.52, 0.05); per.g.add(cap);
+    const cg = new THREE.CircleGeometry(SNEAK.see, 14, -Math.PI / 2 - SNEAK.half, SNEAK.half * 2); cg.rotateX(-Math.PI / 2);
+    const cone = new THREE.Mesh(cg, new THREE.MeshBasicMaterial({ color: 0xffe14a, transparent: true, opacity: 0.5, depthWrite: false, side: THREE.DoubleSide })); cone.position.y = 0.3; per.g.add(cone);
+    MX.guards.push({ per, x: SNEAK.x, z: s > 0 ? SNEAK.z1 : SNEAK.z0, dir: -s, h: 0 });
+  }
+}
+function beginMission() { G.si = 0; G.timeLeft = -1; G.busy = false; const m = curM(); toast(G.free ? tr('ミッション：{title}', { title: tr(m.title) }) : tr('ミッション{n}：{title}', { n: G.mi + 1, title: tr(m.title) }), 2.6); if (m.say) say(m.say, true); beginStep(); }
+// 段が終わった。hook があれば、それ(お話など)が終わってから次へ
+function stepDone() { if (G.busy) return; const st = curM().steps[G.si]; if (st.hook) { G.busy = true; st.hook(() => { G.busy = false; stepNext(); }); } else stepNext(); }
+function stepNext() {
+  const m = curM(); clearStep(); G.si++;
+  if (G.si < m.steps.length) { toast(tr(m.steps[G.si - 1].done || 'チェックポイント通過！'), 1.2); beginStep(); return; }
+  G.timeLeft = -1; marker.visible = false; clearMission();
+  if (m.ending) { G.free = null; story(STORY['end' + m.ending], () => finish(m.ending)); return; } // 船に乗って終わり
+  G.money += m.reward; toast(tr('ミッション完了！ +${r}', { r: m.reward.toLocaleString() }), 2.6);
+  if (m.endSay) say(m.endSay, true);
+  if (m.wantedOff) { G.wanted = 0; removeAllPolice(); }
+  if (G.free) { G.done[m.id] = 1; if (m.onDone) m.onDone(); G.markLock = G.free; G.free = null; }
+  else { G.mi++; if (G.mi >= MISSIONS.length) story(STORY.big, () => { G.freeT = 0.6; }); else { G.failWait = 2.6; G.waitMsg = tr('次のミッションへ…'); } } // 大きな仕事のあと: 荷物をまちがえる話
+  save(); // クリアしたら自動でセーブ
 }
 // 失敗: お使いは少し待ってやり直し。自由なミッションは、紫のマークがもどる(何度でも受け直せる)
-function failMission(msg) { toast(msg, 2.6); G.timeLeft = -1; marker.visible = false; if (G.free) { G.free = null; return; } G.failWait = 2.8; G.waitMsg = tr('もう一度挑戦…'); }
+function failMission(msg) { toast(msg, 2.6); G.timeLeft = -1; marker.visible = false; clearMission(); if (G.free) { G.free = null; return; } G.failWait = 2.8; G.waitMsg = tr('もう一度挑戦…'); }
+// 車をぶつけた(「ぶつけすぎると失敗」のミッション)
+function bump() {
+  const m = curM(), st = m && !G.over && !(!G.free && G.failWait > 0) ? m.steps[G.si] : null;
+  if (!st || st.fragile === undefined || G.bumpCd > 0 || G.busy || (st.car === 2 && player.car !== MX.mcar)) return;
+  G.bumpCd = 0.8; G.bumps++;
+  if (G.bumps > st.fragile) failMission(tr('ぶつけすぎた… ミッション失敗')); else toast(tr('ぶつけた！ あと{n}回で失敗', { n: st.fragile - G.bumps + 1 }), 1.2);
+}
+// 借金の取り立て: 車を止めたら、中から情報屋が出てくる →「貸す」「貸さない」
+function debtHook(next) {
+  const c = MX.runner; c.kind = 'parked'; c.flee = false; c.v = 0; marker.visible = false;
+  if (G.money < DEBT) { failMission(tr('男の話を聞くには、$10,000 いる… ミッション失敗')); return; }
+  const per = makeVip('info'), rx = -Math.cos(c.h), rz = Math.sin(c.h); per.g.position.set(c.x - rx * 2.2, 0, c.z - rz * 2.2); per.g.rotation.y = Math.atan2(player.x - per.g.position.x, player.z - per.g.position.z); MX.props.push(per.g);
+  story(STORY.caught, () => openOffer({
+    title: '$10,000 貸す？', desc: '貸したお金は、もどってこない。', yes: '貸す', no: '貸さない',
+    onYes: () => { G.money -= DEBT; G.lent = 1; G.tru = G.done.sailor2 && !G.done.sailor3 ? 1 : 0; story(STORY.lend, next); },
+    onNo: () => { G.lent = 2; story(STORY.refuse, next); },
+  }));
+}
 
 /* ===== セーブ(v=14) ===== */
 // そのスマホのブラウザの中(localStorage)に残す。覚えるもの: お金・クリアしたミッション・武器と弾・回復薬・チョッキ・たおした幹部・遊んだ時間
 const SAVE_KEY = 'sc-save';
-function saveData() { return { v: 1, money: G.money, mi: G.mi, done: Object.keys(G.done), inv: player.inv.slice(), ammo: player.ammo, mg: player.mg, pigs: player.pigs, snakes: player.snakes, heals: player.heals, armor: player.armor, bosses: G.bosses.slice(), play: Math.floor(G.play) }; }
+function saveData() { return { v: 1, money: G.money, mi: G.mi, done: Object.keys(G.done), inv: player.inv.slice(), ammo: player.ammo, mg: player.mg, pigs: player.pigs, snakes: player.snakes, heals: player.heals, armor: player.armor, bosses: G.bosses.slice(), lent: G.lent, tru: G.tru, sis: G.sis, play: Math.floor(G.play) }; }
 function save() { if (G.mode !== 'solo') return false; try { localStorage.setItem(SAVE_KEY, JSON.stringify(saveData())); return true; } catch (e) { return false; } }
 function readSave() { try { const d = JSON.parse(localStorage.getItem(SAVE_KEY)); return d && d.v === 1 ? d : null; } catch (e) { return null; } }
 function clearSave() { try { localStorage.removeItem(SAVE_KEY); } catch (e) { /* 消せなくてもよい */ } }
@@ -1237,6 +1387,7 @@ function applySave(d) {
   G.money = num(d.money, 0, 1e9); G.mi = num(d.mi, 0, MISSIONS.length); G.play = num(d.play, 0, 1e9);
   G.done = {}; for (const id of Array.isArray(d.done) ? d.done : []) if (FREE.some(f => f.id === id)) G.done[id] = 1;
   G.bosses = (Array.isArray(d.bosses) ? d.bosses : []).filter(b => typeof b === 'string');
+  G.lent = num(d.lent, 0, 2); G.tru = num(d.tru, 0, 1); G.sis = num(d.sis, 0, 1);
   player.ammo = num(d.ammo, 0, 9999); player.mg = num(d.mg, 0, 9999); player.pigs = num(d.pigs, 0, MKT.max); player.snakes = num(d.snakes, 0, MKT.max);
   player.heals = num(d.heals, 0, TUNE.maxHeal); player.armor = num(d.armor, 0, TUNE.armor); player.hp = TUNE.hp;
   const inv = ['fist']; for (const k of Array.isArray(d.inv) ? d.inv : []) if (WEAPONS[k] && !inv.includes(k) && !(k === 'pig' && !player.pigs) && !(k === 'snake' && !player.snakes)) inv.push(k);
@@ -1244,6 +1395,18 @@ function applySave(d) {
 }
 // ホームの青い光に入ったとき: セーブして、体力が全回復
 function atHome() { player.hp = TUNE.hp; G.markLock = HOME; toast(tr(save() ? 'セーブした！ 体力が全回復' : '体力が全回復(セーブはできなかった)'), 2.4); }
+// ホームでねる(v=15): 「ねる」ボタン → 朝・夕方・夜をえらぶ。時間が変わって、体力が全回復して、セーブする
+function canSleep() { return G.started && G.mode === 'solo' && player.mode === 'foot' && player.hp > 0 && G.downT <= 0 && G.stunT <= 0 && !paused() && Math.hypot(HOME.x - player.x, HOME.z - player.z) < 3; }
+function openSleep() {
+  if (!canSleep()) return;
+  if (G.wanted > 0 || G.free || G.timeLeft > 0) { toast(tr(G.wanted > 0 ? '警察に追われている間は、ねられない' : 'ミッション中は、ねられない'), 1.8); return; }
+  G.sleep = true; stopInput(); $('sleep').classList.remove('hidden');
+}
+function sleepTo(ph) {
+  if (!G.sleep) return; G.sleep = false; $('sleep').classList.add('hidden'); if (!ph) return;
+  setClock(ph === 'day' ? DAY.start : ph === 'eve' ? DAY.eve + 5 : DAY.night + 20); player.hp = TUNE.hp; save();
+  toast(tr(ph === 'day' ? '朝までねた' : ph === 'eve' ? '夕方までねた' : '夜までねた'), 2.2);
+}
 function busted() {
   G.money = Math.max(0, G.money - TUNE.police.fine); G.wanted = 0; G.bust = 0; removeAllPolice(); if (player.mode === 'car') exitCar(); resetPlayerToFoot(HOME.sx, HOME.sz, HOME.sh); // 逮捕されたら、ホームの前にもどる
   confiscate(); G.stunT = 0; player.per.g.rotation.x = 0; // 逮捕されても武器は没収
@@ -1329,6 +1492,8 @@ $('atkBtn').addEventListener('pointermove', atkMove);
 $('wpnBtn').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); switchWeapon(); });
 $('healBtn').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); useHeal(); });
 $('talkBtn').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); startTalk(); });
+$('sleepBtn').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); openSleep(); });
+for (const [id, ph] of [['sleepDay', 'day'], ['sleepEve', 'eve'], ['sleepNight', 'night'], ['sleepNo', null]]) $(id).addEventListener('click', () => sleepTo(ph));
 [0, 1].forEach(i => $('qa' + i).addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); answerTalk(i); }));
 // 押している間だけ効くボタン(ダッシュ・アクセル・ブレーキ・バック)
 const held = { dash: false, acc: false, brk: false, rev: false };
@@ -1350,9 +1515,9 @@ function readInput() {
 }
 
 /* ===== 車の乗り降り ===== */
-function nearestEnterable() { let best = null, bd = TUNE.enterDist; for (const c of cars) { if (c.kind === 'police' && G.mode !== 'solo') continue; const d = Math.hypot(c.x - player.x, c.z - player.z); if (d < bd) { bd = d; best = c; } } return best; }
+function nearestEnterable() { let best = null, bd = TUNE.enterDist; for (const c of cars) { if ((c.kind === 'police' && G.mode !== 'solo') || c.flee) continue; const d = Math.hypot(c.x - player.x, c.z - player.z); if (d < bd) { bd = d; best = c; } } return best; }
 function toggleCar() {
-  if (!G.started || G.stunT > 0 || G.downT > 0 || G.shop || G.offer) return; if (player.mode === 'car') { exitCar(); return; }
+  if (!G.started || G.stunT > 0 || G.downT > 0 || paused()) return; if (player.mode === 'car') { exitCar(); return; }
   const c = nearestEnterable(); if (!c) return;
   if (c.kind === 'traffic') { ejectDriver(c); if (Math.abs(c.v) > 1) { addWanted(1); if (G.mode === 'solo') toast(tr('車を奪った！'), 1.4); } }
   else if (c.kind === 'police') stealPolice(c);
@@ -1402,7 +1567,7 @@ function updatePlayer(dt) {
     else { c.v *= 1 - 0.7 * dt; if (Math.abs(c.v) < 0.3) c.v = 0; }
     const tf = clamp(c.v / 7, -1, 1) * (Math.abs(c.v) > 22 ? 0.75 : 1); c.h -= st * TUNE.steer * dt * tf;
     c.x += Math.sin(c.h) * c.v * dt; c.z += Math.cos(c.h) * c.v * dt;
-    if (resolveCar(c)) c.v *= Math.abs(c.v) > 3 ? -0.25 : 0.5;
+    if (resolveCar(c)) { if (Math.abs(c.v) > 3) bump(); c.v *= Math.abs(c.v) > 3 ? -0.25 : 0.5; }
     player.x = c.x; player.z = c.z; player.h = c.h; player.v = c.v;
     if (c.cop) copLights(c, performance.now() / 1000); // 奪ったパトカー: 屋根のライトが光る
     $('enterBtn').textContent = tr('降りる'); $('enterBtn').classList.remove('near');
@@ -1410,14 +1575,14 @@ function updatePlayer(dt) {
 }
 function updateTraffic(c, dt) {
   const fx = Math.sin(c.h), fz = Math.cos(c.h); let blocked = false;
-  const others = [{ x: player.x, z: player.z, same: true }];
+  const others = c.flee ? [] : [{ x: player.x, z: player.z, same: true }]; // 逃げる車は、主人公が前にいても止まらない
   for (const o of cars) if (o !== c && o.kind !== 'player') others.push({ x: o.x, z: o.z, same: o.kind !== 'traffic' || (Math.sin(o.h) * fx + Math.cos(o.h) * fz) > 0.5 });
   for (const id in R.avatars) { const a = R.avatars[id]; if (a.seen) others.push({ x: a.x, z: a.z, same: true }); }
   for (const o of others) { const rx = o.x - c.x, rz = o.z - c.z, ah = rx * fx + rz * fz, sd = Math.abs(rx * fz - rz * fx); if (ah > 0 && ah < 7.5 && sd < 2.4 && o.same) { blocked = true; break; } }
   if (!blocked) for (const g of gangs) { if (g.hp <= 0 || !g.per.g.visible) continue; const rx = g.x - c.x, rz = g.z - c.z, ah = rx * fx + rz * fz, sd = Math.abs(rx * fz - rz * fx); if (ah > 0 && ah < 6 && sd < 2) { blocked = true; break; } }
   if (!blocked) for (const g of npcs) { if (g.hp <= 0) continue; const rx = g.x - c.x, rz = g.z - c.z, ah = rx * fx + rz * fz, sd = Math.abs(rx * fz - rz * fx); if (ah > 0 && ah < 6 && sd < 2) { blocked = true; break; } }
   if (!blocked) for (const p of peds) { if (p.down > 0 || p.off || p.angry) continue; const rx = p.x - c.x, rz = p.z - c.z, ah = rx * fx + rz * fz, sd = Math.abs(rx * fz - rz * fx); if (ah > 0 && ah < 6 && sd < 2) { blocked = true; break; } }
-  const tv = blocked ? 0 : 11; c.v += clamp(tv - c.v, -30 * dt, 8 * dt); c.p += c.v * dt / CELL;
+  const tv = blocked ? 0 : c.flee ? 17 : 11; c.v += clamp(tv - c.v, -30 * dt, 8 * dt); c.p += c.v * dt / CELL;
   if (c.p >= 1) { c.p -= 1; const nb = neighbors(c.b).filter(n => !sameNode(n, c.a)); const nx = nb.length ? nb[Math.floor(Math.random() * nb.length)] : c.a; c.a = c.b; c.b = nx; }
   const A = nodePos(c.a), B = nodePos(c.b); const ex = (B.x - A.x) / CELL, ez = (B.z - A.z) / CELL;
   const tx = A.x + (B.x - A.x) * c.p + ez * 3.2, tz = A.z + (B.z - A.z) * c.p - ex * 3.2; const k = 1 - Math.exp(-6 * dt); c.x += (tx - c.x) * k; c.z += (tz - c.z) * k;
@@ -1463,7 +1628,7 @@ function carPairs() {
     const dx = b.x - a.x, dz = b.z - a.z, d = Math.hypot(dx, dz); if (d > 3.6 || d < 0.001) continue;
     const push = (3.6 - d) / 2, nx = dx / d, nz = dz / d;
     const pl = a.kind === 'player' ? a : b.kind === 'player' ? b : null;
-    if (pl) { const o = pl === a ? b : a; if (Math.abs(pl.v) > 9 && G.hitCd <= 0 && (o.kind === 'traffic' || o.kind === 'police')) { addWanted(1); G.hitCd = 3; } if (Math.abs(pl.v) > 4) { if (o.kind === 'parked') { o.v = pl.v * 0.5; o.h = pl.h; } pl.v *= -0.3; } }
+    if (pl) { const o = pl === a ? b : a; if (o.flee) { if (Math.abs(pl.v) > 6 && G.ramCd <= 0 && G.left > 0) { G.ramCd = 1; G.left--; toast(tr('ぶつけた！ あと{n}回', { n: G.left }), 1.2); } } else if (Math.abs(pl.v) > 9 && G.hitCd <= 0 && (o.kind === 'traffic' || o.kind === 'police')) { addWanted(1); G.hitCd = 3; } if (Math.abs(pl.v) > 4) { if (!o.flee) bump(); if (o.kind === 'parked') { o.v = pl.v * 0.5; o.h = pl.h; } pl.v *= -0.3; } }
     a.x -= nx * push; a.z -= nz * push; b.x += nx * push; b.z += nz * push;
   }
   // 配達競争: ほかの人(の車)に重ならないように、自分だけ押し返す
@@ -1508,12 +1673,36 @@ function managePolice(dt) {
 }
 function updateMission(dt) {
   if (G.freeT > 0) { G.freeT -= dt; if (G.freeT <= 0) toast(tr('紫の光で、好きなミッションを受けよう'), 3.6); }
-  const m = curM(); if (G.over || !m) return;
+  G.bumpCd -= dt; G.ramCd -= dt;
+  const m = curM(); if (G.over || !m || G.busy) return;
   if (!G.free && G.failWait > 0) { G.failWait -= dt; if (G.failWait <= 0) beginMission(); return; }
-  const st = m.steps[G.si];
-  if (G.timeLeft > 0) { G.timeLeft -= dt; if (G.timeLeft <= 0) { failMission(tr('時間切れ… ミッション失敗')); return; } }
-  if (st.type === 'car' && player.mode === 'car') stepDone();
-  else if (st.type === 'go' && Math.hypot(st.pos.x - player.x, st.pos.z - player.z) < 5.5) stepDone();
+  const st = m.steps[G.si], foot = player.mode === 'foot';
+  if (G.timeLeft > 0) { G.timeLeft -= dt; if (G.timeLeft <= 0) { if (st.type === 'survive') stepDone(); else failMission(tr('時間切れ… ミッション失敗')); return; } }
+  if (st.type === 'car') { if (!foot) stepDone(); }
+  else if (st.type === 'go' || st.type === 'sneak') {
+    if (st.type === 'sneak') { // 見はりの警察官: 行ったり来たりする。ライトの中に入ると見つかる
+      for (const g of MX.guards) {
+        g.z += g.dir * SNEAK.speed * dt; if (g.z < SNEAK.z0) g.dir = 1; if (g.z > SNEAK.z1) g.dir = -1;
+        g.h += angDiff(g.h, g.dir > 0 ? 0 : Math.PI) * Math.min(1, 5 * dt); g.per.g.position.set(g.x, 0.3, g.z); g.per.g.rotation.y = g.h; animPerson(g.per, SNEAK.speed, dt);
+        const dx = player.x - g.x, dz = player.z - g.z;
+        if (Math.hypot(dx, dz) < SNEAK.see && Math.abs(angDiff(g.h, Math.atan2(dx, dz))) < SNEAK.half && lineClear(g.x, g.z, player.x, player.z)) { failMission(tr('ライトに見つかった！ ミッション失敗')); return; }
+      }
+    }
+    if (Math.hypot(st.pos.x - player.x, st.pos.z - player.z) < (st.type === 'sneak' ? 3.5 : 5.5) && (!st.car || (!foot && (st.car !== 2 || player.car === MX.mcar))) && (!st.foot || foot)) stepDone();
+  }
+  else if (st.type === 'kill') { G.left = MX.foes.filter(g => g.hp > 0).length; if (!G.left) stepDone(); }
+  else if (st.type === 'collect') { // 歩いて近づくと拾う。光は、いちばん近い1つに出す
+    let best = null, bd = 1e9;
+    for (let i = MX.items.length - 1; i >= 0; i--) {
+      const it = MX.items[i], d = Math.hypot(it.x - player.x, it.z - player.z); it.g.rotation.y += dt * 2;
+      if (d < 1.8 && foot) { scene.remove(it.g); MX.items.splice(i, 1); toast(tr('ヘビをつかまえた！'), 1); continue; }
+      if (d < bd) { bd = d; best = it; }
+    }
+    G.left = MX.items.length; if (best) aim(best.x, best.z); else stepDone();
+  }
+  else if (st.type === 'ram') { const c = MX.runner; aim(c.x, c.z); if (G.left <= 0) stepDone(); }
+  else if (st.type === 'getin') { const c = MX.mcar; aim(c.x, c.z); if (player.car === c) stepDone(); }
+  else if (st.type === 'survive') { G.wanted = Math.max(G.wanted, st.wanted); G.evade = 0; } // ★は下がらない
 }
 
 /* ===== 配達競争(画面側) ===== */
@@ -1585,7 +1774,7 @@ function drawMinimap() {
   function dot(x, z, col, r, clampIt) { const dx = (x - player.x) * sc, dz = (z - player.z) * sc; let sx = dx * ct - dz * stn, sy = dx * stn + dz * ct; const l = Math.hypot(sx, sy); if (l > Rr - 10) { if (!clampIt) return; sx *= (Rr - 10) / l; sy *= (Rr - 10) / l; } mg.fillStyle = col; mg.beginPath(); mg.arc(Rr + sx, Rr + sy, r, 0, Math.PI * 2); mg.fill(); mg.strokeStyle = '#000'; mg.lineWidth = 1.5; mg.stroke(); }
   for (const c of cars) if (c.kind === 'police') dot(c.x, c.z, (Math.floor(performance.now() / 250) % 2) ? '#ff3030' : '#3060ff', 6, false);
   for (const id in R.avatars) { const av = R.avatars[id]; if (av.seen) dot(av.x, av.z, raceColor(id), 7, true); }
-  if (G.mode === 'solo') for (const f of FREE) if (freeOpen(f)) dot(f.at.x, f.at.z, '#b06bff', 8, true); // 受けられるミッション(紫)
+  if (G.mode === 'solo') { for (const f of FREE) if (freeOpen(f)) dot(f.at.x, f.at.z, '#b06bff', 8, true); if (boatOpen()) dot(BOAT.at.x, BOAT.at.z, '#7fe8ff', 7, true); } // 受けられるミッション(紫)・船(水色)
   if (marker.visible) dot(marker.position.x, marker.position.z, '#' + ringMat.color.getHexString(), 9, true);
 }
 
@@ -1595,7 +1784,7 @@ function updateHUD() {
   const m = curM(); let html = '';
   if (G.over || !m) html = '<div class="t">' + tr('フリー走行') + '</div>' + tr(FREE.some(freeOpen) ? '紫の光で、好きなミッションを受けよう' : '街を自由に走り回ろう');
   else if (!G.free && G.failWait > 0) html = '<div class="t">' + tr('ミッション{n}', { n: G.mi + 1 }) + '</div>' + G.waitMsg;
-  else { const st = m.steps[G.si]; html = '<div class="t">' + (G.free ? tr('ミッション：{title}', { title: tr(m.title) }) : tr('ミッション{n}/{total}：{title}', { n: G.mi + 1, total: MISSIONS.length, title: tr(m.title) })) + '</div>' + tr(st.text); if (st.type === 'go') { const d = Math.hypot(st.pos.x - player.x, st.pos.z - player.z); html += '<div class="d">' + tr('あと {d} m', { d: Math.round(d) }) + '</div>'; } }
+  else { const st = m.steps[G.si]; html = '<div class="t">' + (G.free ? tr('ミッション：{title}', { title: tr(m.title) }) : tr('ミッション{n}/{total}：{title}', { n: G.mi + 1, total: MISSIONS.length, title: tr(m.title) })) + '</div>' + tr(st.text, { n: G.left }); if (G.tp) { const d = Math.hypot(G.tp.x - player.x, G.tp.z - player.z); html += '<div class="d">' + tr('あと {d} m', { d: Math.round(d) }) + '</div>'; } }
   $('mission').innerHTML = html; $('money').textContent = '$' + G.money.toLocaleString();
   let s = ''; for (let i = 0; i < 5; i++) s += '<span style="color:' + (i < G.wanted ? '#ffd23f' : 'rgba(255,255,255,.35)') + '">★</span>'; $('stars').innerHTML = s;
   $('clock').textContent = G.phase === 'day' ? '☀ ' + tr('昼') : G.phase === 'eve' ? '◐ ' + tr('夕方') : '☾ ' + tr('夜');
@@ -1648,7 +1837,7 @@ function renderShop() {
   }).join('');
 }
 function openShop(s) {
-  G.shop = s; releaseHeld(); if (joy) { joy = null; setKnob(0, 0); } camTouch = null;
+  G.shop = s; stopInput();
   renderShop(); $('shop').classList.remove('hidden');
 }
 function closeShop() { if (!G.shop) return; G.shopLock = G.shop; G.shop = null; $('shop').classList.add('hidden'); updateHUD(); }
@@ -1667,36 +1856,46 @@ function checkShops(t) {
   for (const s of SHOPS) if (s !== G.shopLock && Math.hypot(s.x - player.x, s.z - player.z) < 1.8) { openShop(s); return; }
 }
 
-/* ===== ホームと、ミッションの紫のマーク(v=14) ===== */
+/* ===== ホームと、ミッションの紫のマーク(v=14)・船(v=15) ===== */
 // 紫のマークに歩いて入ると、ゲームが止まって、名前とほうびが出る。「受ける」「やめる」をえらぶ
-function openOffer(f) {
-  G.offer = f; releaseHeld(); if (joy) { joy = null; setKnob(0, 0); } camTouch = null;
-  $('offerName').textContent = tr(f.title); $('offerDesc').textContent = tr(f.desc); $('offerReward').textContent = tr('ほうび ${r}', { r: f.reward.toLocaleString() });
+// o = ミッション(FREE)か、えらぶもの { title, desc, yes, no, onYes, onNo, pay(いるお金) }。when = 'night'・'day' のものは、その時間だけ受けられる
+function openOffer(o) {
+  G.offer = o; stopInput();
+  $('offerKind').textContent = o.steps ? tr('ミッション') : ''; $('offerName').textContent = tr(o.title); $('offerDesc').textContent = tr(o.desc);
+  $('offerReward').textContent = o.reward ? tr('ほうび ${r}', { r: o.reward.toLocaleString() }) : o.pay ? tr('船代 ${r}', { r: o.pay.toLocaleString() }) + '　' + tr('所持金 ${m}', { m: G.money.toLocaleString() }) : '';
+  const note = o.when && o.when !== G.phase ? tr(o.when === 'night' ? '夜だけ受けられる(家でねると、夜にできる)' : '昼だけ受けられる(家でねると、朝にできる)') : o.pay && G.money < o.pay ? tr('お金がたりない') : '';
+  $('offerNote').textContent = note; $('offerYes').disabled = !!note;
+  $('offerYes').textContent = tr(o.yes || '受ける'); $('offerNo').textContent = tr(o.no || 'やめる');
   $('offer').classList.remove('hidden');
 }
 function closeOffer(take) {
-  const f = G.offer; if (!f) return; G.offer = null; G.markLock = f; $('offer').classList.add('hidden');
-  if (take) { G.free = f; beginMission(); } updateHUD();
+  const o = G.offer; if (!o || (take && $('offerYes').disabled)) return; G.offer = null; if (o.at) G.markLock = o; $('offer').classList.add('hidden');
+  if (take) { if (o.onYes) o.onYes(); else { G.free = o; beginMission(); } } else if (o.onNo) o.onNo();
+  updateHUD();
 }
 $('offerYes').addEventListener('click', () => closeOffer(true));
 $('offerNo').addEventListener('click', () => closeOffer(false));
 // 出たあとは、一度はなれるまで出ない(店と同じ)
+let sleepShown = null;
 function checkMarks(t) {
   const solo = G.mode === 'solo', y = 0.5 + Math.sin(t * 3) * 0.15;
-  HOME.g.visible = solo; HOME.ring.position.y = y;
+  HOME.g.visible = solo; HOME.ring.position.y = y; sailorPer.g.visible = solo;
   for (const f of FREE) { f.g.visible = solo && freeOpen(f); f.ring.position.y = y; }
+  BOAT.g.visible = solo && boatOpen(); BOAT.ring.position.y = y;
+  const sl = solo && canSleep(); if (sl !== sleepShown) { sleepShown = sl; $('sleepBtn').style.display = sl ? 'flex' : 'none'; } // 家の光の近くでは「ねる」ボタンが出る
   if (!solo) return;
   if (G.markLock && Math.hypot((G.markLock.at || G.markLock).x - player.x, (G.markLock.at || G.markLock).z - player.z) > 3) G.markLock = null;
-  if (player.mode !== 'foot' || player.hp <= 0 || G.downT > 0 || G.stunT > 0 || G.shop) return;
+  if (player.mode !== 'foot' || player.hp <= 0 || G.downT > 0 || G.stunT > 0 || paused()) return;
   if (G.markLock !== HOME && Math.hypot(HOME.x - player.x, HOME.z - player.z) < 1.8) { atHome(); return; }
   for (const f of FREE) if (freeOpen(f) && f !== G.markLock && Math.hypot(f.at.x - player.x, f.at.z - player.z) < 1.8) { openOffer(f); return; }
+  if (boatOpen() && BOAT !== G.markLock && Math.hypot(BOAT.at.x - player.x, BOAT.at.z - player.z) < 1.8) openOffer(BOAT);
 }
 
 /* ===== ループ ===== */
 let last = performance.now(), T = 0, hudT = 0;
 function frame(now) {
   const dt = Math.min(0.05, (now - last) / 1000); last = now; T += dt;
-  if (G.started && (G.shop || G.offer)) { /* 買い物中・ミッションをえらんでいる間は止まる */ }
+  if (G.started && paused()) { /* 買い物中・ミッションをえらんでいる間・お話の間・ねる画面は止まる */ }
   else if (G.started) {
     readInput(); updatePlayer(dt); updateClock(dt);
     for (const c of cars) { if (c.kind === 'traffic') updateTraffic(c, dt); else if (c.kind === 'police') updatePolice(c, dt, T); else if (c.kind === 'parked') updateParked(c, dt); }
@@ -1704,7 +1903,7 @@ function frame(now) {
     for (let i = cars.length - 1; i >= 0; i--) if (cars[i].gone) removeCar(cars[i]);
     carPairs(); updatePeds(dt); updateVendors(dt); updateGangs(dt); updateNpcs(dt); updatePickups(dt, T); updateMkw(dt, T); updateShots(dt); updateFx(dt);
     if (G.mode === 'solo') updateCombat(dt);
-    if (G.mode === 'solo') { managePolice(dt); updateMission(dt); }
+    if (G.mode === 'solo') { managePolice(dt); updateMission(dt); updateSub(dt); }
     else { $('warn').textContent = ''; updateRaceMarks(T); R.sendT -= dt; if (R.sendT <= 0 && SC.onSend) { R.sendT = TUNE.posRate; SC.onSend(SC.getMe()); } }
     checkShops(T); checkMarks(T); G.hitCd -= dt; G.play += dt;
     for (const c of cars) { c.mesh.position.set(c.x, 0, c.z); c.mesh.rotation.y = c.h; }
@@ -1743,7 +1942,7 @@ let newAsk = false;
 function initStart() {
   const d = readSave(), c = $('goCont'), n = $('goSolo'); c.classList.toggle('hidden', !d); n.classList.toggle('ghost', !!d);
   if (!d) return;
-  const total = MISSIONS.length + FREE.length, cleared = Math.min(total, (+d.mi || 0) + (Array.isArray(d.done) ? d.done.length : 0));
+  const fr = FREE.filter(f => !f.alt).map(f => f.id), total = MISSIONS.length + fr.length, cleared = Math.min(total, (+d.mi || 0) + (Array.isArray(d.done) ? d.done.filter(id => fr.includes(id)).length : 0));
   c.innerHTML = tr('つづきから') + '<small>$' + (Math.floor(+d.money) || 0).toLocaleString() + '　' + tr('ミッション {a}/{b}', { a: cleared, b: total }) + '　' + tr('{m}分', { m: Math.floor((+d.play || 0) / 60) }) + '</small>';
   n.textContent = tr('はじめから(ひとり用)');
 }
@@ -1757,7 +1956,7 @@ $('quitBtn').addEventListener('click', () => { if (G.mode === 'solo') location.r
 if (window.BackGuard) BackGuard.set('home');
 
 const SC = window.SC = {
-  G, R, player, cars, peds, TUNE, MISSIONS, FREE, HOME, save, readSave, applySave, curM, pointBlocked, P, gangs, pickups, npcs, SHOPS, HOSPITAL, SHOP_ITEMS, closeShop, WEAPONS, MKT, MKW, shots, newNpc, confiscate, DAY, setClock, vendors, TALK, LINES, QAS, makeVip, startTalk, answerTalk, pickLine, getTalk: () => talk, camera,
+  G, R, player, cars, peds, TUNE, MISSIONS, FREE, HOME, save, readSave, applySave, curM, pointBlocked, P, gangs, pickups, npcs, SHOPS, HOSPITAL, SHOP_ITEMS, closeShop, WEAPONS, MKT, MKW, shots, newNpc, confiscate, DAY, setClock, vendors, TALK, LINES, QAS, makeVip, startTalk, answerTalk, pickLine, getTalk: () => talk, camera, BOAT, PORT, MX, STORY, SNEAK, freeOpen, story, say, finish, openSleep, sleepTo, bump,
   onSend: null, onQuit: null,
   startSolo,
   showOnly, setPlaying,

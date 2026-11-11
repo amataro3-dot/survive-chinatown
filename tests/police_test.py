@@ -19,7 +19,7 @@ with sync_playwright() as p:
     ctx.route("https://cdnjs.cloudflare.com/**", lambda r: r.fulfill(content_type="text/javascript", body=THREE))
     ctx.expose_function("__db", handler_for("u"))
     pg = ctx.new_page(); pg.on("pageerror", lambda e: errs.append(str(e))); pg.on("console", lambda m: m.type == "error" and errs.append(m.text))
-    pg.goto(URL); pg.wait_for_timeout(1200); pg.click("#goSolo"); pg.wait_for_timeout(800)
+    pg.goto(URL); pg.wait_for_timeout(1200); pg.click("#goSolo"); pg.wait_for_timeout(800); pg.evaluate("SC.TUNE.peace=false")  # お使いの間もおそってくるようにする(v=15)
     pg.evaluate("(()=>{ SC.DAY.speed=0; SC.setClock(350); })()")  # 時間は夕方で止める(マフィア・警察の数がふつうの時間)
     ev = lambda js: pg.evaluate("(() => { const SC = window.SC; return " + js + "; })()")
     # ギャングをどけておく(テストのじゃまにならないように)

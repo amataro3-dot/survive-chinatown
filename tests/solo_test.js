@@ -29,7 +29,8 @@ function tp(x,z){const c=D.player.car;if(c){c.x=x;c.z=z;}D.player.x=x;D.player.z
 for(let m=0;m<6;m++){const G=D.G;if(G.mi>=D.MISSIONS.length)break;step(200);
  for(let k=0;k<6;k++){const mm=D.MISSIONS[G.mi];if(!mm)break;const st=mm.steps[G.si];if(!st||!st.pos)break;tp(st.pos.x,st.pos.z);step(10);console.log('m',G.mi,'s',G.si,'wanted',G.wanted,'police',D.cars.filter(c=>c.kind==='police').length,'money',G.money,els.toast.textContent);}
 }
-step(300);console.log('over',D.G.over);
+console.log('story',!!D.G.story);if(D.G.story)els.storySkip._l.click({stopPropagation(){}});
+step(300);console.log('over',D.G.over,'mi',D.G.mi,els.toast.textContent);
 // bust test
 D.G.wanted=3;step(600);const pol=D.cars.filter(c=>c.kind==='police');console.log('police',pol.length,pol.map(c=>Math.hypot(c.x-D.player.x,c.z-D.player.z)|0));
 step(1500);console.log('after chase wanted',D.G.wanted,'money',D.G.money,'mode',D.player.mode,els.toast.textContent);
