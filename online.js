@@ -8,7 +8,7 @@
        pkg:  { state: 'free' | 'held', x, z, holder: 持っている人のID, since: 持った時刻(ホストの時計) },
        dest: { x, z } (届け先。持っている人がいるときだけ),
        winner: 勝った人のID } */
-import { db, ref, set, update, onValue, onDisconnect } from "./firebase.js?v=12";
+import { db, ref, set, update, onValue, onDisconnect } from "./firebase.js?v=13";
 
 /* ===== 調整用の数字 ===== */
 export const RACE = {

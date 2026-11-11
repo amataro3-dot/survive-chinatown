@@ -48,9 +48,10 @@ with sync_playwright() as p:
 
     # ---------- 車を奪うと運転手が出る ----------
     ev("(()=>{SC.TUNE.driver.angry=1; return 0})()")  # テストでは、必ずおそってくる人にする
-    ev("(()=>{const c=SC.cars.find(c=>c.kind==='traffic'); SC.player.x=c.x+1.5; SC.player.z=c.z; return 0})()")
-    pg.click("#enterBtn"); pg.wait_for_timeout(200)
+    # 横に置くのと「乗る」を同じ瞬間にやる(待っている間に車が進んで、別の車に乗ってしまわないように)
+    ev("(()=>{const c=SC.cars.find(c=>c.kind==='traffic'); SC.player.x=c.x+1.5; SC.player.z=c.z; document.getElementById('enterBtn').dispatchEvent(new PointerEvent('pointerdown',{bubbles:true})); return 0})()"); pg.wait_for_timeout(200)
     check(ev("SC.npcs.filter(n=>n.kind==='driver').length") == 1, "走っている車を奪うと、運転手が車から出てくる")
+    ev("(()=>{SC.G.wanted=0; return 0})()")  # ここは運転手のテスト。パトカーが来て逮捕されないように、★を0にしておく
     pg.click("#enterBtn"); pg.wait_for_timeout(200)
     hp0 = ev("SC.player.hp")
     ev("(()=>{const n=SC.npcs.find(n=>n.kind==='driver'); SC.player.x=n.x+1.2; SC.player.z=n.z; return 0})()")
@@ -62,8 +63,8 @@ with sync_playwright() as p:
         if ev("SC.npcs.filter(n=>n.kind==='driver'&&n.hp>0).length") == 0: break
     check(ev("SC.npcs.filter(n=>n.kind==='driver'&&n.hp>0).length") == 0, "運転手もなぐってたおせる")
     ev("(()=>{SC.TUNE.driver.angry=0; SC.G.wanted=0; SC.player.hp=100; return 0})()")
-    ev("(()=>{const c=SC.cars.find(c=>c.kind==='traffic'); SC.player.x=c.x+1.5; SC.player.z=c.z; return 0})()")
-    pg.click("#enterBtn"); pg.wait_for_timeout(200); pg.click("#enterBtn")
+    ev("(()=>{const c=SC.cars.find(c=>c.kind==='traffic'); SC.player.x=c.x+1.5; SC.player.z=c.z; document.getElementById('enterBtn').dispatchEvent(new PointerEvent('pointerdown',{bubbles:true})); return 0})()"); pg.wait_for_timeout(200); pg.click("#enterBtn")
+    ev("(()=>{SC.G.wanted=0; return 0})()")
     n = ev("(()=>{const n=SC.npcs.filter(n=>n.kind==='driver'&&n.hp>0).pop(); return [n.x,n.z]})()"); pg.wait_for_timeout(2500)
     d = ev(f"(()=>{{const n=SC.npcs.filter(n=>n.kind==='driver'&&n.hp>0).pop(); return n? Math.hypot(n.x-SC.player.x,n.z-SC.player.z):99}})()")
     check(d > 8, f"ふつうの運転手は逃げていく(はなれた距離 {d:.0f})")
@@ -95,7 +96,7 @@ with sync_playwright() as p:
         ev("(()=>{const c=SC.cars.find(c=>c.kind==='police'); if(c&&c.crew>0&&Math.hypot(c.x-SC.player.x,c.z-SC.player.z)>18){c.x=SC.player.x+12; c.z=SC.player.z; c.v=0;} return 0})()")
         if ev("SC.npcs.some(n=>n.kind==='cop'&&n.hp>0)"): got = True; break
     if got:
-        ev("(()=>{const n=SC.npcs.find(n=>n.kind==='cop'&&n.hp>0); n.hp=10; SC.player.x=n.x+1.5; SC.player.z=n.z; SC.G.bust=0; return 0})()")
+        ev("(()=>{const n=SC.npcs.find(n=>n.kind==='cop'&&n.hp>0); n.hp=10; n.x=SC.player.x-1.5; n.z=SC.player.z; SC.G.bust=0; return 0})()")  # 警察官を主人公のそばへ(パトカーのそばだと、主人公が車に押し出されて刀がとどかないことがある)
         w0 = ev("SC.G.wanted"); pg.wait_for_timeout(100); pg.click("#atkBtn"); pg.wait_for_timeout(200)
         check(ev("SC.npcs.filter(n=>n.kind==='cop'&&n.hp<=0).length") >= 1 and ev("SC.G.wanted") == w0 + 1, "警察官はたおせる。たおすと★+1")
     else: check(False, "警察官はたおせる。たおすと★+1(警察官が出なかった)")

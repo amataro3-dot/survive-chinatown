@@ -163,6 +163,7 @@ const FONT = '"Noto Sans CJK JP","Hiragino Sans","Yu Gothic",sans-serif';
 const LANTERNS = [], GLOWS = [], WIRES = [];
 const EXTRA_SPOTS = []; // 配達競争: 道路のほかに荷物・届け先が出る場所(市場・公園・ビルの前・駐車場)
 const MK_SPOTS = []; // 市場の武器(豚の頭・ヘビ・青龍刀)が出る場所
+const STALLS = []; // 市場の屋台の場所(屋台の人を立たせるのに使う)
 const SHOPS = []; // 店(武器屋・薬屋)の入口の光るマーク
 const SIGN_WORDS = ['龍', '福', '飯店', '麺', '茶', '酒', '点心', '金', '薬', '宝', '楼', '餃子', '粥', '華'];
 const SHOP_NAMES = ['金龍', '福満楼', '茶館', '点心', '麺家', '漢方', '雑貨', '飯店', '包子', '酒家', '宝石', '海鮮'];
@@ -295,7 +296,7 @@ function stallPair(x, z, r, len) {
     const tent = new THREE.Mesh(roofGeo(len + 0.3, 2.0, 0.6, 0.25), pick(tentMats)); tent.position.set(0, 2.45, 0.2); s.add(tent);
     const q = toW(x, z, r, 0, side * 1.9); LANTERNS.push([q[0], 2.5, q[1], 0.55, rnd() < 0.5 ? 1 : 0]);
   }
-  scene.add(g); colRot(x, z, len, 2.3, r);
+  scene.add(g); colRot(x, z, len, 2.3, r); STALLS.push({ x, z, r });
 }
 // 路地の入口の小さな門(柱のあいだは 1.5m: 人は通れて、車は通れない)
 function alleyGate(x, z, r) {
@@ -508,7 +509,7 @@ function makePerson(shirt, pants, skin) {
   const hair = new THREE.Mesh(BG(0.58, 0.18, 0.58), M(0x2a1d14)); hair.position.y = 2.45; g.add(hair);
   function limb(x, y, w, h, col) { const p = new THREE.Group(); p.position.set(x, y, 0); const m = new THREE.Mesh(BG(w, h, w + 0.03), M(col)); m.position.y = -h / 2; p.add(m); g.add(p); return p; }
   const legL = limb(-0.2, 0.85, 0.32, 0.85, pants), legR = limb(0.2, 0.85, 0.32, 0.85, pants), armL = limb(-0.53, 1.82, 0.24, 0.85, shirt), armR = limb(0.53, 1.82, 0.24, 0.85, shirt);
-  scene.add(g); return { g, legL, legR, armL, armR, phase: 0 };
+  scene.add(g); return { g, body, head, hair, legL, legR, armL, armR, phase: 0 };
 }
 function animPerson(p, speed, dt) { p.phase += dt * (2 + speed * 1.6); const s = Math.sin(p.phase) * Math.min(speed / 4, 1) * 0.9; p.legL.rotation.x = s; p.legR.rotation.x = -s; p.armL.rotation.x = -s * 0.8; p.armR.rotation.x = s * 0.8; }
 
@@ -543,8 +544,8 @@ function pedPos(p) {
   if (s === 0) return [x0 + f, z0, Math.PI / 2 * p.dir]; if (s === 1) return [x0 + L, z0 + f, p.dir > 0 ? 0 : Math.PI]; if (s === 2) return [x0 + L - f, z0 + L, p.dir > 0 ? -Math.PI / 2 : Math.PI / 2]; return [x0, z0 + L - f, p.dir > 0 ? Math.PI : 0];
 }
 for (let i = 0; i < TUNE.peds; i++) {
-  const per = makePerson(shirts[i % shirts.length], [0x2a3550, 0x333333, 0x5a4030][i % 3], [0xf0c9a0, 0xc89870, 0x8a5a3a][i % 3]);
-  peds.push({ per, bi: pedBlock(), t: rnd() * 160, dir: rnd() < 0.5 ? 1 : -1, speed: 1.2 + rnd() * 0.8, down: 0, x: 0, z: 0, h: 0, push: { x: 0, z: 0 } });
+  const look = [shirts[i % shirts.length], [0x2a3550, 0x333333, 0x5a4030][i % 3], [0xf0c9a0, 0xc89870, 0x8a5a3a][i % 3]], per = makePerson(look[0], look[1], look[2]);
+  peds.push({ per, look, bi: pedBlock(), t: rnd() * 160, dir: rnd() < 0.5 ? 1 : -1, speed: 1.2 + rnd() * 0.8, down: 0, x: 0, z: 0, h: 0, push: { x: 0, z: 0 } });
 }
 const player = { mode: 'foot', x: startX, z: startZ, h: startH, car: null, per: makePerson(0xffd23f, 0x23324f, 0xf0c9a0) };
 /* ===== 体力・こうげき・ギャング(ひとり用) ===== */
@@ -656,8 +657,8 @@ for (let i = 0; i < Math.round(TUNE.gang.count * (DAY.gangNight - 1)); i++) { co
 // 街の人: tier 0 = いつもいる、1 = 夕方だけ
 peds.forEach(p => { p.tier = 0; });
 for (let i = 0; i < Math.round(TUNE.peds * (DAY.pedEve - 1)); i++) {
-  const per = makePerson(shirts[(i + 3) % shirts.length], [0x2a3550, 0x333333, 0x5a4030][i % 3], [0xf0c9a0, 0xc89870, 0x8a5a3a][(i + 1) % 3]); per.g.visible = false;
-  peds.push({ per, bi: pedBlock(), t: Math.random() * 160, dir: i % 2 ? 1 : -1, speed: 1.2 + Math.random() * 0.8, down: 0, x: 0, z: 0, h: 0, push: { x: 0, z: 0 }, tier: 1, off: true });
+  const look = [shirts[(i + 3) % shirts.length], [0x2a3550, 0x333333, 0x5a4030][i % 3], [0xf0c9a0, 0xc89870, 0x8a5a3a][(i + 1) % 3]], per = makePerson(look[0], look[1], look[2]); per.g.visible = false;
+  peds.push({ per, look, bi: pedBlock(), t: Math.random() * 160, dir: i % 2 ? 1 : -1, speed: 1.2 + Math.random() * 0.8, down: 0, x: 0, z: 0, h: 0, push: { x: 0, z: 0 }, tier: 1, off: true });
 }
 function respawnGang(g) { clearStatus(g); g.hp = TUNE.gang.hp; g.dead = -1; g.state = 'idle'; g.x = g.home.x; g.z = g.home.z; g.per.g.rotation.x = 0; g.per.g.visible = true; setHand(g.per, g, g.weapon); }
 function damageGang(g, dmg, kx, kz) {
@@ -730,9 +731,9 @@ function confiscate() { player.inv = ['fist']; if (player.pigs > 0) player.inv.p
 /* ===== 車を奪われた運転手・パトカーから降りた警察官 ===== */
 const npcs = [];
 const SKINS = [0xf0c9a0, 0xc89870, 0x8a5a3a];
-function newNpc(kind, x, z, h) {
+function newNpc(kind, x, z, h, look) { // look = [服, ズボン, はだ]。おこった街の人は、元と同じ見た目にする(屋台の人は { vip, shirt, apron, skin })
   const cop = kind === 'cop', skin = SKINS[Math.floor(Math.random() * 3)];
-  const per = cop ? makePerson(0x2c56b8, 0x1a2a55, skin) : makePerson(shirts[Math.floor(Math.random() * shirts.length)], [0x2a3550, 0x333333, 0x5a4030][Math.floor(Math.random() * 3)], skin);
+  const per = cop ? makePerson(0x2c56b8, 0x1a2a55, skin) : look ? (look.vip ? makeVip('vendor', look) : makePerson(look[0], look[1], look[2])) : makePerson(shirts[Math.floor(Math.random() * shirts.length)], [0x2a3550, 0x333333, 0x5a4030][Math.floor(Math.random() * 3)], skin);
   if (cop) { const cap = new THREE.Mesh(BG(0.64, 0.16, 0.72), M(0x14224a)); cap.position.set(0, 2.52, 0.05); per.g.add(cap); }
   const n = { npc: true, kind, per, x, z, h, hp: cop ? TUNE.police.copHp : TUNE.driver.hp, state: cop ? 'chase' : 'flee', cd: 0.6, down: 0, stagger: 0, kx: 0, kz: 0, life: 0, dead: -1, swing: 0, hitCd: 0, pull: 0, car: null };
   npcs.push(n); return n;
@@ -1000,6 +1001,165 @@ function updateCombat(dt) {
 }
 
 
+/* ===== 大事な人の見た目(v=13): 四角い人に、箱の部品を足して見分ける ===== */
+function part(per, w, h, d, col, x, y, z) { const m = new THREE.Mesh(BG(w, h, d), M(col)); m.position.set(x, y, z); per.g.add(m); return m; }
+// kind: 'vendor'(屋台の人) 'oyaji'(屋台のおやじ) 'info'(情報屋) 'bossB'(黒の幹部) 'white'(白の手下) 'bossW'(白の幹部)
+//   o = { shirt, apron, skin }(屋台の人の服・エプロンの色、はだの色)。情報屋・幹部・白の手下が街に出てくるのは、あとの回(⑤⑥)
+function makeVip(kind, o) {
+  o = o || {}; const skin = o.skin || 0xc89870; let per;
+  const hat = (col, band) => { part(per, 0.98, 0.07, 0.98, col, 0, 2.52, 0); part(per, 0.62, 0.32, 0.62, col, 0, 2.7, 0); if (band !== undefined) part(per, 0.64, 0.09, 0.64, band, 0, 2.6, 0); };
+  const beard = col => { part(per, 0.48, 0.14, 0.1, col, 0, 1.92, 0.3); part(per, 0.32, 0.06, 0.06, col, 0, 2.05, 0.29); }; // あごひげ・口ひげ
+  const glasses = () => part(per, 0.5, 0.1, 0.05, 0x050505, 0, 2.2, 0.29);
+  const tie = () => part(per, 0.12, 0.55, 0.04, 0x111111, 0, 1.52, 0.24);
+  if (kind === 'vendor' || kind === 'oyaji') {
+    const ap = kind === 'oyaji' ? 0xf4f2ea : (o.apron || 0xc8261e);
+    per = makePerson(kind === 'oyaji' ? 0x4a4f5a : (o.shirt || 0x3f7fd0), 0x2a2a30, skin);
+    part(per, 0.66, 0.98, 0.06, ap, 0, 1.18, 0.26); part(per, 0.84, 0.1, 0.5, ap, 0, 1.3, 0); // エプロンと、こしのひも
+    if (kind === 'oyaji') { part(per, 0.52, 0.24, 0.52, 0xf4f2ea, 0, 2.62, 0); part(per, 0.72, 0.34, 0.72, 0xffffff, 0, 2.9, 0); per.hair.material = M(0x9a9a9a); } // コック帽
+    else part(per, 0.62, 0.14, 0.62, ap, 0, 2.5, 0); // エプロンと同じ色の頭巾
+  } else if (kind === 'info') { // 情報屋: 大きな黄色い帽子・茶色の長いコート・赤いスカーフ
+    per = makePerson(0xa8733a, 0x3a3028, skin);
+    part(per, 0.86, 0.7, 0.5, 0xa8733a, 0, 0.72, 0);
+    part(per, 0.64, 0.16, 0.52, 0xd42a2a, 0, 1.86, 0); part(per, 0.16, 0.5, 0.06, 0xd42a2a, 0.2, 1.58, 0.27);
+    hat(0xf2c230);
+  } else if (kind === 'bossB') { // 黒の幹部: 1.3倍・はげ頭・ひげ・赤い帯・青龍刀
+    per = makePerson(0x141414, 0x1a1a1a, skin); per.hair.visible = false; beard(0x1a1410);
+    part(per, 0.84, 0.16, 0.5, 0xc8261e, 0, 0.93, 0); part(per, 0.16, 0.42, 0.06, 0xc8261e, -0.25, 0.7, 0.27);
+    per.g.scale.setScalar(1.3); setHand(per, per, 'dao');
+  } else if (kind === 'white') { // 白の手下: 白いスーツ・黒いネクタイ・サングラス
+    per = makePerson(0xf2f2f2, 0xf2f2f2, skin); tie(); glasses();
+  } else { // 白の幹部: 1.15倍・白い帽子・ひげ・マシンガン
+    per = makePerson(0xf2f2f2, 0xf2f2f2, skin); tie(); beard(0x55504a); hat(0xf7f7f7, 0x111111);
+    per.g.scale.setScalar(1.15); setHand(per, per, 'mg');
+  }
+  per.kind = kind; return per;
+}
+
+/* ===== 街の人との会話(v=13) ===== */
+// 話せる距離・ふきだしが出ている秒・Q&A になる割合(街の人)・おやじが2回目からQ&Aになる割合・ヒントがまざる割合・こたえを待つ秒・はなれると終わる距離・屋台の人の数
+//   later = まだ出てこない物(幹部・白いスーツ・ボス・港の倉庫)の話もするか。それを作る回(⑤⑥)で true にする
+const TALK = { dist: 2.8, show: 3.2, qa: 0.3, oyajiQa: 0.5, hint: 0.3, wait: 12, leave: 7, vendors: 6, later: false };
+// ひとこと。hint = ヒント・うわさ、self = 屋台のおやじの話(おやじ本人は言わない)
+const LINES = [
+  { text: 'この街の家賃、ギャングよりこわいよ' },
+  { text: '夜市の小籠包、やけどするほどうまい。本当にやけどした' },
+  { text: 'パトカー、今日だけで3回見た。全部同じ人を追ってた' },
+  { text: '車を盗まれた。3回目だ。もう歩くことにした' },
+  { text: '病院の先生、腕はいいんだ。請求書がこわいだけで' },
+  { text: 'あの漢方、何にでも効くらしい。財布以外には' },
+  { text: 'あんた、どこかで見た顔だな…手配書かな' },
+  { text: '市場で迷って2時間出られなかった。屋台が増えてる気がする' },
+  { text: '武器屋のおやじ、おつりをまちがえないらしい。こわくて、だれも確かめないけど' },
+  { text: '豚の頭を投げる人を見た。世も末だ' },
+  { text: '港の船、いつ出るんだろう。ずっと止まってる' },
+  { text: '市場の奥に、黒い服のえらい人がいるらしい。でっかい刀を持ってるって', hint: 1, later: 1 },
+  { text: '北の大きなビルの前の白いスーツ、近づかないほうがいい', hint: 1, later: 1 },
+  { text: '黒と白、また道でケンカしてたよ。近くにいると巻きこまれる', hint: 1, later: 1 },
+  { text: '幹部がいなくなったチームは、おとなしくなるらしい', hint: 1, later: 1 },
+  { text: '幹部が2人ともやられたら、ボスが塔に出てくるってうわさだ', hint: 1, later: 1 },
+  { text: 'この街を出たいなら港へ。残りたいなら…てっぺんを取るしかないね', hint: 1, later: 1 },
+  { text: '市場の屋台にヘビがいる。投げつけると、相手がかたまるんだって', hint: 1 },
+  { text: '豚の頭は、警察に取られないらしい。証拠品にしたくないんだろう', hint: 1 },
+  { text: 'あの屋台だけは、黒も白も手を出さないんだ。なんでだろうね', hint: 1, self: 1, later: 1 },
+  { text: '屋台のおやじ、30年あそこにいるらしい。街が変わっても、あの鍋だけは同じだ', hint: 1, self: 1 },
+  { text: '港の奥の倉庫、夜も明かりがついてる。何を積んでるんだか', hint: 1, later: 1 },
+  { text: '前にもいたよ、あんたみたいな運び屋。若い女の子だった。急に見なくなったけど', hint: 1 },
+];
+// Q&A。ok = ふつうのこたえ、ng = 相手がおこるこたえ(おそってくる)。who: 'shop' = 屋台の人がよく聞く、'oyaji' = 屋台のおやじだけ
+const QAS = [
+  { text: 'うちの小籠包、街でいちばんだろ？', ok: 'いちばんだ', ng: 'となりの店のほうがうまい', who: 'shop' },
+  { text: 'この新しい帽子、似合ってる？', ok: '似合ってる', ng: '前が見えなくなる豚の頭のほうがまし' },
+  { text: 'あんた、うちの車を盗んだ人に似てるな？', ok: '人ちがいです', ng: 'いい車だったよ' },
+  { text: 'わしの歌、聞いていくか？', ok: '聞かせて', ng: '耳がこわれるからいい' },
+  { text: 'この筋肉、どう思う？', ok: 'すごい', ng: 'ゆでたもやしみたい' },
+  { text: '道にまよった。港はどっち？', ok: '東だよ', ng: '自分でさがせ' },
+  { text: 'わたしの占い、当たるのよ。見てあげようか？', ok: 'おねがいします', ng: 'インチキでしょ' },
+  { text: 'きのう、ふられたんだ…聞いてくれる？', ok: '聞くよ', ng: 'ふられて当然の顔だ' },
+  { text: 'この街、いい街だろ？', ok: 'いい街だ', ng: '早く出たい' },
+  { text: 'うちの息子、天才なんだ。そう思うだろ？', ok: '天才だ', ng: '会ったことないけど、ちがうと思う' },
+  { text: '30年つぎ足してる秘伝のタレだ。味見するか？', ok: 'いただきます', ng: '30年洗ってないってこと？', who: 'oyaji' },
+];
+// 屋台の人(市場の屋台の前に立っている。話せる)。1人は屋台のおやじ(コック帽)で、夜市の入口にいちばん近い屋台にいる
+const vendors = [];
+(function placeVendors() {
+  const cand = [], dd = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
+  for (const s of STALLS) for (const side of [1, -1]) for (const lx of [-0.9, 0.9]) {
+    const q = toW(s.x, s.z, s.r, lx, side * 2.2), o = { x: q[0], z: q[1] };
+    if (!inMarket(o.x, o.z)) continue; resolve(o, 0.5); if (Math.hypot(o.x - q[0], o.z - q[1]) > 0.01) continue; // かべや箱に近すぎる所には立たせない
+    if (MK_SPOTS.some(m => dd(m, o) < 2)) continue; // 市場の武器の置き場所もよける
+    cand.push({ x: q[0], z: q[1], h: s.r + (side > 0 ? 0 : Math.PI) });
+  }
+  if (!cand.length) return;
+  const gateN = { x: roadC(2), z: MK.z0 }, sel = [cand.reduce((a, b) => dd(a, gateN) <= dd(b, gateN) ? a : b)];
+  while (sel.length < TALK.vendors && sel.length < cand.length) { // のこりは、なるべくばらばらに
+    let best = null, bd = -1; for (const c of cand) { if (sel.includes(c)) continue; const d = Math.min(...sel.map(p => dd(p, c))); if (d > bd) { bd = d; best = c; } } sel.push(best);
+  }
+  const APRONS = [0xc8261e, 0x2f8a55, 0x2a4a8a, 0xd9a020, 0x7a4a9a];
+  sel.forEach((c, i) => {
+    const o = { shirt: shirts[(i * 3 + 1) % shirts.length], apron: APRONS[i % APRONS.length], skin: SKINS[i % 3] }, per = makeVip(i ? 'vendor' : 'oyaji', o);
+    o.vip = true; vendors.push({ vendor: true, oyaji: i === 0, per, look: o, x: c.x, z: c.z, h: c.h, h0: c.h, talkT: 0, angry: null });
+  });
+})();
+function updateVendors(dt) {
+  for (const v of vendors) {
+    if (v.angry) { if (npcs.indexOf(v.angry) >= 0) { v.per.g.visible = false; continue; } v.angry = null; v.h = v.h0; v.per.g.visible = true; } // おこって追いかけたあとは、屋台にもどる
+    if (v.talkT > 0) v.talkT -= dt; else v.h += angDiff(v.h, v.h0) * Math.min(1, 4 * dt);
+    v.per.g.position.set(v.x, 0.34, v.z); v.per.g.rotation.y = v.h; animPerson(v.per, 0, dt);
+  }
+}
+// いまの会話: { who(話している相手), t(のこり秒), qa(こたえを待っているQ&A), opts(えらぶこたえ2つ) }
+let talk = null, lastLine = null, lastQA = null, talkShown = null;
+const bubV = new THREE.Vector3();
+// 話しかけられる相手(いちばん近い人)。歩いているとき・手配されていないときだけ
+function talkTarget() {
+  if (!G.started || G.mode !== 'solo' || player.mode !== 'foot' || player.hp <= 0 || G.downT > 0 || G.stunT > 0 || G.shop || G.wanted > 0 || (talk && talk.qa)) return null;
+  let best = null, bd = TALK.dist;
+  const see = e => { if (e.off || e.down > 0 || e.angry || (talk && talk.who === e)) return; const d = Math.hypot(e.x - player.x, e.z - player.z); if (d < bd) { bd = d; best = e; } };
+  peds.forEach(see); vendors.forEach(see); return best;
+}
+function setBubble(s) { const e = $('bubble'); e.textContent = s; e.style.display = 'block'; }
+function endTalk() { if (talk && talk.qa && !talk.who.npc) talk.who.talkT = 0; talk = null; $('bubble').style.display = 'none'; $('qa').classList.add('hidden'); }
+function pickLine(who) {
+  const ok = LINES.filter(l => (TALK.later || !l.later) && !(who.oyaji && l.self) && l !== who.lastLine && l !== lastLine);
+  const hints = ok.filter(l => l.hint), jokes = ok.filter(l => !l.hint), pool = hints.length && (Math.random() < TALK.hint || !jokes.length) ? hints : jokes;
+  return pool[Math.floor(Math.random() * pool.length)];
+}
+// 「話す」ボタン: 近くの人が立ち止まって、ひとこと言う。ときどき質問(Q&A)される
+function startTalk() {
+  const who = talkTarget(); if (!who) return;
+  endTalk(); who.talkT = TALK.show; let qa = null;
+  if (who.oyaji) { if (!who.met || Math.random() < TALK.oyajiQa) qa = QAS.find(q => q.who === 'oyaji'); who.met = true; }
+  else if (Math.random() < TALK.qa) { const pool = QAS.filter(q => q.who !== 'oyaji' && q !== lastQA); qa = who.vendor && Math.random() < 0.5 ? QAS[0] : pool[Math.floor(Math.random() * pool.length)]; }
+  if (qa) {
+    lastQA = qa; const opts = [{ text: qa.ok, ng: false }, { text: qa.ng, ng: true }]; if (Math.random() < 0.5) opts.reverse();
+    talk = { who, qa, opts, t: TALK.wait }; setBubble(tr(qa.text));
+    opts.forEach((o, i) => { $('qa' + i).textContent = tr(o.text); }); $('qa').classList.remove('hidden');
+  } else { const l = pickLine(who); who.lastLine = lastLine = l; talk = { who, t: TALK.show }; setBubble(tr(l.text)); }
+}
+// 街の人・屋台の人がおこって、おそってくる(車を奪われておこった運転手と同じ動き。元の人は、いなくなるまで消しておく)
+function makeAngry(who) { const n = newNpc('driver', who.x, who.z, who.h, who.look); n.state = 'angry'; n.cd = 0.8; who.angry = n; who.talkT = 0; who.per.g.visible = false; return n; }
+// Q&A のこたえをえらぶ(i = 0 か 1)
+function answerTalk(i) {
+  if (!talk || !talk.qa || !talk.opts[i]) return;
+  const who = talk.who, bad = talk.opts[i].ng; $('qa').classList.add('hidden'); talk.qa = null; talk.t = who.talkT = 1.8;
+  if (!bad) setBubble('😊'); // いいこたえ(ごほうびは、なし)
+  else if (who.oyaji) { setBubble('…'); talk.t = who.talkT = 2.6; } // 屋台のおやじは、おこらない(だまって見るだけ)
+  else { talk.who = makeAngry(who); setBubble('💢'); talk.t = 2.4; } // おこって、おそってくる
+}
+// 毎フレーム: 「話す」ボタンを出す・消す、ふきだしを相手の頭の上に動かす
+function updateTalk(dt) {
+  const tg = talkTarget(); if (!!tg !== talkShown) { talkShown = !!tg; $('talkBtn').style.display = tg ? 'flex' : 'none'; }
+  if (!talk) return;
+  const w = talk.who, d = Math.hypot(w.x - player.x, w.z - player.z); talk.t -= dt;
+  const gone = w.npc ? (w.hp <= 0 || npcs.indexOf(w) < 0) : (w.off || w.down > 0 || !!w.angry || G.wanted > 0); // 手配されたら、こわがって話をやめる
+  if (talk.t <= 0 || gone || G.mode !== 'solo' || player.hp <= 0 || d > (talk.qa ? TALK.leave : 16) || (talk.qa && player.mode !== 'foot')) { endTalk(); return; }
+  if (!w.npc) { if (talk.qa) w.talkT = Math.max(w.talkT, 0.3); w.h += angDiff(w.h, Math.atan2(player.x - w.x, player.z - w.z)) * Math.min(1, 8 * dt); } // こっちを向く
+  const e = $('bubble'); bubV.set(w.x, 3.25 + (w.oyaji ? 0.55 : 0), w.z); bubV.project(camera);
+  if (bubV.z > 1) { e.style.visibility = 'hidden'; return; } // カメラのうしろ
+  e.style.visibility = 'visible'; e.style.left = clamp((bubV.x * 0.5 + 0.5) * innerWidth, 125, innerWidth - 125) + 'px'; e.style.top = Math.max(64, (-bubV.y * 0.5 + 0.5) * innerHeight) + 'px';
+}
+
+
 // 目印(光の柱)
 const beamMat = new THREE.MeshBasicMaterial({ color: 0xffd23f, transparent: true, opacity: 0.3, depthWrite: false, side: THREE.DoubleSide });
 const ringMat = new THREE.MeshBasicMaterial({ color: 0xffd23f });
@@ -1126,6 +1286,8 @@ $('atkBtn').addEventListener('pointermove', atkMove);
 ['pointerup', 'pointercancel', 'lostpointercapture'].forEach(t => $('atkBtn').addEventListener(t, atkUp));
 $('wpnBtn').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); switchWeapon(); });
 $('healBtn').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); useHeal(); });
+$('talkBtn').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); startTalk(); });
+[0, 1].forEach(i => $('qa' + i).addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); answerTalk(i); }));
 // 押している間だけ効くボタン(ダッシュ・アクセル・ブレーキ・バック)
 const held = { dash: false, acc: false, brk: false, rev: false };
 function holdBtn(id, k) {
@@ -1212,7 +1374,7 @@ function updateTraffic(c, dt) {
   for (const o of others) { const rx = o.x - c.x, rz = o.z - c.z, ah = rx * fx + rz * fz, sd = Math.abs(rx * fz - rz * fx); if (ah > 0 && ah < 7.5 && sd < 2.4 && o.same) { blocked = true; break; } }
   if (!blocked) for (const g of gangs) { if (g.hp <= 0 || !g.per.g.visible) continue; const rx = g.x - c.x, rz = g.z - c.z, ah = rx * fx + rz * fz, sd = Math.abs(rx * fz - rz * fx); if (ah > 0 && ah < 6 && sd < 2) { blocked = true; break; } }
   if (!blocked) for (const g of npcs) { if (g.hp <= 0) continue; const rx = g.x - c.x, rz = g.z - c.z, ah = rx * fx + rz * fz, sd = Math.abs(rx * fz - rz * fx); if (ah > 0 && ah < 6 && sd < 2) { blocked = true; break; } }
-  if (!blocked) for (const p of peds) { if (p.down > 0 || p.off) continue; const rx = p.x - c.x, rz = p.z - c.z, ah = rx * fx + rz * fz, sd = Math.abs(rx * fz - rz * fx); if (ah > 0 && ah < 6 && sd < 2) { blocked = true; break; } }
+  if (!blocked) for (const p of peds) { if (p.down > 0 || p.off || p.angry) continue; const rx = p.x - c.x, rz = p.z - c.z, ah = rx * fx + rz * fz, sd = Math.abs(rx * fz - rz * fx); if (ah > 0 && ah < 6 && sd < 2) { blocked = true; break; } }
   const tv = blocked ? 0 : 11; c.v += clamp(tv - c.v, -30 * dt, 8 * dt); c.p += c.v * dt / CELL;
   if (c.p >= 1) { c.p -= 1; const nb = neighbors(c.b).filter(n => !sameNode(n, c.a)); const nx = nb.length ? nb[Math.floor(Math.random() * nb.length)] : c.a; c.a = c.b; c.b = nx; }
   const A = nodePos(c.a), B = nodePos(c.b); const ex = (B.x - A.x) / CELL, ez = (B.z - A.z) / CELL;
@@ -1278,9 +1440,11 @@ function updatePeds(dt) {
       if (p.down <= 0) { p.per.g.rotation.x = 0; p.bi = pedBlock(); p.t = Math.random() * 160; }
       continue;
     }
-    const fleeing = G.wanted >= 2; p.t += p.dir * p.speed * (fleeing ? 2.2 : 1) * dt; const q = pedPos(p); p.x = q[0]; p.z = q[1]; p.h = q[2];
+    if (p.angry) { if (npcs.indexOf(p.angry) >= 0) { p.per.g.visible = false; continue; } p.angry = null; p.bi = pedBlock(); p.t = Math.random() * 160; p.per.g.visible = true; } // おこって追いかけている間は、別の人(npcs)として動く
+    const fleeing = G.wanted >= 2, stop = p.talkT > 0; // 話している間は立ち止まる
+    if (stop) p.talkT -= dt; else { p.t += p.dir * p.speed * (fleeing ? 2.2 : 1) * dt; const q = pedPos(p); p.x = q[0]; p.z = q[1]; p.h = q[2]; }
     if (player.mode === 'car') { const c = player.car; const d = Math.hypot(c.x - p.x, c.z - p.z); if (d < 2.4 && Math.abs(c.v) > 5) { p.down = 7; p.per.g.rotation.x = -Math.PI / 2; p.push.x = Math.sin(c.h) * c.v * 0.6; p.push.z = Math.cos(c.h) * c.v * 0.6; addWanted(1); continue; } }
-    p.per.g.position.set(p.x, 0.3, p.z); p.per.g.rotation.y = p.h; animPerson(p.per, p.speed * (fleeing ? 2.2 : 1), dt);
+    p.per.g.position.set(p.x, 0.3, p.z); p.per.g.rotation.y = p.h; animPerson(p.per, stop ? 0 : p.speed * (fleeing ? 2.2 : 1), dt);
   }
 }
 function managePolice(dt) {
@@ -1467,18 +1631,18 @@ function frame(now) {
     for (const c of cars) { if (c.kind === 'traffic') updateTraffic(c, dt); else if (c.kind === 'police') updatePolice(c, dt, T); else if (c.kind === 'parked') updateParked(c, dt); }
     if (G.mode === 'race') updateAvatars(dt);
     for (let i = cars.length - 1; i >= 0; i--) if (cars[i].gone) removeCar(cars[i]);
-    carPairs(); updatePeds(dt); updateGangs(dt); updateNpcs(dt); updatePickups(dt, T); updateMkw(dt, T); updateShots(dt); updateFx(dt);
+    carPairs(); updatePeds(dt); updateVendors(dt); updateGangs(dt); updateNpcs(dt); updatePickups(dt, T); updateMkw(dt, T); updateShots(dt); updateFx(dt);
     if (G.mode === 'solo') updateCombat(dt);
     if (G.mode === 'solo') { managePolice(dt); updateMission(dt); }
     else { $('warn').textContent = ''; updateRaceMarks(T); R.sendT -= dt; if (R.sendT <= 0 && SC.onSend) { R.sendT = TUNE.posRate; SC.onSend(SC.getMe()); } }
     checkShops(T); G.hitCd -= dt; G.play += dt;
     for (const c of cars) { c.mesh.position.set(c.x, 0, c.z); c.mesh.rotation.y = c.h; }
-    updateCamera(dt); marker.rotation.y += dt; ring.position.y = 0.4 + Math.sin(T * 3) * 0.2;
+    updateCamera(dt); updateTalk(dt); marker.rotation.y += dt; ring.position.y = 0.4 + Math.sin(T * 3) * 0.2;
     hudT -= dt; if (hudT <= 0) { updateHUD(); hudT = 0.1; } drawMinimap();
     if (toastT > 0) { toastT -= dt; if (toastT <= 0) $('toast').style.opacity = 0; }
   } else {
     for (const c of cars) { if (c.kind === 'traffic') updateTraffic(c, dt); c.mesh.position.set(c.x, 0, c.z); c.mesh.rotation.y = c.h; }
-    updatePeds(dt); updateGangs(dt); updateNpcs(dt);
+    updatePeds(dt); updateVendors(dt); updateGangs(dt); updateNpcs(dt);
     const a = T * 0.08; camera.position.set(Math.sin(a) * 150, 70, Math.cos(a) * 150); camera.lookAt(0, 0, 0); player.per.g.position.set(player.x, 0.3, player.z);
   }
   renderer.render(scene, camera); requestAnimationFrame(frame);
@@ -1505,7 +1669,7 @@ $('quitBtn').addEventListener('click', () => { if (G.mode === 'solo') location.r
 if (window.BackGuard) BackGuard.set('home');
 
 const SC = window.SC = {
-  G, R, player, cars, peds, TUNE, MISSIONS, P, gangs, pickups, npcs, SHOPS, HOSPITAL, SHOP_ITEMS, closeShop, WEAPONS, MKT, MKW, shots, newNpc, confiscate, DAY, setClock,
+  G, R, player, cars, peds, TUNE, MISSIONS, P, gangs, pickups, npcs, SHOPS, HOSPITAL, SHOP_ITEMS, closeShop, WEAPONS, MKT, MKW, shots, newNpc, confiscate, DAY, setClock, vendors, TALK, LINES, QAS, makeVip, startTalk, answerTalk, pickLine, getTalk: () => talk, camera,
   onSend: null, onQuit: null,
   startSolo,
   showOnly, setPlaying,
