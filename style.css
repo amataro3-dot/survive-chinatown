@@ -95,7 +95,8 @@ body:not(.solo) #hpBar { display: none !important; }
 body.playing.solo #atkBox { display: flex; }
 body.solo #btns { right: 122px; }
 #atkBtn { width: 94px; height: 94px; background: rgba(230, 60, 50, .45); border-color: #ffb0a8; font-size: 16px; }
-#wpnBtn { width: 92px; height: 40px; border-radius: 20px; font-size: 12px; }
+#wpnBtn { width: 100px; height: 40px; border-radius: 20px; font-size: 11px; white-space: nowrap; overflow: hidden; }
+#atkBtn { transition: transform .06s; } /* ピストル・マシンガン: 倒した方へ少し動く(ねらっているしるし) */
 
 /* 防弾チョッキ・回復(ひとり用だけ) */
 #armorBar { top: 26px; left: 10px; width: 180px; height: 7px; background: rgba(0, 0, 0, .6); border: 1px solid rgba(255, 255, 255, .6); border-radius: 4px; overflow: hidden; }

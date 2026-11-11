@@ -541,18 +541,22 @@ const WEAPONS = {
   knife: { name: '刀', dmg: 30, range: 2.5, cd: 0.6, melee: true },
   katana: { name: '日本刀', dmg: 40, range: 2.8, cd: 0.6, melee: true }, // 武器屋で買う
   pistol: { name: 'ピストル', dmg: 25, range: 38, cd: 0.35, melee: false },
+  mg: { name: 'マシンガン', dmg: 15, range: 34, cd: 0.125, melee: false, auto: true, spread: 0.06 }, // 押している間ずっと撃つ(1秒に8発)
 };
+// ねらい方(ピストル・マシンガン): こうげきボタンを倒すと照準線、離すと撃つ。軽くタップは向いている方へ
+const AIM = { dead: 16, max: 18, assist: 0.12, tapAssist: 0.35, wait: 0.4 }; // 倒したと見なす距離(px)・ボタンが動く距離(px)・ねらった方への自動補正(ラジアン)・タップのときの補正・撃てるまで待つ秒
 // ギャングの武器
 const GANG_W = { fist: { dmg: 5, cd: 1.0, range: 1.8 }, knife: { dmg: 12, cd: 1.1, range: 2.2 }, pistol: { dmg: 8, cd: 1.5, range: 18 } };
 // 病院(東側の白い建物)。やられたら、この前で目がさめる(道路の方を向いて)
 const HOSPITAL = { x: roadC(5) + 26, z: roadC(4) + 6.8, h: Math.PI };
-Object.assign(player, { hp: TUNE.hp, inv: ['fist'], wi: 0, ammo: 0, atkCd: 0, swing: 0, item: null, armor: 0, heals: 0 });
+Object.assign(player, { hp: TUNE.hp, inv: ['fist'], wi: 0, ammo: 0, mg: 0, atkCd: 0, swing: 0, item: null, armor: 0, heals: 0 }); // ammo = ピストルの弾、mg = マシンガンの弾
 
 function handItem(type) {
   const g = new THREE.Group();
   if (type === 'katana') { const b = new THREE.Mesh(BG(0.06, 0.1, 1.5), M(0xe8ecf2)); b.position.z = 0.8; g.add(b); const gd = new THREE.Mesh(BG(0.22, 0.05, 0.08), M(0xc8a040)); gd.position.z = 0.04; g.add(gd); const h = new THREE.Mesh(BG(0.09, 0.09, 0.4), M(0x1a1a2a)); h.position.z = -0.18; g.add(h); }
   else if (type === 'knife') { const b = new THREE.Mesh(BG(0.07, 0.07, 1.1), M(0xd8dce4)); b.position.z = 0.55; g.add(b); const h = new THREE.Mesh(BG(0.1, 0.1, 0.3), M(0x2a1a10)); h.position.z = -0.05; g.add(h); }
   else if (type === 'pistol') { const b = new THREE.Mesh(BG(0.12, 0.14, 0.45), M(0x111111)); b.position.z = 0.15; g.add(b); const h = new THREE.Mesh(BG(0.1, 0.25, 0.12), M(0x222222)); h.position.set(0, -0.15, -0.02); g.add(h); }
+  else if (type === 'mg') { const b = new THREE.Mesh(BG(0.14, 0.18, 0.95), M(0x1c2024)); b.position.z = 0.35; g.add(b); const h = new THREE.Mesh(BG(0.1, 0.28, 0.12), M(0x2a2e33)); h.position.set(0, -0.18, 0.02); g.add(h); const mag = new THREE.Mesh(BG(0.08, 0.3, 0.14), M(0x3a3e44)); mag.position.set(0, -0.2, 0.32); g.add(mag); }
   g.position.y = -0.85; return g;
 }
 function setHand(per, holder, type) { if (holder.item) { per.armR.remove(holder.item); holder.item = null; } if (type && type !== 'fist') { holder.item = handItem(type); per.armR.add(holder.item); } }
@@ -579,6 +583,7 @@ function dropPickup(kind, x, z, val) {
 function addWeapon(k, ammo) {
   if (!player.inv.includes(k)) player.inv.push(k);
   if (k === 'pistol') player.ammo += ammo || 0;
+  if (k === 'mg') player.mg += ammo || 0;
   player.wi = player.inv.indexOf(k); setHand(player.per, player, k);
 }
 function updatePickups(dt, t) {
@@ -679,7 +684,7 @@ function wakeAtHospital() {
 }
 
 // 武器を没収(やられたとき・逮捕されたとき)。防弾チョッキもなくなる。持っておく回復は残る
-function confiscate() { player.inv = ['fist']; player.wi = 0; player.ammo = 0; player.armor = 0; setHand(player.per, player, null); }
+function confiscate() { player.inv = ['fist']; player.wi = 0; player.ammo = 0; player.mg = 0; player.armor = 0; setHand(player.per, player, null); }
 
 /* ===== 車を奪われた運転手・パトカーから降りた警察官 ===== */
 const npcs = [];
@@ -767,24 +772,101 @@ function updateNpcs(dt) {
 // こうげきの相手(ギャング・運転手・警察官)
 function foes() { const a = []; for (const g of gangs) if (g.hp > 0 && g.per.g.visible) a.push(g); for (const n of npcs) if (n.hp > 0) a.push(n); return a; }
 function hitFoe(f, dmg, kx, kz) { if (f.npc) damageNpc(f, dmg, kx, kz); else damageGang(f, dmg, kx, kz); }
-// こうげき(素手・刀は近くの敵に。ピストルは向いている方へ。前の近くに敵がいたら、その敵をねらう)
+// こうげきできるか(歩いていて、たおれていない)
+function canAttack() { return G.started && G.mode === 'solo' && player.mode === 'foot' && player.hp > 0 && G.downT <= 0 && G.stunT <= 0 && !G.shop; }
+const curWeapon = () => player.inv[player.wi];
+const isGun = wk => !WEAPONS[wk].melee;
+function ammoOf(wk) { return wk === 'pistol' ? player.ammo : wk === 'mg' ? player.mg : Infinity; }
+let noAmmoT = 0;
+// こうげき(素手・刀は近くの敵に。ピストル・マシンガンは向いている方へ。前の近くに敵がいたら、その敵をねらう)
 function playerAttack() {
-  if (!G.started || G.mode !== 'solo' || player.mode !== 'foot' || player.hp <= 0 || G.downT > 0 || G.stunT > 0 || player.atkCd > 0) return;
-  const wk = player.inv[player.wi], W = WEAPONS[wk];
-  if (!W.melee && player.ammo <= 0) { toast(tr('弾がない！'), 1); return; }
+  if (!canAttack() || player.atkCd > 0) return;
+  const wk = curWeapon(), W = WEAPONS[wk];
+  if (isGun(wk)) { fireGun(wk, player.h, AIM.tapAssist, true); return; }
   player.atkCd = W.cd; player.swing = 0.22;
   let best = null, bd = 1e9;
   for (const g of foes()) {
     const dx = g.x - player.x, dz = g.z - player.z, d = Math.hypot(dx, dz), a = Math.abs(angDiff(player.h, Math.atan2(dx, dz)));
-    if (W.melee) { if (d > W.range + 0.4) continue; const score = d + a * 1.5; if (score < bd) { bd = score; best = g; } }
-    else { if (d > W.range || a > 0.35 || !lineClear(player.x, player.z, g.x, g.z)) continue; if (d < bd) { bd = d; best = g; } }
+    if (d > W.range + 0.4) continue; const score = d + a * 1.5; if (score < bd) { bd = score; best = g; }
   }
-  if (W.melee) { if (best) { player.h = Math.atan2(best.x - player.x, best.z - player.z); hitFoe(best, W.dmg, Math.sin(player.h) * 4, Math.cos(player.h) * 4); } return; }
-  player.ammo--;
-  if (best) { player.h = Math.atan2(best.x - player.x, best.z - player.z); tracer(player.x, player.z, best.x, best.z); hitFoe(best, W.dmg, Math.sin(player.h) * 2, Math.cos(player.h) * 2); }
-  else { let ex = player.x, ez = player.z; for (let s = 1; s <= W.range; s++) { const nx = player.x + Math.sin(player.h) * s, nz = player.z + Math.cos(player.h) * s; if (pointBlocked(nx, nz)) break; ex = nx; ez = nz; } tracer(player.x, player.z, ex, ez); }
+  if (best) { player.h = Math.atan2(best.x - player.x, best.z - player.z); hitFoe(best, W.dmg, Math.sin(player.h) * 4, Math.cos(player.h) * 4); }
 }
-function switchWeapon() { if (!G.started || G.mode !== 'solo' || player.hp <= 0) return; player.wi = (player.wi + 1) % player.inv.length; setHand(player.per, player, player.inv[player.wi]); }
+// 銃を1発撃つ。dir = 撃つ向き、assist = その向きから、どれだけずれた敵までねらうか、turn = 敵の方を向くか
+function gunTarget(W, dir, assist) {
+  let best = null, bd = 1e9;
+  for (const g of foes()) {
+    const dx = g.x - player.x, dz = g.z - player.z, d = Math.hypot(dx, dz), a = Math.abs(angDiff(dir, Math.atan2(dx, dz)));
+    if (d > W.range || a > assist || !lineClear(player.x, player.z, g.x, g.z)) continue;
+    const score = d + a * (assist < 0.3 ? 30 : 0); // ねらったときは、線に近い敵を先に
+    if (score < bd) { bd = score; best = g; }
+  }
+  return best;
+}
+function rayEnd(dir, range) { let ex = player.x, ez = player.z; for (let s = 0.5; s <= range; s += 0.5) { const nx = player.x + Math.sin(dir) * s, nz = player.z + Math.cos(dir) * s; if (pointBlocked(nx, nz)) break; ex = nx; ez = nz; } return [ex, ez]; }
+function fireGun(wk, dir, assist, turn) {
+  const W = WEAPONS[wk];
+  if (ammoOf(wk) <= 0) { if (noAmmoT <= 0) { toast(tr('弾がない！'), 1); noAmmoT = 1; } return false; }
+  if (wk === 'pistol') player.ammo--; else player.mg--;
+  player.atkCd = W.cd; player.swing = 0.22;
+  if (W.spread) dir += (Math.random() - 0.5) * W.spread;
+  const best = gunTarget(W, dir, assist), push = wk === 'mg' ? 0.8 : 2;
+  if (best) { const a = Math.atan2(best.x - player.x, best.z - player.z); if (turn) player.h = a; tracer(player.x, player.z, best.x, best.z); hitFoe(best, W.dmg, Math.sin(a) * push, Math.cos(a) * push); }
+  else { const [ex, ez] = rayEnd(dir, W.range); tracer(player.x, player.z, ex, ez); }
+  return true;
+}
+
+// こうげきボタンを倒して、ねらう(ピストル・マシンガン)
+let atk = null; // { id, sx, sy, dx, dy, aim }
+let pendShot = null; // ピストル: 離したけど、まだ撃てないとき(撃てるまで少し待つ)
+const aimMat = new THREE.MeshBasicMaterial({ color: 0xff4a3a, transparent: true, opacity: 0.8, depthWrite: false });
+const aimLine = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.07, 1), aimMat); aimLine.visible = false; scene.add(aimLine);
+const aimDot = new THREE.Mesh(BG(0.38, 0.38, 0.38), aimMat); aimDot.visible = false; scene.add(aimDot);
+function aimDir() { // ボタンを倒した向き → 街の向き(カメラから見て)
+  const l = Math.hypot(atk.dx, atk.dy) || 1, jx = atk.dx / l, jy = -atk.dy / l, a = G.camYaw;
+  return Math.atan2(Math.sin(a) * jy - Math.cos(a) * jx, Math.cos(a) * jy + Math.sin(a) * jx);
+}
+function setAtkKnob(dx, dy) { $('atkBtn').style.transform = dx || dy ? 'translate(' + dx + 'px,' + dy + 'px)' : ''; }
+function endAim() { atk = null; setAtkKnob(0, 0); aimLine.visible = aimDot.visible = false; }
+function atkDown(e) {
+  e.preventDefault(); e.stopPropagation();
+  try { $('atkBtn').setPointerCapture(e.pointerId); } catch (_) { /* なくてもよい */ }
+  if (!isGun(curWeapon())) { playerAttack(); return; } // 素手・刀は、押したらすぐ
+  atk = { id: e.pointerId, sx: e.clientX, sy: e.clientY, dx: 0, dy: 0, aim: false };
+}
+function atkMove(e) {
+  if (!atk || e.pointerId !== atk.id) return;
+  let dx = e.clientX - atk.sx, dy = e.clientY - atk.sy; const l = Math.hypot(dx, dy);
+  atk.dx = dx; atk.dy = dy; if (l > AIM.dead) atk.aim = true; else if (!atk.aim) return;
+  if (l > AIM.max) { dx *= AIM.max / l; dy *= AIM.max / l; } setAtkKnob(dx, dy);
+}
+function atkUp(e) {
+  if (!atk || e.pointerId !== atk.id) return;
+  const wk = curWeapon();
+  if (wk === 'pistol' && e.type === 'pointerup') pendShot = atk.aim ? { dir: aimDir(), assist: AIM.assist, turn: false, t: AIM.wait } : { dir: null, assist: AIM.tapAssist, turn: true, t: AIM.wait };
+  endAim();
+}
+// 毎フレーム: ねらっている間は、その向きを向いて照準線を出す。マシンガンは押している間ずっと撃つ
+function updateAim(dt) {
+  noAmmoT -= dt;
+  const wk = curWeapon(), gun = isGun(wk), ok = canAttack();
+  if (atk && (!gun || !ok)) { if (!ok) endAim(); else { aimLine.visible = aimDot.visible = false; } }
+  if (atk && atk.aim && gun && ok) {
+    const dir = aimDir(), W = WEAPONS[wk]; player.h = dir; player.per.g.rotation.y = dir; player.per.armR.rotation.x = -1.5;
+    const tg = gunTarget(W, dir, AIM.assist); let ex, ez;
+    if (tg) { ex = tg.x; ez = tg.z; } else [ex, ez] = rayEnd(dir, W.range);
+    const L = Math.max(0.5, Math.hypot(ex - player.x, ez - player.z));
+    aimLine.visible = aimDot.visible = true; aimLine.scale.set(1, 1, L); aimLine.rotation.y = Math.atan2(ex - player.x, ez - player.z);
+    aimLine.position.set((player.x + ex) / 2, 1.5, (player.z + ez) / 2); aimDot.position.set(ex, 1.5, ez);
+    aimMat.color.setHex(tg ? 0xff2a2a : 0xffb0a0); // 敵に当たる線は、こい赤
+  }
+  if (gun && ok && player.atkCd <= 0) {
+    if (WEAPONS[wk].auto && (atk || keys.KeyJ)) { // マシンガン: 押している間
+      if (atk && atk.aim) fireGun(wk, aimDir(), AIM.assist, false); else fireGun(wk, player.h, AIM.tapAssist, true);
+    } else if (pendShot && wk === 'pistol') { fireGun(wk, pendShot.dir === null ? player.h : pendShot.dir, pendShot.assist, pendShot.turn); if (pendShot.dir !== null) player.h = pendShot.dir; pendShot = null; }
+  }
+  if (pendShot) { pendShot.t -= dt; if (pendShot.t <= 0 || !gun) pendShot = null; }
+}
+function switchWeapon() { if (!G.started || G.mode !== 'solo' || player.hp <= 0) return; player.wi = (player.wi + 1) % player.inv.length; setHand(player.per, player, player.inv[player.wi]); pendShot = null; }
 // 持っておく回復を使う(体力+50)
 function useHeal() {
   if (!G.started || G.mode !== 'solo' || player.hp <= 0 || G.downT > 0 || player.heals <= 0) return;
@@ -792,7 +874,7 @@ function useHeal() {
   player.heals--; player.hp = Math.min(TUNE.hp, player.hp + TUNE.healItem); toast(tr('回復した！ (のこり {n})', { n: player.heals }), 1.2);
 }
 function updateCombat(dt) {
-  player.atkCd -= dt;
+  player.atkCd -= dt; updateAim(dt);
   if (G.downT > 0) { G.downT -= dt; if (G.downT <= 0) wakeAtHospital(); }
   if (hurtT > 0) hurtT -= dt;
   $('hurt').style.opacity = Math.max(0, hurtT / 0.35) * 0.9 + (player.hp > 0 && player.hp < 30 ? 0.25 : 0);
@@ -870,7 +952,9 @@ touchEl.addEventListener('pointermove', e => { if (joy && e.pointerId === joy.id
 function endPtr(e) { if (joy && e.pointerId === joy.id) { joy = null; setKnob(0, 0); } if (camTouch && e.pointerId === camTouch.id) camTouch = null; }
 touchEl.addEventListener('pointerup', endPtr); touchEl.addEventListener('pointercancel', endPtr);
 $('enterBtn').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); toggleCar(); });
-$('atkBtn').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); playerAttack(); });
+$('atkBtn').addEventListener('pointerdown', atkDown);
+$('atkBtn').addEventListener('pointermove', atkMove);
+['pointerup', 'pointercancel', 'lostpointercapture'].forEach(t => $('atkBtn').addEventListener(t, atkUp));
 $('wpnBtn').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); switchWeapon(); });
 $('healBtn').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); useHeal(); });
 // 押している間だけ効くボタン(ダッシュ・アクセル・ブレーキ・バック)
@@ -1125,7 +1209,7 @@ function updateHUD() {
   const hp = Math.max(0, player.hp); $('hpFill').style.width = hp + '%'; $('hpFill').style.background = hp < 30 ? '#e8463c' : ''; $('hpText').textContent = tr('体力 {n}', { n: Math.ceil(hp) });
   $('armorBar').style.display = player.armor > 0 ? 'block' : 'none'; $('armorFill').style.width = (player.armor / TUNE.armor * 100) + '%';
   const hb = $('healBtn'); hb.style.display = player.heals > 0 ? 'flex' : 'none'; hb.textContent = tr('回復 ×{n}', { n: player.heals });
-  const wk = player.inv[player.wi]; $('wpnBtn').textContent = tr(WEAPONS[wk].name) + (wk === 'pistol' ? ' ' + player.ammo : '') + (player.inv.length > 1 ? ' ⇄' : '');
+  const wk = player.inv[player.wi]; $('wpnBtn').textContent = tr(WEAPONS[wk].name) + (isGun(wk) ? ' ' + ammoOf(wk) : '') + (player.inv.length > 1 ? ' ⇄' : '');
   $('timer').textContent = G.timeLeft > 0 ? tr('残り {n} 秒', { n: Math.ceil(G.timeLeft) }) : ''; $('speed').textContent = player.mode === 'car' ? Math.round(Math.abs(player.car.v) * 3.6) + ' km/h' : '';
 }
 function updateRaceHUD() {
@@ -1152,6 +1236,8 @@ const SHOP_ITEMS = {
     { name: () => tr('ピストル(弾12発つき)'), price: 500, can: () => !player.inv.includes('pistol'), why: () => tr('持っている'), buy: () => addWeapon('pistol', 12) },
     { name: () => tr('ピストルの弾 12発'), price: 100, can: () => player.inv.includes('pistol'), why: () => tr('ピストルがない'), buy: () => { player.ammo += 12; } },
     { name: () => tr('日本刀'), price: 300, can: () => !player.inv.includes('katana'), why: () => tr('持っている'), buy: () => addWeapon('katana') },
+    { name: () => tr('マシンガン(弾50発つき)'), price: 1500, can: () => !player.inv.includes('mg'), why: () => tr('持っている'), buy: () => addWeapon('mg', 50) },
+    { name: () => tr('マシンガンの弾 50発'), price: 250, can: () => player.inv.includes('mg'), why: () => tr('マシンガンがない'), buy: () => { player.mg += 50; } },
   ],
   drug: [
     { name: () => tr('その場で全回復'), price: 150, can: () => player.hp < TUNE.hp, why: () => tr('体力は満タン'), buy: () => { player.hp = TUNE.hp; } },
@@ -1162,7 +1248,7 @@ const SHOP_ITEMS = {
 function renderShop() {
   const s = G.shop; if (!s) return;
   $('shopName').textContent = tr(s.name);
-  $('shopInfo').innerHTML = tr('所持金 ${m}', { m: G.money.toLocaleString() }).replace(/\$([\d,]+)/, '<b>$$$1</b>') + '　' + tr('体力 {n}', { n: Math.ceil(player.hp) }) + (player.armor > 0 ? '　' + tr('チョッキ {n}', { n: player.armor }) : '') + (player.heals ? '　' + tr('回復薬 {n}', { n: player.heals }) : '') + (player.inv.includes('pistol') ? '　' + tr('弾 {n}', { n: player.ammo }) : '');
+  $('shopInfo').innerHTML = tr('所持金 ${m}', { m: G.money.toLocaleString() }).replace(/\$([\d,]+)/, '<b>$$$1</b>') + '　' + tr('体力 {n}', { n: Math.ceil(player.hp) }) + (player.armor > 0 ? '　' + tr('チョッキ {n}', { n: player.armor }) : '') + (player.heals ? '　' + tr('回復薬 {n}', { n: player.heals }) : '') + (player.inv.includes('pistol') ? '　' + tr('弾 {n}', { n: player.ammo }) : '') + (player.inv.includes('mg') ? '　' + tr('マシンガンの弾 {n}', { n: player.mg }) : '');
   $('shopList').innerHTML = SHOP_ITEMS[s.kind].map((it, i) => {
     const ok = it.can(), money = G.money >= it.price;
     return '<button class="shopItem" data-i="' + i + '"' + (ok && money ? '' : ' disabled') + '><span>' + esc(it.name()) + '</span><b>$' + it.price.toLocaleString() + '</b>' + (!ok ? '<small>' + esc(it.why()) + '</small>' : !money ? '<small>' + tr('お金がたりない') + '</small>' : '') + '</button>';

@@ -24,9 +24,9 @@
     'みんなで配達競争(オンライン)': ['Delivery Race with Friends (Online)', '다 함께 배달 경쟁(온라인)'],
     'ひとりで遊ぶ(ミッション)': ['Play Solo (Missions)', '혼자 하기(미션)'],
     '操作': ['Controls', '조작'],
-    '左下のスティック：歩く／車のハンドル(左右)<br>それ以外の場所をドラッグ：カメラを回す<br>「乗る／降りる」：車の乗り降り<br>「ダッシュ」：走る<br>車では「アクセル」「ブレーキ」「バック」のボタンで走る<br>パソコン：WASD・矢印キー、E で乗り降り、Shift でダッシュ、Space でブレーキ': [
-      'Stick (bottom left): walk / steer the car (left and right)<br>Drag anywhere else: turn the camera<br>"Get in / Get out": get in and out of cars<br>"Dash": run<br>In a car, drive with the "Gas", "Brake" and "Reverse" buttons<br>PC: WASD or arrow keys, E to get in/out, Shift to dash, Space to brake',
-      '왼쪽 아래 스틱: 걷기 / 자동차 핸들(좌우)<br>그 밖의 곳을 드래그: 카메라 돌리기<br>"타기 / 내리기": 차 타고 내리기<br>"대시": 달리기<br>차에서는 "액셀" "브레이크" "후진" 버튼으로 달린다<br>PC: WASD·방향키, E로 타고 내리기, Shift로 대시, Space로 브레이크'],
+    '左下のスティック：歩く／車のハンドル(左右)<br>それ以外の場所をドラッグ：カメラを回す<br>「乗る／降りる」：車の乗り降り<br>「ダッシュ」：走る<br>「こうげき」：銃はボタンを倒してねらい、離して撃つ<br>車では「アクセル」「ブレーキ」「バック」のボタンで走る<br>パソコン：WASD・矢印キー、E で乗り降り、Shift でダッシュ、Space でブレーキ': [
+      'Stick (bottom left): walk / steer the car (left and right)<br>Drag anywhere else: turn the camera<br>"Get in / Get out": get in and out of cars<br>"Dash": run<br>"Attack": with a gun, drag the button to aim and release to shoot<br>In a car, drive with the "Gas", "Brake" and "Reverse" buttons<br>PC: WASD or arrow keys, E to get in/out, Shift to dash, Space to brake',
+      '왼쪽 아래 스틱: 걷기 / 자동차 핸들(좌우)<br>그 밖의 곳을 드래그: 카메라 돌리기<br>"타기 / 내리기": 차 타고 내리기<br>"대시": 달리기<br>"공격": 총은 버튼을 끌어서 조준하고, 떼면 쏜다<br>차에서는 "액셀" "브레이크" "후진" 버튼으로 달린다<br>PC: WASD·방향키, E로 타고 내리기, Shift로 대시, Space로 브레이크'],
     'ひとりで遊ぶ': ['Play Solo', '혼자 하기'],
     '5つの配達ミッションに挑戦。人をはねたり、車にぶつけたりすると手配度(★)が上がって警察が追ってくる。警察官につかまると逮捕！<br>光るマークの店で、武器(赤)や薬(緑)が買える。': [
       'Take on 5 delivery missions. Hit people or crash into cars and your wanted level (★) goes up and the police come after you. Get caught by an officer and you\'re busted!<br>At shops with a glowing marker you can buy weapons (red) and medicine (green).',
@@ -70,6 +70,7 @@
     '刀': ['Blade', '칼'],
     '日本刀': ['Katana', '일본도'],
     'ピストル': ['Pistol', '권총'],
+    'マシンガン': ['Machine Gun', '기관총'],
     '{w}をひろった！': ['Picked up {w}!', '{w} 획득!'],
     ' (弾+{n})': [' (+{n} ammo)', ' (탄약 +{n})'],
     'やられた…': ['Wasted…', '당했다…'],
@@ -142,6 +143,10 @@
     'ピストルの弾 12発': ['Pistol ammo ×12', '권총 탄약 12발'],
     '持っている': ['Already owned', '이미 가지고 있음'],
     'ピストルがない': ['You need a pistol', '권총이 없음'],
+    'マシンガン(弾50発つき)': ['Machine Gun (with 50 rounds)', '기관총(탄약 50발 포함)'],
+    'マシンガンの弾 50発': ['Machine gun ammo ×50', '기관총 탄약 50발'],
+    'マシンガンがない': ['You need a machine gun', '기관총이 없음'],
+    'マシンガンの弾 {n}': ['MG ammo {n}', '기관총 탄약 {n}'],
     'その場で全回復': ['Full heal now', '즉시 완전 회복'],
     '回復薬(体力+{hp}。{max}つまで持てる)': ['Medkit (+{hp} HP, carry up to {max})', '회복약(체력 +{hp}, 최대 {max}개)'],
     'もう{max}つ持っている': ['Already carrying {max}', '이미 {max}개 가지고 있음'],
