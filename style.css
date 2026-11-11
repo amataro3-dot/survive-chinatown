@@ -24,6 +24,7 @@ body.playing .hud { display: block; }
 #topright { top: 10px; right: 10px; text-align: right; }
 #money { font-size: 20px; font-weight: 700; color: #7fe08a; }
 #stars { font-size: 20px; letter-spacing: 1px; }
+#clock { font-size: 13px; font-weight: 700; color: #e8eef8; text-shadow: 0 1px 3px rgba(0, 0, 0, .8); } /* いまの時間(昼・夕方・夜) */
 #scores { font-size: 14px; font-weight: 700; background: rgba(0, 0, 0, .5); border-radius: 8px; padding: 4px 10px; }
 #scores:empty { display: none; }
 #scores .me { text-decoration: underline; }

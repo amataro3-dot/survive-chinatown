@@ -26,7 +26,12 @@ const TUNE = {
   posRate: 0.125,                  // 配達競争: 自分の位置を送る間隔(秒)
   hp: 100, deathFine: 0.1,         // 主人公の体力、やられたときに減るお金(所持金の1割。最低$100)
   gang: { count: 16, hp: 100, speed: 4.2, turf: 15, giveUp: 32, respawn: 30 }, // ギャング: 数(街)・体力・走る速さ・なわばりの広さ・あきらめる距離・生きかえるまでの秒
+  // 昼と夜(v=12): 1日の秒・夕方が始まる秒・夜が始まる秒・ひとり用が始まる秒・配達競争とスタート画面の時間(夜)・時間の速さ(0 で止まる)
+  //   far = 人がふえたり減ったりするのは、主人公からこれだけはなれた所だけ(目の前で急に消えないように)
+  //   gangNight = 夜のマフィアの倍(昼は街のマフィアが半分)、pedEve = 夕方の街の人の倍、dayEvade = 昼に★がへるまでの時間の倍
+  day: { len: 720, eve: 300, night: 420, start: 40, race: 560, speed: 1, far: 60, gangNight: 1.5, pedEve: 1.5, dayEvade: 1.5 },
 };
+const DAY = TUNE.day;
 
 let seed = 20261109;
 function rnd() { seed |= 0; seed = seed + 0x6D2B79F5 | 0; let t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }
@@ -50,7 +55,8 @@ const camera = new THREE.PerspectiveCamera(62, 1, 0.5, 700);
 let baseFov = 62;
 function resize() { const w = innerWidth, h = innerHeight; renderer.setSize(w, h, false); camera.aspect = w / h; baseFov = w < h ? 78 : 62; camera.fov = baseFov; camera.updateProjectionMatrix(); }
 addEventListener('resize', resize); resize();
-scene.add(new THREE.HemisphereLight(0x8a98d0, 0x3a2c26, 0.85));
+const hemi = new THREE.HemisphereLight(0x8a98d0, 0x3a2c26, 0.85); scene.add(hemi);
+const NIGHT_MATS = [], GLOW_MATS = []; let starPts = null, moonM = null, sunM = null; // 昼と夜で変えるもの(窓の明かり・地面の光・星・月・太陽)
 const sun = new THREE.DirectionalLight(0x9fb0e0, 0.35); sun.position.set(-80, 150, -40); scene.add(sun);
 
 const matCache = {};
@@ -92,7 +98,7 @@ function nightWin(cols, rows, base, lit, ct) {
   const t1 = new THREE.CanvasTexture(c1), t2 = new THREE.CanvasTexture(c2); t1.magFilter = t2.magFilter = THREE.NearestFilter;
   return (texCache[key] = { map: t1, em: t2 });
 }
-function nightMat(cols, rows, base, lit, ct) { const t = nightWin(cols, rows, base, lit, ct); return new THREE.MeshLambertMaterial({ map: t.map, emissive: 0xffffff, emissiveMap: t.em }); }
+function nightMat(cols, rows, base, lit, ct) { const t = nightWin(cols, rows, base, lit, ct), m = new THREE.MeshLambertMaterial({ map: t.map, emissive: 0xffffff, emissiveMap: t.em }); NIGHT_MATS.push(m); return m; }
 function winTex(cols, rows, base) {
   const key = cols + '_' + rows + '_' + base; if (texCache[key]) return texCache[key];
   const c = document.createElement('canvas'); c.width = cols * 8; c.height = rows * 8; const g = c.getContext('2d');
@@ -439,13 +445,15 @@ function buildSpecial(b) {
   [0xff5a2a, 0xffb060, 0xbfc8ff].forEach((col, ci) => {
     const L = GLOWS.filter(l => l[3] === ci); if (!L.length) return;
     const mat = new THREE.MeshBasicMaterial({ map: glowTex, color: col, transparent: true, opacity: ci === 2 ? 0.25 : 0.45, blending: THREE.AdditiveBlending, depthWrite: false });
+    GLOW_MATS.push({ m: mat, o: mat.opacity });
     const im = new THREE.InstancedMesh(gg, mat, L.length), o = new THREE.Object3D();
     L.forEach((l, i) => { o.position.set(l[0], inMarket(l[0], l[1]) ? 0.37 : 0.33, l[1]); o.scale.setScalar(l[2]); o.updateMatrix(); im.setMatrixAt(i, o.matrix); }); scene.add(im);
   });
   // 星と月
   const sv = []; for (let k = 0; k < 500; k++) { const a = Math.random() * Math.PI * 2, e = 0.15 + Math.random() * 1.3; sv.push(Math.cos(a) * Math.cos(e) * 600, Math.sin(e) * 600, Math.sin(a) * Math.cos(e) * 600); }
-  const sg = new THREE.BufferGeometry(); sg.setAttribute('position', new THREE.Float32BufferAttribute(sv, 3)); scene.add(new THREE.Points(sg, new THREE.PointsMaterial({ color: 0xffffff, size: 1.6, sizeAttenuation: false, fog: false })));
-  const moon = new THREE.Mesh(new THREE.SphereGeometry(14, 16, 12), new THREE.MeshBasicMaterial({ color: 0xfff3c8, fog: false })); moon.position.set(-320, 230, -420); scene.add(moon);
+  const sg = new THREE.BufferGeometry(); sg.setAttribute('position', new THREE.Float32BufferAttribute(sv, 3)); starPts = new THREE.Points(sg, new THREE.PointsMaterial({ color: 0xffffff, size: 1.6, sizeAttenuation: false, fog: false, transparent: true })); scene.add(starPts);
+  const moon = new THREE.Mesh(new THREE.SphereGeometry(14, 16, 12), new THREE.MeshBasicMaterial({ color: 0xfff3c8, fog: false })); moon.position.set(-320, 230, -420); scene.add(moon); moonM = moon;
+  sunM = new THREE.Mesh(new THREE.SphereGeometry(16, 16, 12), new THREE.MeshBasicMaterial({ color: 0xfff6d0, fog: false })); sunM.position.set(300, 300, 380); sunM.visible = false; scene.add(sunM);
 })();
 
 (function laneDashes() {
@@ -642,6 +650,15 @@ function newGang(x, z) {
 }
 for (let i = 0; i < TUNE.gang.count; i++) { const q = gangSpot(); newGang(q[0], q[1]); }
 for (const k of [0, 4, 10]) { const s = EXTRA_SPOTS[k]; if (s) newGang(s.x, s.z); } // 市場の中にも
+// 昼と夜: tier 0 = いつもいる、1 = 夕方と夜(昼はいない)、2 = 夜だけ。off = いまは出ていない
+gangs.forEach((g, i) => { g.tier = i < TUNE.gang.count ? i % 2 : 0; });
+for (let i = 0; i < Math.round(TUNE.gang.count * (DAY.gangNight - 1)); i++) { const q = gangSpot(), g = newGang(q[0], q[1]); g.tier = 2; g.off = true; g.per.g.visible = false; }
+// 街の人: tier 0 = いつもいる、1 = 夕方だけ
+peds.forEach(p => { p.tier = 0; });
+for (let i = 0; i < Math.round(TUNE.peds * (DAY.pedEve - 1)); i++) {
+  const per = makePerson(shirts[(i + 3) % shirts.length], [0x2a3550, 0x333333, 0x5a4030][i % 3], [0xf0c9a0, 0xc89870, 0x8a5a3a][(i + 1) % 3]); per.g.visible = false;
+  peds.push({ per, bi: pedBlock(), t: Math.random() * 160, dir: i % 2 ? 1 : -1, speed: 1.2 + Math.random() * 0.8, down: 0, x: 0, z: 0, h: 0, push: { x: 0, z: 0 }, tier: 1, off: true });
+}
 function respawnGang(g) { clearStatus(g); g.hp = TUNE.gang.hp; g.dead = -1; g.state = 'idle'; g.x = g.home.x; g.z = g.home.z; g.per.g.rotation.x = 0; g.per.g.visible = true; setHand(g.per, g, g.weapon); }
 function damageGang(g, dmg, kx, kz) {
   if (g.hp <= 0) return;
@@ -656,7 +673,7 @@ function damageGang(g, dmg, kx, kz) {
 function updateGangs(dt) {
   const fight = G.mode === 'solo' && G.started && player.hp > 0;
   for (const g of gangs) {
-    if (G.mode === 'race') { g.per.g.visible = false; continue; }
+    if (G.mode === 'race' || g.off) { g.per.g.visible = false; continue; }
     if (g.hp <= 0) { g.dead += dt; g.x += g.kx * dt; g.z += g.kz * dt; g.kx *= 1 - 3 * dt; g.kz *= 1 - 3 * dt; resolve(g, 0.45); g.per.g.position.set(g.x, 0.4, g.z); if (g.dead > 6) g.per.g.visible = false; if (g.dead > TUNE.gang.respawn) respawnGang(g); continue; }
     g.per.g.visible = true; g.cd -= dt; g.hitCd -= dt; if (g.swing > 0) g.swing -= dt;
     const px = player.x, pz = player.z, dP = Math.hypot(px - g.x, pz - g.z), dHome = Math.hypot(px - g.home.x, pz - g.home.z);
@@ -1004,7 +1021,7 @@ const MISSIONS = [
   { title: '最後の大仕事', reward: 10000, steps: [{ type: 'go', pos: P(3, 0), text: 'チェックポイント 1/4', time: 140, wanted: 3 }, { type: 'go', pos: P(6, 2), text: 'チェックポイント 2/4' }, { type: 'go', pos: P(4, 5), text: 'チェックポイント 3/4' }, { type: 'go', pos: P(1, 6), text: 'チェックポイント 4/4' }, { type: 'go', pos: { x: 168, z: -60 }, text: '港の船へ急げ！' }] },
 ];
 // mode: 'menu'(画面の後ろで街が動いている) / 'solo'(ひとり用) / 'race'(配達競争)
-const G = { mode: 'menu', started: false, over: false, money: 0, wanted: 0, mi: 0, si: 0, timeLeft: -1, play: 0, evade: 0, bust: 0, downT: 0, stunT: 0, shop: null, shopLock: null, hitCd: 0, spawnCd: 0, failWait: 0, waitMsg: '', camYaw: Math.PI, camDrag: 0 };
+const G = { mode: 'menu', started: false, over: false, money: 0, wanted: 0, mi: 0, si: 0, timeLeft: -1, play: 0, evade: 0, bust: 0, downT: 0, stunT: 0, shop: null, shopLock: null, hitCd: 0, spawnCd: 0, failWait: 0, waitMsg: '', camYaw: Math.PI, camDrag: 0, clock: DAY.race, phase: 'night' };
 // 配達競争の状態(online.js から setRace でもらう)
 const R = { me: null, state: null, remotes: {}, avatars: {}, sendT: 0 };
 let toastT = 0;
@@ -1033,6 +1050,56 @@ function busted() {
 function removeAllPolice() {
   for (let i = cars.length - 1; i >= 0; i--) if (cars[i].kind === 'police') removeCar(cars[i]);
   for (let i = npcs.length - 1; i >= 0; i--) if (npcs[i].kind === 'cop') removeNpc(npcs[i]);
+}
+
+/* ===== 昼と夜 ===== */
+// [秒, 空の色, 上からの光, 下からの光, 光の強さ, 太陽(月)の光の色, その強さ, 明かり(0=消える〜1=つく), 霧の近く, 霧の遠く]。間は、なめらかに変わる
+const ENV_KEYS = [
+  [0, 0xe8a98a, 0xffd9c0, 0x5a4a44, 0.9, 0xffc9a0, 0.45, 0.5, 100, 310],   // 朝やけ
+  [40, 0x8fc4ec, 0xffffff, 0x8a8272, 0.95, 0xfff4dc, 0.7, 0, 120, 360],    // 昼
+  [270, 0x8fc4ec, 0xffffff, 0x8a8272, 0.95, 0xfff4dc, 0.7, 0, 120, 360],
+  [330, 0xf08a4a, 0xffc79a, 0x5a3c30, 0.9, 0xff9a5a, 0.5, 0.6, 105, 320],  // 夕やけ(明かりがつきはじめる)
+  [395, 0x3a2a5a, 0x9a90cc, 0x3f2e2c, 0.85, 0xb0a0e0, 0.38, 1, 95, 300],   // 日がくれる
+  [440, 0x0b1028, 0x8a98d0, 0x3a2c26, 0.85, 0x9fb0e0, 0.35, 1, 90, 290],   // 夜(v=11 までと同じ)
+  [690, 0x0b1028, 0x8a98d0, 0x3a2c26, 0.85, 0x9fb0e0, 0.35, 1, 90, 290],
+  [720, 0xe8a98a, 0xffd9c0, 0x5a4a44, 0.9, 0xffc9a0, 0.45, 0.5, 100, 310],
+];
+const phaseOf = t => t < DAY.eve ? 'day' : t < DAY.night ? 'eve' : 'night';
+function applyEnv(t) {
+  let i = 0; while (i < ENV_KEYS.length - 2 && t >= ENV_KEYS[i + 1][0]) i++;
+  const a = ENV_KEYS[i], b = ENV_KEYS[i + 1], f = clamp((t - a[0]) / (b[0] - a[0]), 0, 1), L = k => a[k] + (b[k] - a[k]) * f;
+  const C = (k, col) => { const ch = sh => { const p = a[k] >> sh & 255, q = b[k] >> sh & 255; return (p + (q - p) * f) / 255; }; col.setRGB(ch(16), ch(8), ch(0)); };
+  C(1, scene.background); C(1, scene.fog.color); scene.fog.near = L(8); scene.fog.far = L(9);
+  C(2, hemi.color); C(3, hemi.groundColor); hemi.intensity = L(4); C(5, sun.color); sun.intensity = L(6);
+  const lit = L(7);
+  for (const m of NIGHT_MATS) m.emissive.setScalar(lit); // 窓の明かり
+  for (const g of GLOW_MATS) g.m.opacity = g.o * lit;    // 地面にうつる光
+  if (starPts) { starPts.visible = lit > 0.05; starPts.material.opacity = lit; }
+  if (moonM) moonM.visible = lit > 0.5; if (sunM) sunM.visible = lit < 0.5;
+}
+// 時間に合わせて、マフィアと街の人をふやす・減らす。force でなければ、主人公の近くでは変えない
+function applyPop(force) {
+  const ph = G.mode === 'solo' ? G.phase : 'eve', far = (x, z) => force || Math.hypot(x - player.x, z - player.z) > DAY.far;
+  for (const g of gangs) {
+    const on = g.tier === 0 || (g.tier === 1 ? ph !== 'day' : ph === 'night'); if (!!g.off === !on) continue;
+    if (on) { if (!far(g.home.x, g.home.z)) continue; g.off = false; respawnGang(g); }
+    else { if (g.hp > 0 && !far(g.x, g.z)) continue; g.off = true; g.per.g.visible = false; }
+  }
+  const eve = G.mode === 'solo' && ph === 'eve';
+  for (const p of peds) {
+    if (p.tier === 0 || !!p.off === !eve) continue;
+    if (eve) { p.bi = pedBlock(); p.t = Math.random() * 160; const q = pedPos(p); if (!far(q[0], q[1])) continue; p.off = false; p.down = 0; p.per.g.rotation.x = 0; p.per.g.visible = true; }
+    else { if (!far(p.x, p.z)) continue; p.off = true; p.per.g.visible = false; }
+  }
+}
+function setClock(t) { G.clock = ((t % DAY.len) + DAY.len) % DAY.len; G.phase = phaseOf(G.clock); applyEnv(G.clock); applyPop(true); }
+let envT = 0;
+function updateClock(dt) {
+  if (G.mode === 'solo') {
+    G.clock = (G.clock + dt * DAY.speed) % DAY.len; const ph = phaseOf(G.clock);
+    if (ph !== G.phase) { G.phase = ph; if (toastT <= 0) toast(tr(ph === 'day' ? '朝になった' : ph === 'eve' ? '夕方になった' : '夜になった'), 1.8); }
+  }
+  envT -= dt; if (envT <= 0) { envT = 0.25; applyEnv(G.clock); applyPop(false); }
 }
 
 /* ===== 操作 ===== */
@@ -1145,7 +1212,7 @@ function updateTraffic(c, dt) {
   for (const o of others) { const rx = o.x - c.x, rz = o.z - c.z, ah = rx * fx + rz * fz, sd = Math.abs(rx * fz - rz * fx); if (ah > 0 && ah < 7.5 && sd < 2.4 && o.same) { blocked = true; break; } }
   if (!blocked) for (const g of gangs) { if (g.hp <= 0 || !g.per.g.visible) continue; const rx = g.x - c.x, rz = g.z - c.z, ah = rx * fx + rz * fz, sd = Math.abs(rx * fz - rz * fx); if (ah > 0 && ah < 6 && sd < 2) { blocked = true; break; } }
   if (!blocked) for (const g of npcs) { if (g.hp <= 0) continue; const rx = g.x - c.x, rz = g.z - c.z, ah = rx * fx + rz * fz, sd = Math.abs(rx * fz - rz * fx); if (ah > 0 && ah < 6 && sd < 2) { blocked = true; break; } }
-  if (!blocked) for (const p of peds) { if (p.down > 0) continue; const rx = p.x - c.x, rz = p.z - c.z, ah = rx * fx + rz * fz, sd = Math.abs(rx * fz - rz * fx); if (ah > 0 && ah < 6 && sd < 2) { blocked = true; break; } }
+  if (!blocked) for (const p of peds) { if (p.down > 0 || p.off) continue; const rx = p.x - c.x, rz = p.z - c.z, ah = rx * fx + rz * fz, sd = Math.abs(rx * fz - rz * fx); if (ah > 0 && ah < 6 && sd < 2) { blocked = true; break; } }
   const tv = blocked ? 0 : 11; c.v += clamp(tv - c.v, -30 * dt, 8 * dt); c.p += c.v * dt / CELL;
   if (c.p >= 1) { c.p -= 1; const nb = neighbors(c.b).filter(n => !sameNode(n, c.a)); const nx = nb.length ? nb[Math.floor(Math.random() * nb.length)] : c.a; c.a = c.b; c.b = nx; }
   const A = nodePos(c.a), B = nodePos(c.b); const ex = (B.x - A.x) / CELL, ez = (B.z - A.z) / CELL;
@@ -1205,6 +1272,7 @@ function carPairs() {
 }
 function updatePeds(dt) {
   for (const p of peds) {
+    if (p.off) continue; // 夕方だけの人(いまは出ていない)
     if (p.down > 0) {
       p.down -= dt; p.x += p.push.x * dt; p.z += p.push.z * dt; p.push.x *= 1 - 3 * dt; p.push.z *= 1 - 3 * dt; p.per.g.position.set(p.x, 0.3, p.z);
       if (p.down <= 0) { p.per.g.rotation.x = 0; p.bi = pedBlock(); p.t = Math.random() * 160; }
@@ -1216,7 +1284,8 @@ function updatePeds(dt) {
   }
 }
 function managePolice(dt) {
-  const want = G.wanted === 0 ? 0 : Math.min(TUNE.police.maxCars, G.wanted); const pol = cars.filter(c => c.kind === 'police');
+  const dayX = G.phase === 'day' ? 1 : G.phase === 'night' ? -1 : 0; // 昼はパトカーが1台多い、夜は1台少ない
+  const want = G.wanted === 0 ? 0 : clamp(G.wanted + dayX, 1, TUNE.police.maxCars + (dayX > 0 ? 1 : 0)); const pol = cars.filter(c => c.kind === 'police');
   if (G.wanted === 0 && pol.length) { removeAllPolice(); return; }
   G.spawnCd -= dt;
   if (pol.length < want && G.spawnCd <= 0) {
@@ -1226,7 +1295,7 @@ function managePolice(dt) {
   }
   let nd = 1e9, nearCop = false; for (const c of pol) if (c.crew > 0) nd = Math.min(nd, Math.hypot(c.x - player.x, c.z - player.z));
   for (const n of npcs) { if (n.kind !== 'cop' || n.hp <= 0 || n.state !== 'chase' || n.blind > 0 || n.frozen > 0) continue; const d = Math.hypot(n.x - player.x, n.z - player.z); nd = Math.min(nd, d); if (player.mode === 'foot' && d < TUNE.police.catchDist && n.stagger <= 0) nearCop = true; }
-  if (G.wanted > 0) { if (nd > TUNE.police.evadeDist) G.evade += dt; else G.evade = Math.max(0, G.evade - dt * 0.5); if (G.evade > TUNE.police.evadeTime) { G.wanted--; G.evade = 0; toast(tr(G.wanted ? '手配度ダウン' : '逃げ切った！'), 1.6); } }
+  if (G.wanted > 0) { if (nd > TUNE.police.evadeDist) G.evade += dt; else G.evade = Math.max(0, G.evade - dt * 0.5); if (G.evade > TUNE.police.evadeTime * (G.phase === 'day' ? DAY.dayEvade : 1)) { G.wanted--; G.evade = 0; toast(tr(G.wanted ? '手配度ダウン' : '逃げ切った！'), 1.6); } }
   // 逮捕: 歩いている主人公に、警察官がしばらくくっつく
   if (G.wanted > 0 && nearCop) G.bust += dt; else G.bust = Math.max(0, G.bust - dt);
   $('warn').textContent = G.bust > 0.2 ? tr('逃げろ！ 捕まるぞ！') : ''; if (G.bust > TUNE.police.bustTime) busted();
@@ -1319,6 +1388,7 @@ function updateHUD() {
   else { const st = m.steps[G.si]; html = '<div class="t">' + tr('ミッション{n}/{total}：{title}', { n: G.mi + 1, total: MISSIONS.length, title: tr(m.title) }) + '</div>' + tr(st.text); if (st.type === 'go') { const d = Math.hypot(st.pos.x - player.x, st.pos.z - player.z); html += '<div class="d">' + tr('あと {d} m', { d: Math.round(d) }) + '</div>'; } }
   $('mission').innerHTML = html; $('money').textContent = '$' + G.money.toLocaleString();
   let s = ''; for (let i = 0; i < 5; i++) s += '<span style="color:' + (i < G.wanted ? '#ffd23f' : 'rgba(255,255,255,.35)') + '">★</span>'; $('stars').innerHTML = s;
+  $('clock').textContent = G.phase === 'day' ? '☀ ' + tr('昼') : G.phase === 'eve' ? '◐ ' + tr('夕方') : '☾ ' + tr('夜');
   const hp = Math.max(0, player.hp); $('hpFill').style.width = hp + '%'; $('hpFill').style.background = hp < 30 ? '#e8463c' : ''; $('hpText').textContent = tr('体力 {n}', { n: Math.ceil(hp) });
   $('armorBar').style.display = player.armor > 0 ? 'block' : 'none'; $('armorFill').style.width = (player.armor / TUNE.armor * 100) + '%';
   const hb = $('healBtn'); hb.style.display = player.heals > 0 ? 'flex' : 'none'; hb.textContent = tr('回復 ×{n}', { n: player.heals });
@@ -1338,7 +1408,7 @@ function updateRaceHUD() {
   $('mission').innerHTML = html;
   let sc = '';
   if (s && s.players) for (const id of Object.keys(s.players).sort((a, b) => (s.players[a].slot || 0) - (s.players[b].slot || 0))) sc += '<div' + (id === R.me ? ' class="me"' : '') + '><span class="dot" style="background:' + raceColor(id) + '"></span>' + esc(s.players[id].name) + '　' + tr('{n}点', { n: (s.scores && s.scores[id]) || 0 }) + '</div>';
-  $('scores').innerHTML = sc; $('money').textContent = ''; $('stars').innerHTML = ''; $('timer').textContent = '';
+  $('scores').innerHTML = sc; $('money').textContent = ''; $('stars').innerHTML = ''; $('clock').textContent = ''; $('timer').textContent = '';
   $('speed').textContent = player.mode === 'car' ? Math.round(Math.abs(player.car.v) * 3.6) + ' km/h' : '';
 }
 
@@ -1393,7 +1463,7 @@ function frame(now) {
   const dt = Math.min(0.05, (now - last) / 1000); last = now; T += dt;
   if (G.started && G.shop) { /* 買い物中は止まる */ }
   else if (G.started) {
-    readInput(); updatePlayer(dt);
+    readInput(); updatePlayer(dt); updateClock(dt);
     for (const c of cars) { if (c.kind === 'traffic') updateTraffic(c, dt); else if (c.kind === 'police') updatePolice(c, dt, T); else if (c.kind === 'parked') updateParked(c, dt); }
     if (G.mode === 'race') updateAvatars(dt);
     for (let i = cars.length - 1; i >= 0; i--) if (cars[i].gone) removeCar(cars[i]);
@@ -1427,7 +1497,7 @@ function lockLandscape() {
 $('goOnline').addEventListener('click', lockLandscape);
 function startSolo() {
   lockLandscape(); document.body.classList.add('solo');
-  G.mode = 'solo'; showOnly(null); setPlaying(true); resetPlayerToFoot(startX, startZ, startH); beginMission();
+  G.mode = 'solo'; showOnly(null); setPlaying(true); resetPlayerToFoot(startX, startZ, startH); setClock(DAY.start); beginMission(); // ひとり用は昼から
   if (window.BackGuard) BackGuard.set('game', () => location.reload());
 }
 $('goSolo').addEventListener('click', startSolo);
@@ -1435,7 +1505,7 @@ $('quitBtn').addEventListener('click', () => { if (G.mode === 'solo') location.r
 if (window.BackGuard) BackGuard.set('home');
 
 const SC = window.SC = {
-  G, R, player, cars, peds, TUNE, MISSIONS, P, gangs, pickups, npcs, SHOPS, HOSPITAL, SHOP_ITEMS, closeShop, WEAPONS, MKT, MKW, shots, newNpc, confiscate,
+  G, R, player, cars, peds, TUNE, MISSIONS, P, gangs, pickups, npcs, SHOPS, HOSPITAL, SHOP_ITEMS, closeShop, WEAPONS, MKT, MKW, shots, newNpc, confiscate, DAY, setClock,
   onSend: null, onQuit: null,
   startSolo,
   showOnly, setPlaying,
@@ -1444,6 +1514,7 @@ const SC = window.SC = {
   // 配達競争を始める。slot は 0〜3(並ぶ場所)
   startRace(meId, slot, color) {
     document.body.classList.remove('solo'); G.mode = 'race'; G.wanted = 0; removeAllPolice(); R.me = meId; R.state = null; R.remotes = {};
+    setClock(DAY.race); // 配達競争は夜のまま(時間は流れない)
     const sp = RACE_SPAWN[slot % 4], c0 = P(3, 3); const x = c0.x + sp[0] * sp[2] + sp[1] * 3.2, z = c0.z + sp[1] * sp[2] - sp[0] * 3.2, h = Math.atan2(sp[0], sp[1]);
     resetPlayerToFoot(x, z, h);
     if (R.myCar) removeCar(R.myCar);
@@ -1482,5 +1553,6 @@ const SC = window.SC = {
   getMe() { return { x: Math.round(player.x * 10) / 10, z: Math.round(player.z * 10) / 10, h: Math.round(player.h * 100) / 100, c: player.mode === 'car' ? 1 : 0, v: Math.round((player.v || 0) * 10) / 10 }; },
   toast,
 };
+applyEnv(G.clock);
 requestAnimationFrame(frame);
 })();
