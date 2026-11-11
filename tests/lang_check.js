@@ -8,7 +8,7 @@ for (const f of ['main.js', 'lobby.js', 'online.js']) {
   const s = R(f);
   for (const m of s.matchAll(/tr\(\s*(?:[^'"()]*\?\s*)?(['"])((?:\\.|(?!\1).)*)\1(?:\s*:\s*(['"])((?:\\.|(?!\3).)*)\3)?/g)) { need(m[2].replace(/\\'/g, "'")); if (m[4]) need(m[4].replace(/\\'/g, "'")); }
   // 表示のときに tr() に通す文(ミッション・武器・店の名前・街の人のセリフとQ&A)
-  for (const m of s.matchAll(/(?:title|text|done|name|ok|ng): '([^']+)'/g)) need(m[1]);
+  for (const m of s.matchAll(/(?:title|text|done|desc|name|ok|ng): '([^']+)'/g)) need(m[1]);
   for (const m of s.matchAll(/shopMark\('\w+', '([^']+)'/g)) need(m[1]);
 }
 const html = R('index.html');

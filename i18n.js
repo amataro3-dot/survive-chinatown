@@ -28,9 +28,9 @@
       'Stick (bottom left): walk / steer the car (left and right)<br>Drag anywhere else: turn the camera<br>"Get in / Get out": get in and out of cars<br>"Dash": run<br>"Talk": talk to a person nearby<br>"Attack": with a gun, drag the button to aim and release to shoot<br>In a car, drive with the "Gas", "Brake" and "Reverse" buttons<br>PC: WASD or arrow keys, E to get in/out, Shift to dash, Space to brake',
       '왼쪽 아래 스틱: 걷기 / 자동차 핸들(좌우)<br>그 밖의 곳을 드래그: 카메라 돌리기<br>"타기 / 내리기": 차 타고 내리기<br>"대시": 달리기<br>"말 걸기": 근처의 사람에게 말 걸기<br>"공격": 총은 버튼을 끌어서 조준하고, 떼면 쏜다<br>차에서는 "액셀" "브레이크" "후진" 버튼으로 달린다<br>PC: WASD·방향키, E로 타고 내리기, Shift로 대시, Space로 브레이크'],
     'ひとりで遊ぶ': ['Play Solo', '혼자 하기'],
-    '5つの配達ミッションに挑戦。人をはねたり、車にぶつけたりすると手配度(★)が上がって警察が追ってくる。警察官につかまると逮捕！<br>光るマークの店で、武器(赤)や薬(緑)が買える。': [
-      'Take on 5 delivery missions. Hit people or crash into cars and your wanted level (★) goes up and the police come after you. Get caught by an officer and you\'re busted!<br>At shops with a glowing marker you can buy weapons (red) and medicine (green).',
-      '5개의 배달 미션에 도전. 사람을 치거나 차에 부딪히면 수배도(★)가 올라가고 경찰이 쫓아온다. 경찰관에게 잡히면 체포!<br>빛나는 표시가 있는 가게에서 무기(빨강)와 약(초록)을 살 수 있다.'],
+    'マフィアのお使いをこなして、お金をかせごう。人をはねたり、車にぶつけたりすると手配度(★)が上がって警察が追ってくる。警察官につかまると逮捕！<br>光るマークの店で、武器(赤)や薬(緑)が買える。<br>家(青い光)に入るとセーブして、体力が全回復する。ミッションをクリアしたときも、自動でセーブする。': [
+      'Run errands for the mafia and earn money. Hit people or crash into cars and your wanted level (★) goes up and the police come after you. If an officer catches you, you get arrested!<br>At shops with a glowing mark you can buy weapons (red) and medicine (green).<br>Step into your home (blue light) to save and fully recover. The game also saves automatically when you clear a mission.',
+      '마피아의 심부름을 해서 돈을 벌자. 사람을 치거나 차에 부딪히면 수배도(★)가 올라가 경찰이 쫓아온다. 경찰관에게 잡히면 체포!<br>빛나는 표시가 있는 가게에서 무기(빨강)와 약(초록)을 살 수 있다.<br>집(파란 빛)에 들어가면 저장되고 체력이 모두 회복된다. 미션을 클리어했을 때도 자동으로 저장된다.'],
     '配達競争(2〜4人)': ['Delivery Race (2–4 players)', '배달 경쟁(2~4명)'],
     '荷物を先に取って、届け先まで運ぶと1点。荷物を持っている人にぶつかると奪える。先に3点取った人の勝ち！': [
       'Grab the package first and take it to the drop-off for 1 point. Bump into whoever has the package to steal it. First to 3 points wins!',
@@ -102,7 +102,6 @@
     'あやしい荷物': ['Shady Package', '수상한 짐'],
     'あやしい荷物を受け取れ': ['Pick up the shady package', '수상한 짐을 받아라'],
     '警察をかわして港の船へ運べ！': ['Dodge the police and take it to the boat at the harbor!', '경찰을 따돌리고 항구의 배로 옮겨라!'],
-    '最後の大仕事': ['The Last Big Job', '마지막 큰 일'],
     'チェックポイント 1/4': ['Checkpoint 1/4', '체크포인트 1/4'],
     'チェックポイント 2/4': ['Checkpoint 2/4', '체크포인트 2/4'],
     'チェックポイント 3/4': ['Checkpoint 3/4', '체크포인트 3/4'],
@@ -260,6 +259,25 @@
     'あなたの勝ち！': ['You win!', '승리!'],
     '{name} の勝ち！': ['{name} wins!', '{name} 님의 승리!'],
     '{n}点先取の配達競争': ['Delivery race, first to {n}', '{n}점 선취 배달 경쟁'],
+    /* ---------- ホーム・セーブ・自由なミッション(v=14) ---------- */
+    '大きな仕事': ['The Big Job', '큰 일'],
+    'ミッション': ['Mission', '미션'],
+    '受ける': ['Accept', '받기'],
+    'つづきから': ['Continue', '이어하기'],
+    'はじめから(ひとり用)': ['New Game (Solo)', '처음부터(혼자 하기)'],
+    'セーブが消えます。もう一度押すと、はじめから': ['Your save will be erased. Tap again to start over', '저장이 지워집니다. 한 번 더 누르면 처음부터'],
+    'ミッション {a}/{b}': ['Missions {a}/{b}', '미션 {a}/{b}'],
+    '{m}分': ['{m} min', '{m}분'],
+    'ミッション：{title}': ['Mission: {title}', '미션: {title}'],
+    'ほうび ${r}': ['Reward ${r}', '보상 ${r}'],
+    '紫の光で、好きなミッションを受けよう': ['Pick any mission at a purple light', '보라색 빛에서 원하는 미션을 받자'],
+    'セーブした！ 体力が全回復': ['Saved! Health fully restored', '저장했다! 체력 전부 회복'],
+    '体力が全回復(セーブはできなかった)': ['Health fully restored (could not save)', '체력 전부 회복(저장은 못 했다)'],
+    '市場のおつかい': ['Market Errand', '시장 심부름'],
+    '市場の奥で品物を受け取って、店に届ける。市場には歩いてしか入れない。': ['Pick up the goods deep in the market and deliver them to a shop. You can only enter the market on foot.', '시장 안쪽에서 물건을 받아 가게에 배달한다. 시장에는 걸어서만 들어갈 수 있다.'],
+    '市場の奥で品物を受け取ろう(歩いて入る)': ['Pick up the goods deep in the market (go in on foot)', '시장 안쪽에서 물건을 받자(걸어서 들어간다)'],
+    '品物ゲット！': ['Got the goods!', '물건 획득!'],
+    '品物を店に届けよう': ['Deliver the goods to the shop', '물건을 가게에 배달하자'],
   };
 
   const idx = L === 'en' ? 0 : 1;
