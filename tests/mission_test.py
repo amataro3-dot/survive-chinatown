@@ -1,6 +1,7 @@
-"""v=15 のテスト(Claude 用): python3 tests/mission_test.py . <画像フォルダ>
+"""v=15・v=16 のテスト(Claude 用): python3 tests/mission_test.py . <画像フォルダ>
 にせ Three.js で、お使いの間はおそってこない・黒の男のひとこと・のこりのミッション10こ・夜だけ/昼だけ・借金の取り立て(貸す/貸さない)・
-船員のたのみ(ふつう/変わった3つ目)・忍び込み・船代・2つの終わり・ホームでねる を確かめる"""
+船員のたのみ(ふつう/変わった3つ目)・忍び込み・船代・2つの終わり・ホームでねる を確かめる
+v=16: クラブの建物・夜だけのミッション3つ(夜市の屋台を守れ・酔っぱらいを送る・夜中の出前)"""
 import sys, os, json, re
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from playwright.sync_api import sync_playwright
@@ -59,7 +60,7 @@ with sync_playwright() as p:
 
     # ---------- つづきから(お使いが終わったあと) ----------
     cont(BASE)
-    check(opened() == "market,guard,taxi,debt,bao,snake,valet,decoy,sailor1" and ev("SC.BOAT.g.visible"), "お使いのあと: 9この紫の光と、船の光が出る(" + opened() + ")")
+    check(opened() == "market,guard,taxi,debt,bao,snake,valet,decoy,stall,drunk,ramen,sailor1" and ev("SC.BOAT.g.visible"), "お使いのあと: 12この紫の光と、船の光が出る(" + opened() + ")")
     # 用心棒
     f = take('guard'); n0 = ev("SC.gangs.length")
     check(ev("SC.MX.foes.length") == 5 and "のこり 5人" in txt("#mission") and ev("SC.MX.foes.every(g=>g.state==='chase'&&g.temp)"), "用心棒: マフィアが5人出て、おそってくる")
@@ -101,6 +102,39 @@ with sync_playwright() as p:
     incar("SC.MX.mcar"); check(ev("SC.G.si") == 1 and ev("SC.player.car===SC.MX.mcar"), "光っている車に乗ると、次は港へ")
     do("SC.bump()"); pg.wait_for_timeout(900); check(ev("SC.G.free.id") == "valet", "1回ぶつけても、まだ失敗ではない")
     tp(f['steps'][1]['x'], f['steps'][1]['z']); check(ev("SC.G.money") == m0 + 3500 and ev("SC.MX.mcar") is None, "港に着くとクリア +$3,500")
+    # ---------- v=16: クラブの建物・夜だけのミッション3つ ----------
+    C = ev("({x:SC.CLUB.x,z:SC.CLUB.z,d:SC.CLUB.d,w:SC.CLUB.w})")
+    check(ev("SC.pointBlocked(SC.CLUB.x, SC.CLUB.z)") and ev("SC.pointBlocked(SC.CLUB.x-10, SC.CLUB.z)") and ev("SC.pointBlocked(SC.CLUB.x+10, SC.CLUB.z)") and not ev("SC.pointBlocked(SC.CLUB.x, SC.CLUB.z+SC.CLUB.d/2+1)") and ev("SC.NEON_MATS.length") >= 4, "クラブ: 建物はかべになっている。入口の前は歩ける。ネオンがある")
+    # 夜市の屋台を守れ(夜だけ)
+    quiet(350); take('stall', yes=False); check(pg.is_disabled("#offerYes") and "夜だけ" in txt("#offerNote"), "夜市の屋台を守れ: 夕方は受けられない"); pg.click("#offerNo"); pg.wait_for_timeout(150)
+    quiet(500); m0 = ev("SC.G.money"); n0 = ev("SC.gangs.length"); f = take('stall')
+    free = "SC.MX.foes.every(g=>g.temp&&g.state==='chase'&&!SC.pointBlocked(g.x,g.z))"
+    check(ev("SC.MX.foes.length") == 3 and ev(free) and "1/3" in txt("#mission") and "のこり 3人" in txt("#mission") and txt("#subName") == "屋台の人", "夜は受けられる。マフィアが3人出る(かべの中ではない)。屋台の人のひとこと")
+    do("P.hp=100; SC.MX.foes.forEach(g=>{g.hp=0})"); pg.wait_for_timeout(300)
+    check(ev("SC.G.si") == 1 and ev("SC.MX.foes.length") == 4 and ev(free) and "2/3" in txt("#mission") and "まだ来るぞ" in txt("#toast"), "たおすと、2回目は4人")
+    do("P.hp=100; SC.MX.foes.forEach(g=>{g.hp=0})"); pg.wait_for_timeout(300)
+    check(ev("SC.G.si") == 2 and ev("SC.MX.foes.length") == 5 and ev(free) and "3/3" in txt("#mission"), "3回目は5人")
+    do("P.hp=100; SC.MX.foes.forEach(g=>{g.hp=0})"); pg.wait_for_timeout(300)
+    check(ev("SC.G.money") == m0 + 3500 and ev("SC.gangs.length") == n0 and ev("!!SC.G.done.stall") and ev("SC.G.wanted") == 0, "3回追いはらうとクリア +$3,500。相手は消える。★は上がらない")
+    # 酔っぱらいを送る(夜だけ)
+    m0 = ev("SC.G.money"); f = take('drunk')
+    check(abs(f['x'] - (C['x'] + 5)) < 0.1 and ev("SC.MX.props.length") == 1 and txt("#subName") == "酔っぱらい", "酔っぱらいを送る: 紫の光はクラブの入口の横。酔っぱらいが待っている")
+    tp(f['steps'][0]['x'], f['steps'][0]['z']); check(ev("SC.G.si") == 0, "歩いて行っても乗せられない")
+    incar(); tp(f['steps'][0]['x'], f['steps'][0]['z']); check(ev("SC.G.si") == 1 and ev("SC.MX.props.length") == 0 and ev("SC.G.timeLeft") <= 0, "車で行くと乗る。時間は出ない")
+    do("SC.bump()"); pg.wait_for_timeout(250); check("あと2回" in txt("#toast") and "ゆらすな" in txt("#subText"), "1回ぶつけると「あと2回で失敗」と、酔っぱらいのひとこと"); pg.wait_for_timeout(700)
+    do("SC.bump()"); pg.wait_for_timeout(250); check("あと1回" in txt("#toast") and "次は、出る" in txt("#subText") and ev("SC.G.free.id") == "drunk", "2回目もまだセーフ(ひとことが変わる)"); pg.wait_for_timeout(700)
+    do("SC.bump()"); pg.wait_for_timeout(250); check(ev("SC.G.free") is None and "大変なことに" in txt("#toast") and F('drunk')['open'], "3回ぶつけると失敗。紫の光がもどる")
+    f = take('drunk'); incar(); tp(f['steps'][0]['x'], f['steps'][0]['z']); tp(f['steps'][1]['x'], f['steps'][1]['z'])
+    check(ev("SC.G.money") == m0 + 3000 and ev("!!SC.G.done.drunk") and "つりは" in txt("#subText"), "家に着くとクリア +$3,000")
+    # 夜中の出前(夜だけ)
+    m0 = ev("SC.G.money"); f = take('ramen'); check(55 < ev("SC.G.timeLeft") <= 60 and txt("#subName") == "ラーメン屋", "夜中の出前: 60秒の時間が出る。ラーメン屋のひとこと")
+    tp(f['steps'][0]['x'], f['steps'][0]['z']); check(ev("SC.G.free.id") == "ramen", "歩いて行っても届けられない")
+    incar(); t0 = ev("SC.G.timeLeft"); do("SC.bump()"); pg.wait_for_timeout(200)
+    check(4.9 < t0 - ev("SC.G.timeLeft") < 6 and "スープがこぼれた" in txt("#toast") and ev("SC.G.free.id") == "ramen", "ぶつけるとスープがこぼれて、5秒へる(失敗ではない)"); pg.wait_for_timeout(700)
+    do("G.timeLeft=3; SC.bump()"); pg.wait_for_timeout(300); check(ev("SC.G.free") is None and "時間切れ" in txt("#toast") and F('ramen')['open'], "時間がなくなると失敗。紫の光がもどる")
+    f = take('ramen'); incar(); tp(f['steps'][0]['x'], f['steps'][0]['z'])
+    check(ev("SC.G.money") == m0 + 3000 and ev("!!SC.G.done.ramen") and txt("#subName") == "港の人", "車で港に着くとクリア +$3,000")
+    pg.screenshot(path=SHOTS + "/m9_night3.png")
     # おとり(昼だけ)
     f = take('decoy', yes=False); check(pg.is_disabled("#offerYes") and "昼だけ" in txt("#offerNote"), "おとり: 夜は受けられない(「昼だけ受けられる」)"); pg.click("#offerNo")
     quiet(100); m0 = ev("SC.G.money"); f = take('decoy'); pg.wait_for_timeout(300)
@@ -152,7 +186,7 @@ with sync_playwright() as p:
     check(opened().endswith("sailor3"), "貸す前は、ふつうの3つ目が出ている")
     take('debt'); do("G.left=0"); pg.wait_for_timeout(300); pg.click("#storySkip"); pg.wait_for_timeout(200); pg.click("#offerYes"); pg.wait_for_timeout(200); pg.click("#storySkip"); pg.wait_for_timeout(300)
     d = saved(); check(d['lent'] == 1 and d['tru'] == 1 and "sailor3t" in opened() and "sailor3," not in opened() + ",", "2つクリアしてから貸すと、3つ目が「倉庫への届け物」に変わる(" + opened() + ")")
-    pg.reload(); pg.wait_for_timeout(1200); check("8/17" in txt("#goCont"), "スタート画面の数(" + txt("#goCont").replace("\n", " / ") + ")"); pg.click("#goCont"); pg.wait_for_timeout(800); quiet()
+    pg.reload(); pg.wait_for_timeout(1200); check("8/20" in txt("#goCont"), "スタート画面の数(" + txt("#goCont").replace("\n", " / ") + ")"); pg.click("#goCont"); pg.wait_for_timeout(800); quiet()
     check(ev("SC.G.tru") == 1 and "sailor3t" in opened(), "つづきからでも覚えている")
     m0 = ev("SC.G.money"); f = take('sailor3t'); check("情報屋と組んだのか" in txt("#subText"), "変わった3つ目: 船員のひとこと")
     tp(f['steps'][0]['x'], f['steps'][0]['z'])
@@ -202,6 +236,16 @@ with sync_playwright() as p:
         if lang == 'en': pg.screenshot(path=SHOTS + "/m8_en.png")
         pg.click("#storySkip"); pg.wait_for_timeout(200)
         check(not jp.search(t), lang + ": 借金の取り立て・お話・えらぶ画面に日本語が残っていない " + "".join(jp.findall(t))[:20])
+        quiet(500); t = ""  # v=16 の3つ
+        take('stall', yes=False); t += txt("#offer"); pg.click("#offerYes"); pg.wait_for_timeout(300); t += txt("#mission") + txt("#subName") + txt("#subText")
+        for k in range(3): do("P.hp=100; SC.MX.foes.forEach(g=>{g.hp=0})"); pg.wait_for_timeout(300); t += txt("#mission") + txt("#toast")
+        t += txt("#subName") + txt("#subText")
+        take('drunk', yes=False); t += txt("#offer"); pg.click("#offerYes"); pg.wait_for_timeout(300); t += txt("#mission") + txt("#subName") + txt("#subText")
+        s0 = F('drunk')['steps'][0]; incar(); tp(s0['x'], s0['z']); t += txt("#mission") + txt("#toast")
+        for k in range(3): do("SC.bump()"); pg.wait_for_timeout(250); t += txt("#toast") + txt("#subText"); pg.wait_for_timeout(650)
+        take('ramen', yes=False); t += txt("#offer"); pg.click("#offerYes"); pg.wait_for_timeout(300); t += txt("#mission") + txt("#subName") + txt("#subText")
+        incar(); do("SC.bump()"); pg.wait_for_timeout(250); t += txt("#toast"); s0 = F('ramen')['steps'][0]; tp(s0['x'], s0['z']); t += txt("#toast") + txt("#subName") + txt("#subText")
+        check(ev("!!SC.G.done.stall") and ev("!!SC.G.done.ramen") and not jp.search(t), lang + ": 夜だけのミッション3つに日本語が残っていない " + "".join(jp.findall(t))[:20])
         quiet(500); take('sneak'); t = txt("#mission"); f = F('sneak'); tp(f['steps'][0]['x'], f['steps'][0]['z'])
         for k in range(7): t += txt("#story"); pg.click("#story", position={"x":300,"y":80})
         pg.wait_for_timeout(200); t += txt("#clear"); check(shown("#clear") and not jp.search(t), lang + ": 忍び込み・終わりの画面に日本語が残っていない " + "".join(jp.findall(t))[:20])

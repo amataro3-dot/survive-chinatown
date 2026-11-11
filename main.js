@@ -166,6 +166,12 @@ const EXTRA_SPOTS = []; // 配達競争: 道路のほかに荷物・届け先が
 const MK_SPOTS = []; // 市場の武器(豚の頭・ヘビ・青龍刀)が出る場所
 const MK_DEEP = { x: 0, z: 0 }; // 市場の奥(ミッション「市場のおつかい」で品物を受け取る所。market() の中で決める)
 const STALLS = []; // 市場の屋台の場所(屋台の人を立たせるのに使う)
+// 黒マフィアのクラブ(v=16): 塔の西どなりの区画の、南がわ。店3けん分の場所に建てる(中には入れない。中は出だしのお話だけ)
+const CLUB = { x: roadC(3) - 18.8, z: roadC(3) - 12.5, w: 21.4, d: 9, h: 9.5 };
+const inClub = (x, z) => Math.abs(x - CLUB.x) < CLUB.w / 2 && Math.abs(z - CLUB.z) < 1;
+// クラブのネオン: 夕方と夜だけ光る(昼は消える)。applyEnv で色を変える
+const NEON_MATS = [];
+function neonMat(col, map) { const m = new THREE.MeshBasicMaterial(map ? { map } : { color: col }); NEON_MATS.push({ m, on: new THREE.Color(map ? 0xffffff : col), off: new THREE.Color(map ? 0x3c3842 : 0x2c2832) }); return m; }
 const SHOPS = []; // 店(武器屋・薬屋)の入口の光るマーク
 const SIGN_WORDS = ['龍', '福', '飯店', '麺', '茶', '酒', '点心', '金', '薬', '宝', '楼', '餃子', '粥', '華'];
 const SHOP_NAMES = ['金龍', '福満楼', '茶館', '点心', '麺家', '漢方', '雑貨', '飯店', '包子', '酒家', '宝石', '海鮮'];
@@ -223,6 +229,7 @@ function lanternString(ax, ay, az, bx, by, bz, n, sag) {
 const CT_WALLS = ['#a8392f', '#d8c6a0', '#7a2a26', '#c79a45', '#3f6b5a', '#e2d8c4', '#8c4a3a'];
 const ROOF_COLS = [0x2f7a55, 0x9a3324, 0x2f7a55, 0x40464f];
 function shophouse(x, z, w, d, h, r) {
+  const skip = inClub(x, z); // クラブの場所: 乱数だけ前と同じ数だけ使って、店は建てない(ほかの店の見た目を変えないため)
   const g = new THREE.Group(); g.position.set(x, 0.3, z); g.rotation.y = r;
   const base = pick(CT_WALLS), rows = Math.max(1, Math.round((h - 3.2) / 3.2));
   const front = nightMat(Math.max(2, Math.round(w / 2.6)), rows, base, 0.45, true), side = nightMat(Math.max(2, Math.round(d / 2.6)), rows, base, 0.2, true);
@@ -237,7 +244,8 @@ function shophouse(x, z, w, d, h, r) {
   }
   if (rnd() < 0.6) { const rh = 1.5 + w * 0.12; const m = new THREE.Mesh(roofGeo(w + 1.4, d + 1.4, rh, 0.9), ctRoof(pick(ROOF_COLS))); m.position.y = h; g.add(m); }
   else { const m = new THREE.Mesh(BG(w, 0.6, d), M(0x3a3236)); m.position.y = h + 0.3; g.add(m); }
-  for (const sx of [-w / 2 + 1.1, w / 2 - 1.1]) { const q = toW(x, z, r, sx, d / 2 + 0.6); LANTERNS.push([q[0], 3.0, q[1], 0.7, rnd() < 0.5 ? 1 : 0]); }
+  for (const sx of [-w / 2 + 1.1, w / 2 - 1.1]) { const q = toW(x, z, r, sx, d / 2 + 0.6), c = rnd() < 0.5 ? 1 : 0; if (!skip) LANTERNS.push([q[0], 3.0, q[1], 0.7, c]); }
+  if (skip) return;
   const q = toW(x, z, r, 0, d / 2 + 1.6); GLOWS.push([q[0], q[1], 4.5, 1]);
   scene.add(g); colRot(x, z, w, d, r);
 }
@@ -333,6 +341,38 @@ function buildMerged(m) {
     EXTRA_SPOTS.push({ x: r.x0 + 14, z: cz - 25 }, { x: r.x0 + 26, z: cz }, { x: r.x0 + 14, z: cz + 25 }); // 車のならびの間
     for (let k = 0; k < 4; k++) { const lz = r.z0 + 12 + k * 23; addBox(0.25, 6, 0.25, cx, 3.3, lz, M(0x333333)); addBox(0.9, 0.3, 0.9, cx, 6.3, lz, MB(0xfff0c8)); GLOWS.push([cx, lz, 10, 2]); }
   }
+}
+// 黒マフィアのクラブ(v=16)。正面は南(道路)。黒い建物・ピンクと紫のネオン・赤いじゅうたん・見はり。乱数は使わない
+function club() {
+  const { x, z, w, d, h } = CLUB, f = d / 2, g = new THREE.Group(); g.position.set(x, 0.3, z);
+  const add = (geo, mat, px, py, pz) => { const m = new THREE.Mesh(geo, mat); m.position.set(px, py, pz); g.add(m); return m; };
+  const pink = neonMat(0xff4ad0), purple = neonMat(0x9a5cff), dark = M(0x17141d), black = M(0x0b090f), gold = M(0xd8a83a);
+  add(BG(w, h, d), dark, 0, h / 2, 0); add(BG(w + 0.3, 0.35, d + 0.3), black, 0, h + 0.17, 0);
+  add(BG(w, 3.5, 0.12), black, 0, 1.75, f + 0.02); // 1階のかべ(少し黒い)
+  add(BG(w - 0.5, 0.14, 0.1), pink, 0, h - 0.45, f + 0.07); add(BG(w - 0.5, 0.14, 0.1), purple, 0, 3.95, f + 0.1); // 横のネオン
+  for (const sx of [-1, 1]) { add(BG(0.14, h - 0.9, 0.1), pink, sx * (w / 2 - 0.3), h / 2, f + 0.07); for (const wx of [5.3, 8.3]) add(BG(1.7, 2.1, 0.08), purple, sx * wx, 6.4, f + 0.05); } // たてのネオン・2階の窓
+  // 看板「黒龍 CLUB」
+  const sign = canvasTex(320, 160, (c, W, H) => {
+    c.fillStyle = '#0e0a14'; c.fillRect(0, 0, W, H); c.strokeStyle = '#ff4ad0'; c.lineWidth = 5; c.shadowColor = '#ff4ad0'; c.shadowBlur = 12; c.strokeRect(7, 7, W - 14, H - 14);
+    c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillStyle = '#ffd0f4'; c.font = 'bold 84px ' + FONT; c.fillText('黒龍', W / 2, 66);
+    c.fillStyle = '#c9a8ff'; c.shadowColor = '#9a5cff'; c.font = 'bold 30px ' + FONT; c.fillText('C L U B', W / 2, 128);
+  });
+  add(BG(6.4, 3.2, 0.2), neonMat(0, sign), 0, 6.4, f + 0.14);
+  add(BG(0.2, 4.6, 1.2), neonMat(0, vSignMat('CLUB', '#9a5cff').map), -w / 2 + 0.7, 6.3, f + 0.7); // 横に出た、たての看板
+  // 入口: 黒いとびら・ネオンのわく・ひさし
+  add(BG(2.8, 3.2, 0.12), M(0x050408), 0, 1.6, f + 0.06); add(BG(0.06, 3.1, 0.14), M(0x2a2630), 0, 1.6, f + 0.08);
+  for (const sx of [-1, 1]) { add(BG(0.14, 3.3, 0.14), pink, sx * 1.5, 1.65, f + 0.1); add(BG(0.08, 0.5, 0.1), gold, sx * 0.25, 1.6, f + 0.16); }
+  add(BG(3.14, 0.14, 0.14), pink, 0, 3.3, f + 0.1);
+  add(BG(4.6, 0.25, 2.0), black, 0, 3.7, f + 1.0); add(BG(4.6, 0.1, 0.1), purple, 0, 3.62, f + 2.0); for (const sx of [-1, 1]) add(BG(0.1, 0.1, 2.0), purple, sx * 2.3, 3.62, f + 1.0);
+  // 赤いじゅうたんと、金の柱・赤いロープ
+  add(BG(2.6, 0.05, 2.0), M(0xa8141c), 0, 0.03, f + 1.0);
+  for (const sx of [-1, 1]) { for (const pz of [0.35, 1.75]) { add(new THREE.CylinderGeometry(0.07, 0.09, 1.0, 8), gold, sx * 1.6, 0.5, f + pz); add(BG(0.2, 0.2, 0.2), gold, sx * 1.6, 1.05, f + pz); } add(BG(0.07, 0.07, 1.4), M(0xa8141c), sx * 1.6, 0.86, f + 1.05); }
+  scene.add(g); colRot(x, z, w, d, 0);
+  GLOWS.push([x, z + f + 2.2, 7, 3], [x - 7, z + f + 1.6, 4.5, 3], [x + 7, z + f + 1.6, 4.5, 3]);
+  // 見はり(黒い服・サングラス。立っているだけ)
+  const per = makePerson(0x15151a, 0x15151a, 0xc89870), bx = x - 2.5, bz = z + f + 0.75;
+  part(per, 0.58, 0.13, 0.08, 0x050505, 0, 2.2, 0.28); part(per, 0.22, 0.55, 0.05, 0xf2f2f2, 0, 1.52, 0.24); part(per, 0.1, 0.5, 0.06, 0x15151a, 0, 1.5, 0.26); // サングラス・白いシャツ・黒いネクタイ
+  per.g.position.set(bx, 0.3, bz); per.armL.rotation.z = -0.12; per.armR.rotation.z = 0.12; addCol(bx - 0.35, bx + 0.35, bz - 0.3, bz + 0.3);
 }
 // 港の奥の倉庫(v=15)。とびらは西。船員のたのみの届け先
 const WAREHOUSE = { x: 169.5, z: 151 };
@@ -438,6 +478,7 @@ function buildSpecial(b) {
   }
   for (const b of specialBlocks) buildSpecial(b);
   warehouse();
+  club();
   market();
   for (const m of MERGES) if (m.kind !== 'market') buildMerged(m);
   gate(roadC(1) + 8, roadC(4), Math.PI / 2); gate(roadC(4) - 8, roadC(3), Math.PI / 2); gate(roadC(2), roadC(2) + 8, 0); gate(roadC(3), roadC(5) - 8, 0);
@@ -457,7 +498,7 @@ function buildSpecial(b) {
   // 地面にうつる光
   const glowTex = canvasTex(64, 64, (g) => { const gr = g.createRadialGradient(32, 32, 0, 32, 32, 32); gr.addColorStop(0, 'rgba(255,255,255,1)'); gr.addColorStop(1, 'rgba(255,255,255,0)'); g.fillStyle = gr; g.fillRect(0, 0, 64, 64); });
   const gg = new THREE.PlaneGeometry(2, 2); gg.rotateX(-Math.PI / 2);
-  [0xff5a2a, 0xffb060, 0xbfc8ff].forEach((col, ci) => {
+  [0xff5a2a, 0xffb060, 0xbfc8ff, 0xff4ad0].forEach((col, ci) => { // 赤・だいだい・白っぽい青・ピンク(クラブ)
     const L = GLOWS.filter(l => l[3] === ci); if (!L.length) return;
     const mat = new THREE.MeshBasicMaterial({ map: glowTex, color: col, transparent: true, opacity: ci === 2 ? 0.25 : 0.45, blending: THREE.AdditiveBlending, depthWrite: false });
     GLOW_MATS.push({ m: mat, o: mat.opacity });
@@ -1223,9 +1264,11 @@ const DEBT = 10000, FARE = 20000; // 情報屋に貸すお金・船代
 // 自由なミッション: MISSIONS(黒マフィアのお使い。順番どおり)が全部終わると、紫の光るマーク(at)で受けられる。好きな順番でよい
 // id はセーブに残すので変えない
 //   when = 'night'(夜だけ)・'day'(昼だけ)、after = このミッションのあとに出る、need = 出る条件、say・endSay = 始まり・終わりのひとこと
-//   steps の type: go(そこへ行く。car: 1 = 車で、2 = ミッションの車で。foot = 歩いて。fragile = ぶつけてよい回数)・kill(n人たおす)・collect(items を全部拾う)
+//   steps の type: go(そこへ行く。car: 1 = 車で、2 = ミッションの車で。foot = 歩いて。fragile = ぶつけてよい回数。guest = 待っている人(1 = 行き先の南、-1 = 北)
+//       fail = ぶつけすぎたときの文、ouch = ぶつけるたびのひとこと、spill = ぶつけるとへる秒)・kill(n人たおす)・collect(items を全部拾う)
 //     ram(逃げる車に n回ぶつける)・getin(ミッションの車に乗る)・survive(time 秒、★wanted のまま逃げる)・sneak(警察官のライトをよけて歩く)
 //     hook(next) = その段が終わったときにすること(お話など)。終わったら next() を呼ぶ
+const STALL_POS = { x: roadC(2), z: MK.z0 + 4.6 }; // 夜市の入口のすぐ中(「夜市の屋台を守れ」でマフィアが出る所)
 const FREE = [
   { id: 'market', title: '市場のおつかい', desc: '市場の奥で品物を受け取って、店に届ける。市場には歩いてしか入れない。', reward: 2000, at: { x: roadC(2), z: MK.z0 + 3.2 }, steps: [{ type: 'go', pos: MK_DEEP, text: '市場の奥で品物を受け取ろう(歩いて入る)', done: '品物ゲット！' }, { type: 'go', pos: { x: roadC(4) - 7.5, z: roadC(2) + 26 }, text: '品物を店に届けよう' }] },
   { id: 'guard', title: '用心棒', desc: '店をおそいに来るマフィアを、5人たおす。', reward: 3000, at: { x: -90, z: 57.3 }, steps: [{ type: 'kill', pos: { x: -76, z: 52 }, n: 5, text: '店をおそうマフィアをたおせ(のこり {n}人)' }] },
@@ -1235,6 +1278,14 @@ const FREE = [
   { id: 'snake', when: 'night', title: 'ヘビが逃げた', desc: '市場から逃げたヘビを3匹つかまえて、市場に返す。', reward: 2000, at: { x: -74, z: 46.7 }, steps: [{ type: 'collect', items: [{ x: -100, z: 30 }, { x: -52, z: -4 }, { x: -20, z: 55 }], text: '逃げたヘビをつかまえろ(のこり {n}匹。歩いて近づく)', done: 'ヘビを全部つかまえた！' }, { type: 'go', pos: { x: -74, z: 46.7 }, text: 'ヘビを市場に返そう' }] },
   { id: 'valet', when: 'night', title: '車を届ける', desc: '駐車場の車を、ぶつけずに港まで運ぶ。', reward: 3500, at: { x: -109.3, z: 90 }, steps: [{ type: 'getin', text: '駐車場の光っている車に乗ろう', done: 'この車を港へ！' }, { type: 'go', car: 2, pos: { x: 156, z: -30 }, fragile: 1, text: 'ぶつけずに港まで運べ' }] },
   { id: 'decoy', when: 'day', title: 'おとり', desc: 'わざと警察に追われて、★3のまま2分逃げ切る。', reward: 5000, wantedOff: 1, at: { x: 118, z: -98.7 }, steps: [{ type: 'survive', wanted: 3, time: 120, text: '★3のまま、2分逃げ切れ' }] },
+  // 夜だけのミッション(v=16)
+  { id: 'stall', when: 'night', title: '夜市の屋台を守れ', desc: '夜市の屋台をこわしに来るマフィアを、3回追いはらう。', reward: 3500, at: { x: roadC(2) + 9, z: MK.z0 - 0.7 }, say: { name: '屋台の人', text: '今夜も、あいつらが屋台をこわしに来る。たのむ、追いはらってくれ' }, endSay: { name: '屋台の人', text: '助かった！ これで今夜も店を出せるよ' },
+    steps: [{ type: 'kill', pos: STALL_POS, n: 3, text: '屋台をこわしに来たマフィアをたおせ 1/3(のこり {n}人)', done: 'まだ来るぞ！' }, { type: 'kill', pos: STALL_POS, n: 4, text: '屋台をこわしに来たマフィアをたおせ 2/3(のこり {n}人)', done: 'まだ来るぞ！' }, { type: 'kill', pos: STALL_POS, n: 5, text: '屋台をこわしに来たマフィアをたおせ 3/3(のこり {n}人)' }] },
+  { id: 'drunk', when: 'night', title: '酔っぱらいを送る', desc: 'クラブから出てきた酔っぱらいを、車で家まで送る。3回ぶつけると失敗。', reward: 3000, at: { x: CLUB.x + 5, z: roadC(3) - 5.3 }, say: { name: '酔っぱらい', text: 'うぃ〜… 家まで、たのむ… ゆっくりな…' }, endSay: { name: '酔っぱらい', text: '…ついた？ あんた、いい運転手だな… つりは、いらねぇ' },
+    steps: [{ type: 'go', car: 1, guest: -1, pos: { x: CLUB.x, z: roadC(3) - 3.5 }, text: '車に乗って、クラブの前の酔っぱらい(黄色い光)をむかえに行こう', done: '酔っぱらいが乗った！' },
+      { type: 'go', car: 1, pos: { x: roadC(5), z: roadC(0) + 26 }, fragile: 2, fail: '車の中が大変なことに… ミッション失敗', ouch: [{ name: '酔っぱらい', text: 'うっ… ゆ、ゆらすな…' }, { name: '酔っぱらい', text: 'も、もうだめだ… 次は、出る…' }], text: 'ゆらさないように、家まで送ろう(3回ぶつけると失敗)' }] },
+  { id: 'ramen', when: 'night', title: '夜中の出前', desc: '夜しか開いていない店のラーメンを、のびる前に車で港へ届ける。ぶつけるとスープがこぼれて、時間がへる。', reward: 3000, at: { x: roadC(2) + 26, z: roadC(2) + 5.3 }, say: { name: 'ラーメン屋', text: '港の夜勤に、ラーメン1ぱいだ。のびる前にたのむ。スープはこぼすなよ' }, endSay: { name: '港の人', text: 'お、まだのびてない。夜中のラーメンは、しみるなあ' },
+    steps: [{ type: 'go', car: 1, pos: { x: roadC(6), z: roadC(5) + 20 }, time: 60, spill: 5, text: '車で、のびる前にラーメンを港へ届けろ！(ぶつけると時間がへる)' }] },
   { id: 'sailor1', title: '船員のたのみ 1', desc: '箱を受け取って、港の倉庫まで運ぶ。', reward: 3000, at: PORT.sailor, say: { name: '船員', text: '運び屋か。口がかたいなら、仕事がある。この箱を倉庫まで。中は見るな' }, endSay: { name: '船員', text: '…見なかったな。また来い' }, steps: [{ type: 'go', pos: { x: roadC(1), z: roadC(1) + 20 }, text: '箱を受け取りに行こう', done: '箱ゲット！' }, { type: 'go', pos: { x: 162.5, z: 151 }, text: '箱を港の倉庫へ運ぼう' }] },
   { id: 'sailor2', after: 'sailor1', title: '船員のたのみ 2', desc: '市場の奥で箱を受け取って、港まで運ぶ。警察に追われる。', reward: 4000, at: PORT.sailor, say: { name: '船員', text: '次は市場の奥から、港までだ。追われても、箱は落とすな' }, endSay: { name: '船員', text: 'この港には、表に出せない荷物もある。知りたきゃ、もっと深い所まで来い' }, steps: [{ type: 'go', pos: MK_DEEP, text: '市場の奥で箱を受け取ろう(歩いて入る)', done: '箱ゲット！' }, { type: 'go', pos: PORT.sailor, wanted: 2, text: '警察をかわして、箱を港の船員に届けろ' }] },
   { id: 'sailor3', after: 'sailor2', need: () => !G.tru, title: '船員のたのみ 3', desc: '最後の荷物を、時間内に港の船まで運ぶ。警察に追われる。', reward: 5000, at: PORT.sailor, say: { name: '船員', text: '最後だ。これを船まで運べ。済んだら、荷物にまぎれて乗せてやる' }, endSay: { name: '船員', text: '約束だ。夜、コンテナの間を抜けてこい。見つかるなよ' }, steps: [{ type: 'go', pos: { x: roadC(0) + 20, z: roadC(6) }, text: '最後の荷物を受け取りに行こう', done: '荷物ゲット！' }, { type: 'go', pos: { x: 168, z: -60 }, time: 150, wanted: 3, text: '時間内に港の船へ運べ！' }] },
@@ -1318,7 +1369,7 @@ function beginStep() {
   const st = curM().steps[G.si]; G.left = st.n || 0; G.bumps = 0; G.tp = null;
   if (st.time) G.timeLeft = st.time; if (st.wanted) G.wanted = Math.max(G.wanted, st.wanted);
   markerColor(0xffd23f); marker.visible = false; if (st.pos) aim(st.pos.x, st.pos.z);
-  if (st.guest) { const per = makePerson(0xff8040, 0x333333, 0xc89870); per.g.position.set(st.pos.x, 0, st.pos.z + 2.3); per.g.rotation.y = Math.PI; MX.props.push(per.g); } // 待っているお客さん
+  if (st.guest) { const per = makePerson(0xff8040, 0x333333, 0xc89870); per.g.position.set(st.pos.x, 0, st.pos.z + 2.3 * st.guest); per.g.rotation.y = st.guest > 0 ? Math.PI : 0; if (st.guest < 0) per.g.rotation.z = 0.14; MX.props.push(per.g); } // 待っているお客さん(guest: -1 = 行き先の北がわ。酔っぱらいは少しかたむく)
   if (st.type === 'kill') for (let k = 0; k < st.n; k++) { // おそってくるマフィア
     const a = k / st.n * 6.28, g = newGang(st.pos.x + Math.cos(a) * 5, st.pos.z + Math.sin(a) * 3);
     g.temp = true; g.tier = 0; g.weapon = k === 0 ? 'pistol' : k % 2 ? 'knife' : 'fist'; setHand(g.per, g, g.weapon); g.state = 'chase'; MX.foes.push(g);
@@ -1358,9 +1409,12 @@ function failMission(msg) { toast(msg, 2.6); G.timeLeft = -1; marker.visible = f
 // 車をぶつけた(「ぶつけすぎると失敗」のミッション)
 function bump() {
   const m = curM(), st = m && !G.over && !(!G.free && G.failWait > 0) ? m.steps[G.si] : null;
-  if (!st || st.fragile === undefined || G.bumpCd > 0 || G.busy || (st.car === 2 && player.car !== MX.mcar)) return;
-  G.bumpCd = 0.8; G.bumps++;
-  if (G.bumps > st.fragile) failMission(tr('ぶつけすぎた… ミッション失敗')); else toast(tr('ぶつけた！ あと{n}回で失敗', { n: st.fragile - G.bumps + 1 }), 1.2);
+  if (!st || (st.fragile === undefined && !st.spill) || G.bumpCd > 0 || G.busy || (st.car === 2 && player.car !== MX.mcar)) return;
+  G.bumpCd = 0.8;
+  if (st.spill) { G.timeLeft = Math.max(0.01, G.timeLeft - st.spill); toast(tr('スープがこぼれた！ -{n}秒', { n: st.spill }), 1.2); return; } // 夜中の出前: 時間がへる
+  G.bumps++;
+  if (G.bumps > st.fragile) failMission(st.fail ? tr(st.fail) : tr('ぶつけすぎた… ミッション失敗'));
+  else { toast(tr('ぶつけた！ あと{n}回で失敗', { n: st.fragile - G.bumps + 1 }), 1.2); if (st.ouch) say(st.ouch[Math.min(G.bumps, st.ouch.length) - 1], true); }
 }
 // 借金の取り立て: 車を止めたら、中から情報屋が出てくる →「貸す」「貸さない」
 function debtHook(next) {
@@ -1439,6 +1493,7 @@ function applyEnv(t) {
   const lit = L(7);
   for (const m of NIGHT_MATS) m.emissive.setScalar(lit); // 窓の明かり
   for (const g of GLOW_MATS) g.m.opacity = g.o * lit;    // 地面にうつる光
+  for (const n of NEON_MATS) n.m.color.copy(n.off).lerp(n.on, lit); // クラブのネオン(昼は消える)
   if (starPts) { starPts.visible = lit > 0.05; starPts.material.opacity = lit; }
   if (moonM) moonM.visible = lit > 0.5; if (sunM) sunM.visible = lit < 0.5;
 }
@@ -1956,7 +2011,7 @@ $('quitBtn').addEventListener('click', () => { if (G.mode === 'solo') location.r
 if (window.BackGuard) BackGuard.set('home');
 
 const SC = window.SC = {
-  G, R, player, cars, peds, TUNE, MISSIONS, FREE, HOME, save, readSave, applySave, curM, pointBlocked, P, gangs, pickups, npcs, SHOPS, HOSPITAL, SHOP_ITEMS, closeShop, WEAPONS, MKT, MKW, shots, newNpc, confiscate, DAY, setClock, vendors, TALK, LINES, QAS, makeVip, startTalk, answerTalk, pickLine, getTalk: () => talk, camera, BOAT, PORT, MX, STORY, SNEAK, freeOpen, story, say, finish, openSleep, sleepTo, bump,
+  G, R, player, cars, peds, TUNE, MISSIONS, FREE, HOME, save, readSave, applySave, curM, pointBlocked, P, gangs, pickups, npcs, SHOPS, HOSPITAL, SHOP_ITEMS, closeShop, WEAPONS, MKT, MKW, shots, newNpc, confiscate, DAY, setClock, vendors, TALK, LINES, QAS, makeVip, startTalk, answerTalk, pickLine, getTalk: () => talk, camera, BOAT, PORT, MX, STORY, SNEAK, freeOpen, story, say, finish, openSleep, sleepTo, bump, CLUB, NEON_MATS, STALL_POS,
   onSend: null, onQuit: null,
   startSolo,
   showOnly, setPlaying,
