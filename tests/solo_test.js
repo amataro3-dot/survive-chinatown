@@ -6,7 +6,7 @@ const code=fs.readFileSync(require('path').join(__dirname,'..','main.js'),'utf8'
 function S(){const store={};const f=function(){};return new Proxy(f,{get(t,k){if(k in store)return store[k];if(k===Symbol.toPrimitive)return ()=>NaN;if(k==='then')return undefined;store[k]=S();return store[k];},set(t,k,v){store[k]=v;return true;},apply(){return S();},construct(){return S();}});}
 const els={};
 function el(id){if(!els[id]){els[id]={id,style:{},classList:{add(){},remove(){},toggle(){}},addEventListener(t,f){(this._l=this._l||{})[t]=f;},setPointerCapture(){},getContext(){return S();},textContent:'',innerHTML:'',width:0,height:0};}return els[id];}
-global.window=global;global.THREE=S();
+global.window=global;global.THREE=S();global.SC_NO_INTRO=1;
 global.document={getElementById:el,addEventListener(){},createElement:()=>({getContext:()=>S(),width:0,height:0}),body:{classList:{add(){},remove(){},toggle(){}}}};
 global.innerWidth=800;global.innerHeight=400;let raf=null;global.requestAnimationFrame=f=>{raf=f;};
 global.addEventListener=(t,f)=>{(global._l=global._l||{})[t]=f;};

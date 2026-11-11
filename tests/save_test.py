@@ -17,7 +17,7 @@ with sync_playwright() as p:
     ctx.route("https://www.gstatic.com/firebasejs/**", lambda r: r.fulfill(content_type="text/javascript", body=FAKE[r.request.url.rsplit("/",1)[1]]))
     ctx.route("https://cdnjs.cloudflare.com/**", lambda r: r.fulfill(content_type="text/javascript", body=THREE))
     ctx.expose_function("__db", handler_for("u"))
-    pg = ctx.new_page(); pg.on("pageerror", lambda e: errs.append(str(e))); pg.on("console", lambda m: m.type=="error" and errs.append(m.text))
+    ctx.add_init_script('window.SC_NO_INTRO = 1'); pg = ctx.new_page(); pg.on("pageerror", lambda e: errs.append(str(e))); pg.on("console", lambda m: m.type=="error" and errs.append(m.text))
     ev = lambda js: pg.evaluate("(() => { const SC = window.SC; return " + js + "; })()")
     shown = lambda sel: pg.evaluate("s => getComputedStyle(document.querySelector(s)).display !== 'none'", sel)
     def quiet():  # 時間は夕方で止める。ギャングは消す

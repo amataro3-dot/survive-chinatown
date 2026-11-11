@@ -24,7 +24,7 @@ with sync_playwright() as p:
         ctx.route("https://cdnjs.cloudflare.com/**", lambda route: route.fulfill(content_type="text/javascript", body=STUB))
         uid = "uid_" + name
         ctx.expose_function("__db", handler_for(uid))
-        pg = ctx.new_page()
+        ctx.add_init_script('window.SC_NO_INTRO = 1'); pg = ctx.new_page()
         pg.on("pageerror", lambda e: errors.append(f"{name}: {e}"))
         pg.on("console", lambda m: m.type == "error" and errors.append(f"{name}: {m.text}"))
         pg.goto(URL); pg.wait_for_timeout(300)

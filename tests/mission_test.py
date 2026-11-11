@@ -1,7 +1,8 @@
 """v=15・v=16 のテスト(Claude 用): python3 tests/mission_test.py . <画像フォルダ>
 にせ Three.js で、お使いの間はおそってこない・黒の男のひとこと・のこりのミッション10こ・夜だけ/昼だけ・借金の取り立て(貸す/貸さない)・
 船員のたのみ(ふつう/変わった3つ目)・忍び込み・船代・2つの終わり・ホームでねる を確かめる
-v=16: クラブの建物・夜だけのミッション3つ(夜市の屋台を守れ・酔っぱらいを送る・夜中の出前)"""
+v=16: クラブの建物・夜だけのミッション3つ(夜市の屋台を守れ・酔っぱらいを送る・夜中の出前)
+v=17: 出だしのお話(クラブの中)・ホームのアパート。ほかのテストは window.SC_NO_INTRO = 1 で出だしのお話をとばしている"""
 import sys, os, json, re
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from playwright.sync_api import sync_playwright
@@ -19,7 +20,7 @@ with sync_playwright() as p:
     ctx.route("https://www.gstatic.com/firebasejs/**", lambda r: r.fulfill(content_type="text/javascript", body=FAKE[r.request.url.rsplit("/",1)[1]]))
     ctx.route("https://cdnjs.cloudflare.com/**", lambda r: r.fulfill(content_type="text/javascript", body=THREE))
     ctx.expose_function("__db", handler_for("u"))
-    pg = ctx.new_page(); pg.on("pageerror", lambda e: errs.append(str(e))); pg.on("console", lambda m: m.type=="error" and errs.append(m.text))
+    ctx.add_init_script('window.SC_NO_INTRO = 1'); pg = ctx.new_page(); pg.on("pageerror", lambda e: errs.append(str(e))); pg.on("console", lambda m: m.type=="error" and errs.append(m.text))
     ev = lambda js: pg.evaluate("(() => { const SC = window.SC; return " + js + "; })()")
     do = lambda js: pg.evaluate("(() => { const SC = window.SC, G = SC.G, P = SC.player; " + js + "; return 0; })()")
     shown = lambda sel: pg.evaluate("s => getComputedStyle(document.querySelector(s)).display !== 'none'", sel)
@@ -47,6 +48,20 @@ with sync_playwright() as p:
     check(ok == 0, "紫の光・行き先・拾う物・港の場所は、かべの中や街の外ではない")
     ok = ev("""(()=>{ const m=[SC.HOME, SC.BOAT.at, ...SC.SHOPS, ...SC.FREE.map(f=>f.at)]; let bad=0; for(let i=0;i<m.length;i++) for(let j=i+1;j<m.length;j++){ if(m[i]===m[j]) continue; const d=Math.hypot(m[i].x-m[j].x,m[i].z-m[j].z); if(d>0.01&&d<6) bad++; } return bad })()""")
     check(ok == 0, "光るマークどうしは重なっていない")
+    # ---------- v=17: アパート・出だしのお話(クラブの中) ----------
+    check(ev("SC.pointBlocked(SC.APT.x, SC.APT.z)") and ev("SC.pointBlocked(SC.APT.x-6, SC.APT.z)") and not ev("SC.pointBlocked(SC.HOME.x, SC.HOME.z)") and abs(ev("SC.HOME.x") - 14) < 0.01, "アパート: 建物はかべになっている。青い光は入口の前で、歩ける")
+    pg.evaluate("window.SC_NO_INTRO = 0"); pg.click("#goSolo"); pg.wait_for_timeout(700)
+    check(shown("#story") and "妹からの手紙" in txt("#storyLines") and ev("!!SC.G.intro") and ev("SC.G.phase") == "night" and ev("SC.INTRO.dancers.length") == 20 and ev("SC.INTRO.g.visible"), "はじめから: クラブの中で、出だしのお話が始まる(おどる人は20人)")
+    check(not shown("#mission") and ev("SC.G.mi") == 0 and txt("#subText") == "", "お話の間は、ミッションの文もひとことも出ない")
+    for k in range(11): pg.click("#story", position={"x":300,"y":80}); pg.wait_for_timeout(60)
+    check(shown("#story") and "そこの車に乗れ" in txt("#storyLines"), "タップで12行目まで進む")
+    pg.click("#story", position={"x":300,"y":80}); pg.wait_for_timeout(500)
+    check(not shown("#story") and not ev("!!SC.G.intro") and not ev("SC.INTRO.g.visible") and ev("SC.G.phase") == "day" and "車に乗ろう" in txt("#mission") and abs(ev("SC.player.x") - 20) < 1, "お話が終わると、昼の街でミッション1が始まる")
+    pg.reload(); pg.wait_for_timeout(1200); pg.evaluate("window.SC_NO_INTRO = 0"); pg.click("#goSolo"); pg.wait_for_timeout(500); pg.click("#storySkip"); pg.wait_for_timeout(400)
+    check(not shown("#story") and not ev("!!SC.G.intro") and ev("SC.G.phase") == "day" and "車に乗ろう" in txt("#mission"), "「とばす」で、すぐ街から始まる")
+    pg.evaluate("s => localStorage.setItem('sc-save', s)", json.dumps(BASE)); pg.reload(); pg.wait_for_timeout(1200); pg.evaluate("window.SC_NO_INTRO = 0"); pg.click("#goCont"); pg.wait_for_timeout(600)
+    check(not shown("#story") and not ev("!!SC.G.intro") and ev("SC.G.mi") == 5, "「つづきから」では、出だしのお話は出ない")
+    pg.evaluate("localStorage.removeItem('sc-save')"); pg.reload(); pg.wait_for_timeout(1200)
     pg.click("#goSolo"); pg.wait_for_timeout(800); do("SC.DAY.speed=0; SC.setClock(350)")
     check(not ev("SC.BOAT.g.visible") and opened() == "", "お使いの間は、紫の光も船の光も出ない")
     do("const g=SC.gangs.find(g=>g.weapon==='fist'&&!g.off); window.__g=g; P.x=g.home.x+1.2; P.z=g.home.z; g.x=g.home.x; g.z=g.home.z"); pg.wait_for_timeout(1500)
@@ -227,7 +242,11 @@ with sync_playwright() as p:
     # ---------- 英語・韓国語 ----------
     jp = re.compile(r'[ぁ-んァ-ヶ一-龥]')
     for lang, w in [('en', 'Sleep'), ('ko', '자기')]:
-        pg.evaluate("l => localStorage.setItem('muddys-lang', l)", lang); cont(dict(BASE, money=30000, done=["sailor1","sailor2","sailor3"]))
+        pg.evaluate("l => localStorage.setItem('muddys-lang', l)", lang); pg.evaluate("localStorage.removeItem('sc-save')"); pg.reload(); pg.wait_for_timeout(1200)
+        pg.evaluate("window.SC_NO_INTRO = 0"); pg.click("#goSolo"); pg.wait_for_timeout(500); t = ""
+        for k in range(12): t += txt("#story"); pg.click("#story", position={"x":300,"y":80}); pg.wait_for_timeout(60)
+        check(not shown("#story") and len(t) > 300 and not jp.search(t), lang + ": 出だしのお話に日本語が残っていない " + "".join(jp.findall(t))[:20])
+        cont(dict(BASE, money=30000, done=["sailor1","sailor2","sailor3"]))
         H = ev("({x:SC.HOME.x,z:SC.HOME.z})"); tp(H['x'], H['z']); do("SC.openSleep()"); pg.wait_for_timeout(150)
         t = txt("#sleep") + txt("#sleepBtn"); check(not jp.search(t) and w in t, lang + ": ねる画面に日本語が残っていない"); pg.click("#sleepNo")
         take('debt'); t = txt("#mission") + txt("#subName") + txt("#subText"); do("G.left=0"); pg.wait_for_timeout(300)

@@ -168,7 +168,10 @@ const MK_DEEP = { x: 0, z: 0 }; // 市場の奥(ミッション「市場のお�
 const STALLS = []; // 市場の屋台の場所(屋台の人を立たせるのに使う)
 // 黒マフィアのクラブ(v=16): 塔の西どなりの区画の、南がわ。店3けん分の場所に建てる(中には入れない。中は出だしのお話だけ)
 const CLUB = { x: roadC(3) - 18.8, z: roadC(3) - 12.5, w: 21.4, d: 9, h: 9.5 };
-const inClub = (x, z) => Math.abs(x - CLUB.x) < CLUB.w / 2 && Math.abs(z - CLUB.z) < 1;
+// ホームのアパート(v=17): スタートの横の青い光のうしろ。店2けん分の場所に建てる(中には入れない)
+const HOME_X = roadC(3) + 14; // ホームの青い光(アパートの入口の前)
+const APT = { x: roadC(3) + 15.2, z: roadC(3) + 12.5, w: 14.3, d: 9, h: 13.4 };
+const inClub = (x, z) => [CLUB, APT].some(b => Math.abs(x - b.x) < b.w / 2 && Math.abs(z - b.z) < 1); // クラブ・アパートの場所(店は建てない)
 // クラブのネオン: 夕方と夜だけ光る(昼は消える)。applyEnv で色を変える
 const NEON_MATS = [];
 function neonMat(col, map) { const m = new THREE.MeshBasicMaterial(map ? { map } : { color: col }); NEON_MATS.push({ m, on: new THREE.Color(map ? 0xffffff : col), off: new THREE.Color(map ? 0x3c3842 : 0x2c2832) }); return m; }
@@ -229,7 +232,7 @@ function lanternString(ax, ay, az, bx, by, bz, n, sag) {
 const CT_WALLS = ['#a8392f', '#d8c6a0', '#7a2a26', '#c79a45', '#3f6b5a', '#e2d8c4', '#8c4a3a'];
 const ROOF_COLS = [0x2f7a55, 0x9a3324, 0x2f7a55, 0x40464f];
 function shophouse(x, z, w, d, h, r) {
-  const skip = inClub(x, z); // クラブの場所: 乱数だけ前と同じ数だけ使って、店は建てない(ほかの店の見た目を変えないため)
+  const skip = inClub(x, z); // クラブ・アパートの場所: 乱数だけ前と同じ数だけ使って、店は建てない(ほかの店の見た目を変えないため)
   const g = new THREE.Group(); g.position.set(x, 0.3, z); g.rotation.y = r;
   const base = pick(CT_WALLS), rows = Math.max(1, Math.round((h - 3.2) / 3.2));
   const front = nightMat(Math.max(2, Math.round(w / 2.6)), rows, base, 0.45, true), side = nightMat(Math.max(2, Math.round(d / 2.6)), rows, base, 0.2, true);
@@ -374,6 +377,46 @@ function club() {
   part(per, 0.58, 0.13, 0.08, 0x050505, 0, 2.2, 0.28); part(per, 0.22, 0.55, 0.05, 0xf2f2f2, 0, 1.52, 0.24); part(per, 0.1, 0.5, 0.06, 0x15151a, 0, 1.5, 0.26); // サングラス・白いシャツ・黒いネクタイ
   per.g.position.set(bx, 0.3, bz); per.armL.rotation.z = -0.12; per.armR.rotation.z = 0.12; addCol(bx - 0.35, bx + 0.35, bz - 0.3, bz + 0.3);
 }
+// ホームのアパート(v=17)。正面は北(道路)。4階だて・クリーム色のかべ・ベランダと洗たく物・入口の明かり。乱数は使わない
+function apartment() {
+  const { x, z, w, d, h } = APT, f = d / 2, g = new THREE.Group(); g.position.set(x, 0.3, z); g.rotation.y = Math.PI;
+  const add = (geo, mat, px, py, pz) => { const m = new THREE.Mesh(geo, mat); m.position.set(px, py, pz); g.add(m); return m; };
+  const COLS = 5, ROWS = 3, G0 = 3.4, cw = w / COLS, fh = (h - G0) / ROWS, wall = M(0xd9c9a3), trim = M(0xa8946c), iron = M(0x2e3238);
+  // 窓(夜は、いくつかに明かりがつく)
+  const c1 = document.createElement('canvas'), c2 = document.createElement('canvas'); c1.width = c2.width = COLS * 16; c1.height = c2.height = ROWS * 16;
+  const g1 = c1.getContext('2d'), g2 = c2.getContext('2d'); g1.fillStyle = '#d9c9a3'; g1.fillRect(0, 0, 80, 48); g2.fillStyle = '#000'; g2.fillRect(0, 0, 80, 48);
+  for (let r = 0; r < ROWS; r++) for (let k = 0; k < COLS; k++) {
+    const on = (r * 3 + k * 2) % 5 < 2, col = (r + k) % 3 ? '#ffe6a8' : '#ffb46a';
+    g1.fillStyle = '#8a7a58'; g1.fillRect(k * 16 + 3, r * 16 + 3, 10, 10); g1.fillStyle = on ? col : '#1f2a3a'; g1.fillRect(k * 16 + 4, r * 16 + 4, 8, 8); g1.fillStyle = '#8a7a58'; g1.fillRect(k * 16 + 7.5, r * 16 + 4, 1, 8);
+    if (on) { g2.fillStyle = col; g2.fillRect(k * 16 + 4, r * 16 + 4, 8, 8); }
+    g1.fillStyle = 'rgba(0,0,0,.18)'; g1.fillRect(k * 16, r * 16 + 15, 16, 1);
+  }
+  const t1 = new THREE.CanvasTexture(c1), t2 = new THREE.CanvasTexture(c2); t1.magFilter = t2.magFilter = THREE.NearestFilter;
+  const win = new THREE.MeshLambertMaterial({ map: t1, emissive: 0xffffff, emissiveMap: t2 }); NIGHT_MATS.push(win);
+  add(new THREE.BoxGeometry(w, h - G0, d), [wall, wall, trim, trim, win, wall], 0, G0 + (h - G0) / 2, 0);
+  add(BG(w, G0, d), M(0xb8a47c), 0, G0 / 2, 0); add(BG(w + 0.2, 0.22, d + 0.2), trim, 0, G0, 0);
+  add(BG(w + 0.3, 0.5, d + 0.3), trim, 0, h + 0.25, 0); // 屋上のふち
+  const tank = add(new THREE.CylinderGeometry(1.1, 1.1, 1.8, 12), M(0x6f7a80), -3.5, h + 1.7, -1); add(BG(1.8, 0.5, 1.8), iron, -3.5, h + 0.55, -1); tank.rotation.y = 0.3; // 水のタンク
+  // ベランダ(1れつおき)と洗たく物、エアコン
+  const CLOTH = [0xf4f4f4, 0xd9483a, 0x3f7fd0, 0xf2c230, 0x6fbf73];
+  for (let r = 0; r < ROWS; r++) for (let k = 0; k < COLS; k++) {
+    const bx = (k - (COLS - 1) / 2) * cw, by = G0 + r * fh;
+    if (k % 2 === 0) {
+      add(BG(2.5, 0.12, 0.9), trim, bx, by + 0.3, f + 0.45); add(BG(2.5, 0.75, 0.06), iron, bx, by + 0.75, f + 0.88); for (const sx of [-1.22, 1.22]) add(BG(0.06, 0.75, 0.9), iron, bx + sx, by + 0.75, f + 0.45);
+      if ((r + k) % 3 !== 1) { add(BG(2.3, 0.04, 0.04), iron, bx, by + 2.25, f + 0.8); for (let c = 0; c < 3; c++) add(BG(0.5, 0.62 + (c % 2) * 0.2, 0.04), M(CLOTH[(r * 2 + k + c) % 5]), bx - 0.72 + c * 0.72, by + 1.9 - (c % 2) * 0.1, f + 0.8); }
+    } else if ((r + k) % 2) add(BG(0.95, 0.6, 0.5), M(0xb9bdc0), bx, by + 0.55, f + 0.28);
+  }
+  add(BG(0.14, h - 0.6, 0.14), M(0x7a6a50), w / 2 - 0.5, h / 2, f + 0.1); // 雨どい
+  // 入口(青い光のまうしろ): とびら・ひさし・明かり・郵便受け
+  const dx = x - HOME_X;
+  add(BG(2.3, 2.95, 0.12), M(0x8a7a58), dx, 1.47, f + 0.04); add(BG(1.8, 2.7, 0.14), M(0x3f2a20), dx, 1.35, f + 0.06); add(BG(0.5, 0.9, 0.16), MB(0x9a8c6a), dx - 0.4, 1.9, f + 0.07); add(BG(0.08, 0.3, 0.2), M(0xd8a83a), dx + 0.6, 1.3, f + 0.08);
+  add(BG(3.0, 0.16, 1.2), M(0x8a3a2a), dx, 3.0, f + 0.6); add(BG(0.34, 0.26, 0.26), MB(0xffe0a0), dx, 2.82, f + 0.5); add(BG(2.4, 0.16, 0.7), M(0x9a948c), dx, 0.08, f + 0.35);
+  for (let c = 0; c < 4; c++) add(BG(0.42, 0.3, 0.12), M(c % 2 ? 0x6f7a80 : 0x8a949a), dx + 1.75 + (c % 2) * 0.48, 1.25 + (c > 1 ? 0.36 : 0), f + 0.07);
+  add(BG(1.6, 1.4, 0.1), M(0x1f2a3a), dx - 4.6, 1.9, f + 0.04); add(BG(1.8, 0.12, 0.3), trim, dx - 4.6, 1.15, f + 0.12); // 1階の窓
+  add(BG(0.2, 5.4, 1.2), vSignMat('福安公寓', '#ffd23f'), -w / 2 + 0.7, 7.6, f + 0.7); // たての看板
+  scene.add(g); colRot(x, z, w, d, 0);
+  GLOWS.push([HOME_X, z - f - 1.2, 4.5, 1]);
+}
 // 港の奥の倉庫(v=15)。とびらは西。船員のたのみの届け先
 const WAREHOUSE = { x: 169.5, z: 151 };
 function warehouse() {
@@ -479,6 +522,7 @@ function buildSpecial(b) {
   for (const b of specialBlocks) buildSpecial(b);
   warehouse();
   club();
+  apartment();
   market();
   for (const m of MERGES) if (m.kind !== 'market') buildMerged(m);
   gate(roadC(1) + 8, roadC(4), Math.PI / 2); gate(roadC(4) - 8, roadC(3), Math.PI / 2); gate(roadC(2), roadC(2) + 8, 0); gate(roadC(3), roadC(5) - 8, 0);
@@ -625,7 +669,7 @@ const GANG_W = { fist: { dmg: 5, cd: 1.0, range: 1.8 }, knife: { dmg: 12, cd: 1.
 // 病院(東側の白い建物)。やられたら、この前で目がさめる(道路の方を向いて)
 const HOSPITAL = { x: roadC(5) + 26, z: roadC(4) + 6.8, h: Math.PI };
 // ホーム(v=14): スタート地点の近くの歩道。青い光に入るとセーブして、体力が全回復する。sx・sz・sh = 「つづきから」と逮捕のあとに立つ所
-const HOME = { x: startX - 6, z: roadC(3) + 7.6, sx: startX - 6, sz: roadC(3) + 4.6, sh: Math.PI / 2 };
+const HOME = { x: HOME_X, z: roadC(3) + 7.6, sx: HOME_X, sz: roadC(3) + 4.6, sh: Math.PI / 2 };
 // 光るマーク(ホーム = 青、ミッション = 紫)。店のマークと同じ形
 function glowMark(col, x, z) {
   const g = new THREE.Group();
@@ -1249,6 +1293,7 @@ const MISSIONS = [
 // お話の場面(文字が1行ずつ出る。「」で始まる行はセリフ)
 /* story:start */
 const STORY = {
+  intro: ['妹からの手紙がとだえて、半年。', '最後の消印は、この街だった。', '着いた夜、人ごみでだれかと肩がぶつかった。', '「…すまない」', '妹の写真を見せて回り、たどりついたのは一軒のクラブ。', '「その女なら知ってるぞ。…ん？クラブに来て何も頼まずに聞けると思ってるのか？」', '言われるままに頼みつづけた。気づけば、朝だった。', '会計で、財布がないことに気づいた。', '妹の写真も、いっしょに消えていた。', '「払えない？ なら、働いて返してもらう」', '見せられた数字は、一生かかっても返せない額だった。', '「今日からお前は、うちの運び屋だ。まずは、そこの車に乗れ」'],
   big: ['荷物は届けた。言われた場所に、言われた時間に。', 'だが、受け取ったのは白いスーツの男たちだった。', '「黒の連中が、うちに届け物とはな」', '電話が鳴った。', '「…お前、どこに届けた」', '渡された地図は、たしかにこの場所をさしていた。', 'その夜から、黒も白も敵になった。', '妹の手がかりは、また消えた。'],
   caught: ['「まままままままま待つのね…！！」', '「メニメニマネー足りない！ミー死にたくないザンス！！＄10000貸してプリーズミー！」', '「ボクチン無償とは言わないエレガントマン。この街の事ならな〜んでも知ってんねん」', '「ユーちゃんは、ひ・と・さ・が・しって感じかしら？フェイスにライティングよ」'],
   lend: ['「ユーちゃん！ありがとう！！夜の時間に港の前のパークにいらっしゃい。こう見えてもボクチン情報屋なの」', '「ユーちゃんの探し物はアリンコちゃんのままじゃ分からないわよ。大空飛べる鳥になるしかないわ」'],
@@ -1327,6 +1372,71 @@ function storyNext(skip) {
 }
 $('story').addEventListener('click', () => storyNext(false));
 $('storySkip').addEventListener('click', e => { e.stopPropagation(); storyNext(true); });
+/* ===== 出だしのクラブの中(v=17) ===== */
+// 街とは別の所(街の地面のずっと下)に作った1部屋。「はじめから」のお話の間だけ見せる。操作はなし、カメラは止めたまま
+//   左にカウンター(うしろの棚にびん、バーテンダー)。手前に主人公(うしろ姿)、向かいにクラブの男。カウンターの上に、からのグラス。右の奥で20人がおどる
+const INTRO = { y: -80, g: null, dancers: [], tiles: [], beams: [], ball: null, cam: [-4.3, 2.75, 7.9], look: [-2.2, 1.35, -3] };
+function buildIntro() {
+  const g = INTRO.g = new THREE.Group(); g.position.set(0, INTRO.y, 0); scene.add(g);
+  const add = (geo, mat, x, y, z) => { const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); g.add(m); return m; };
+  const person = (shirt, pants, skin, x, z, r) => { const p = makePerson(shirt, pants, skin); g.add(p.g); p.g.position.set(x, 0, z); p.g.rotation.y = r; return p; };
+  let sd = 7; const rd = () => { sd = (sd * 16807) % 2147483647; return sd / 2147483647; }; // この部屋だけの乱数(街の乱数は使わない)
+  const H = 5.2, ZB = -13.4, ZF = 9, ZC = (ZB + ZF) / 2, ZD = ZF - ZB, wall = M(0x241a30), dark = M(0x0e0b13), wood = M(0x4a2e1e), pink = MB(0xff4ad0), purple = MB(0x9a5cff), dim = MB(0x2a1c52);
+  // 部屋(ゆか・天井・かべ)
+  add(BG(28, 0.2, ZD), M(0x1c1624), 2, -0.1, ZC); add(BG(28, 0.2, ZD), dark, 2, H + 0.1, ZC);
+  add(BG(28, H, 0.2), wall, 2, H / 2, ZB - 0.1); add(BG(28, H, 0.2), wall, 2, H / 2, ZF + 0.1); add(BG(0.2, H, ZD), wall, -12.1, H / 2, ZC); add(BG(0.2, H, ZD), wall, 16.1, H / 2, ZC);
+  add(BG(27.8, 0.12, 0.1), pink, 2, H - 0.4, ZB + 0.06); add(BG(27.8, 0.12, 0.1), purple, 2, 0.3, ZB + 0.06); add(BG(0.1, 0.12, ZD), purple, 15.95, H - 0.4, ZC); add(BG(0.1, 0.12, ZD), pink, -11.95, H - 0.4, ZC);
+  for (let k = 0; k < 9; k++) add(BG(0.12, H - 1.2, 0.08), dim, -9.5 + k * 3, H / 2, ZB + 0.05); // 奥のかべのたての線
+  for (let k = 0; k < 5; k++) add(BG(0.1, 0.06, ZD), dim, -6 + k * 5, H - 0.02, ZC);           // 天井の線
+  add(BG(5.6, 2.0, 0.12), hSignMat('黒龍', '#120a18', '#ff7ae0'), 6.2, 3.6, ZB + 0.08);
+  // カウンター(左)・いす・棚とびん
+  add(BG(1.5, 1.1, 17), wood, -8.6, 0.55, -1); add(BG(1.8, 0.1, 17.2), M(0x1a1016), -8.6, 1.15, -1); add(BG(0.06, 0.1, 17), pink, -7.82, 0.95, -1);
+  for (let k = 0; k < 7; k++) { const z = 6.4 - k * 2.2; if (k === 1) continue; add(new THREE.CylinderGeometry(0.07, 0.07, 0.75, 8), M(0x55505a), -7.1, 0.38, z); add(new THREE.CylinderGeometry(0.32, 0.32, 0.1, 12), M(0x8a1a2a), -7.1, 0.8, z); }
+  add(BG(0.12, 3.5, 16.6), dim, -11.9, 2.75, -1);
+  const BOT = [0xffb347, 0x7dff6a, 0x3bf0ff, 0xff7ae0, 0xffe08a, 0xff5a3a];
+  for (let r = 0; r < 3; r++) { add(BG(0.5, 0.07, 16.6), M(0x2a1c22), -11.6, 1.5 + r * 1.0, -1); for (let k = 0; k < 30; k++) { if (rd() < 0.2) continue; const bh = 0.4 + rd() * 0.3; add(BG(0.16, bh, 0.16), MB(BOT[Math.floor(rd() * 6)]), -11.6, 1.54 + r * 1.0 + bh / 2, -9 + k * 0.55); } }
+  // カウンターの上: からのグラスがならぶ(「頼みつづけた」のしるし)
+  const glass = new THREE.MeshBasicMaterial({ color: 0xe4f2ff, transparent: true, opacity: 0.7 }), gg = new THREE.CylinderGeometry(0.1, 0.075, 0.26, 10);
+  for (let k = 0; k < 14; k++) add(gg, glass, -8.15 - (k % 3) * 0.27, 1.33, 5.3 - k * 0.3);
+  add(BG(0.18, 0.55, 0.18), MB(0xffb347), -8.9, 1.48, 2.2);
+  // バーテンダー・主人公(うしろ姿)・クラブの男(黒い服・サングラス・赤いネクタイ)
+  const bar = person(0xf2f2f2, 0x15151a, 0xe0b890, -10.3, 1.2, Math.PI / 2); part(bar, 0.84, 0.7, 0.2, 0x15151a, 0, 1.3, 0.14); part(bar, 0.24, 0.1, 0.06, 0x15151a, 0, 1.8, 0.26);
+  const me = person(0xffd23f, 0x23324f, 0xf0c9a0, -6.3, 4.0, Math.PI + 0.3); part(me, 0.58, 0.42, 0.1, 0x2a1d14, 0, 2.2, -0.26); // うしろ姿(うしろ頭に髪)
+  const man = person(0x15151a, 0x15151a, 0xc89870, -5.5, 1.3, -0.15); part(man, 0.58, 0.13, 0.08, 0x050505, 0, 2.2, 0.28); part(man, 0.22, 0.55, 0.05, 0xf2f2f2, 0, 1.52, 0.24); part(man, 0.1, 0.5, 0.06, 0xc8261e, 0, 1.5, 0.26);
+  // まん中: 丸いテーブルと、立って飲んでいる人
+  for (const [x, z, c] of [[-0.6, 2.6, 0x3bf0ff], [3.8, 4.6, 0xff7ae0], [9.5, 3.2, 0x9a5cff]]) { add(new THREE.CylinderGeometry(0.09, 0.09, 1.05, 8), M(0x55505a), x, 0.52, z); add(new THREE.CylinderGeometry(0.62, 0.62, 0.07, 16), new THREE.MeshBasicMaterial({ color: c }), x, 1.08, z); add(gg, glass, x + 0.2, 1.25, z - 0.1); }
+  person(0xd9483a, 0x23232c, 0xe0b890, 0.5, 2.9, -1.9); person(0x3f7fd0, 0x3a3048, 0xc89870, 4.8, 4.2, -2.2); person(0xf2f2f2, 0x23232c, 0xf0c9a0, 2.9, 5.2, 2.2);
+  // おどる所(右の奥): 光るゆか・スピーカー・ミラーボール・ライト
+  for (let i = 0; i < 6; i++) for (let j = 0; j < 5; j++) { const m = new THREE.MeshBasicMaterial({ color: 0xffffff }); add(BG(2.05, 0.08, 2.05), m, 0.2 + i * 2.15, 0.04, -12.2 + j * 2.15); INTRO.tiles.push({ m, i, j }); }
+  for (const x of [-1.9, 13.7]) { add(BG(1.5, 3.2, 1.2), dark, x, 1.6, ZB + 0.8); for (const [y, r] of [[2.3, 0.5], [1.1, 0.35]]) add(new THREE.CylinderGeometry(r, r, 0.06, 14), M(0x3a3644), x, y, ZB + 1.42).rotation.x = Math.PI / 2; }
+  INTRO.ball = add(new THREE.SphereGeometry(0.45, 10, 8), new THREE.MeshBasicMaterial({ color: 0xe8e8f4 }), 5.6, H - 0.75, -8); add(BG(0.06, 0.4, 0.06), dark, 5.6, H - 0.2, -8);
+  for (let k = 0; k < 4; k++) {
+    const m = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.11, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }), x = 1.4 + k * 3.1, z = -10.6 + (k % 2) * 4.2;
+    const b = add(new THREE.ConeGeometry(1.5, H - 0.2, 16, 1, true), m, x, (H - 0.2) / 2, z), lamp = add(BG(0.4, 0.22, 0.4), new THREE.MeshBasicMaterial({ color: 0xffffff }), x, H - 0.11, z); INTRO.beams.push({ m, b, k, lamp });
+  }
+  const SH = [0xff5a8a, 0x3bd0ff, 0xffd23f, 0x7dff6a, 0xb48cff, 0xff8a3a, 0xf2f2f2, 0xd9483a], SK = [0xf0c9a0, 0xc89870, 0xe0b890];
+  for (let k = 0; k < 20; k++) { const x = 0.1 + (k % 5) * 2.5 + rd() * 1.6, z = -12.4 + Math.floor(k / 5) * 2.5 + rd() * 1.4, p = person(SH[k % 8], k % 3 ? 0x23232c : 0x3a3048, SK[k % 3], x, z, rd() * 6.28); INTRO.dancers.push({ p, r: p.g.rotation.y, ph: rd() * 6.28, sp: 0.85 + rd() * 0.4, up: k % 3 === 0 }); }
+}
+const introCol = new THREE.Color();
+// お話の間、毎フレーム: カメラを止める・おどる人が体をゆらす・ライトの色がゆっくり変わる
+function updateIntro(dt, t) {
+  const y = INTRO.y; camera.position.set(INTRO.cam[0], y + INTRO.cam[1], INTRO.cam[2]); camera.lookAt(INTRO.look[0], y + INTRO.look[1], INTRO.look[2]);
+  if (Math.abs(camera.fov - baseFov) > 0.1) { camera.fov = baseFov; camera.updateProjectionMatrix(); }
+  for (const d of INTRO.dancers) {
+    const a = t * 4.2 * d.sp + d.ph, s = Math.sin(a), p = d.p;
+    p.g.position.y = Math.abs(s) * 0.14; p.g.rotation.y = d.r + Math.sin(a * 0.31) * 0.6; p.g.rotation.z = Math.sin(a * 0.5) * 0.07;
+    p.legL.rotation.x = s * 0.3; p.legR.rotation.x = -s * 0.3;
+    if (d.up) { p.armL.rotation.x = Math.PI + s * 0.35; p.armR.rotation.x = Math.PI - s * 0.35; } else { p.armL.rotation.x = -0.9 + s * 0.6; p.armR.rotation.x = -0.9 - s * 0.6; }
+  }
+  for (const k of INTRO.tiles) k.m.color.setHSL((k.i * 0.13 + k.j * 0.21 + t * 0.045) % 1, 0.95, 0.3 + 0.22 * Math.sin(t * 2.2 + k.i * 1.7 + k.j * 2.3));
+  for (const k of INTRO.beams) { k.m.color.setHSL((k.k * 0.25 + t * 0.03) % 1, 1, 0.55); k.lamp.material.color.copy(k.m.color); k.b.rotation.z = Math.sin(t * 0.6 + k.k * 1.4) * 0.16; k.b.rotation.x = Math.cos(t * 0.45 + k.k) * 0.12; }
+  INTRO.ball.rotation.y = t * 0.5; INTRO.ball.material.color.copy(introCol.setHSL((t * 0.03 + 0.5) % 1, 0.35, 0.85));
+}
+// 「はじめから」: クラブの中で出だしのお話 → 終わったら街へ(done)。テストは window.SC_NO_INTRO = 1 でとばす
+function startIntro(done) {
+  if (!INTRO.g) buildIntro(); INTRO.g.visible = true; G.intro = true; setClock(DAY.night + 60); // 部屋の中は夜の明るさ
+  story(STORY.intro, () => { G.intro = false; INTRO.g.visible = false; setClock(DAY.start); done(); });
+}
 // ひとこと: 画面の下に、名前つきの字幕(ゲームは止まらない)。s = { name, text } か、そのならび
 const subQ = []; let subT = 0;
 function say(s, now) { if (now) { subQ.length = 0; subT = 0; } for (const l of Array.isArray(s) ? s : [s]) subQ.push(l); } // now = 前のひとことが残っていたら、入れかえる
@@ -1950,7 +2060,7 @@ function checkMarks(t) {
 let last = performance.now(), T = 0, hudT = 0;
 function frame(now) {
   const dt = Math.min(0.05, (now - last) / 1000); last = now; T += dt;
-  if (G.started && paused()) { /* 買い物中・ミッションをえらんでいる間・お話の間・ねる画面は止まる */ }
+  if (G.started && paused()) { if (G.intro) updateIntro(dt, T); /* 買い物中・ミッションをえらんでいる間・お話の間・ねる画面は止まる(出だしのクラブだけ動く) */ }
   else if (G.started) {
     readInput(); updatePlayer(dt); updateClock(dt);
     for (const c of cars) { if (c.kind === 'traffic') updateTraffic(c, dt); else if (c.kind === 'police') updatePolice(c, dt, T); else if (c.kind === 'parked') updateParked(c, dt); }
@@ -1988,8 +2098,9 @@ $('goOnline').addEventListener('click', lockLandscape);
 function startSolo(d) {
   lockLandscape(); document.body.classList.add('solo');
   G.mode = 'solo'; showOnly(null); setPlaying(true); setClock(DAY.start); // ひとり用は昼から
-  if (d && d.v === 1) { applySave(d); resetPlayerToFoot(HOME.sx, HOME.sz, HOME.sh); } else resetPlayerToFoot(startX, startZ, startH);
-  if (curM()) beginMission(); else toast(tr('つづきから'), 2);
+  const cont = !!(d && d.v === 1), go = () => { if (curM()) beginMission(); else toast(tr('つづきから'), 2); };
+  if (cont) { applySave(d); resetPlayerToFoot(HOME.sx, HOME.sz, HOME.sh); } else resetPlayerToFoot(startX, startZ, startH);
+  if (!cont && !window.SC_NO_INTRO) startIntro(go); else go(); // はじめから: 出だしのお話(クラブの中)のあとに始まる
   if (window.BackGuard) BackGuard.set('game', () => location.reload());
 }
 // スタート画面: セーブがあれば「つづきから」を出して、「ひとりで遊ぶ」は「はじめから」にする(1回目は確かめる。2回目でセーブを消して始める)
@@ -2011,7 +2122,7 @@ $('quitBtn').addEventListener('click', () => { if (G.mode === 'solo') location.r
 if (window.BackGuard) BackGuard.set('home');
 
 const SC = window.SC = {
-  G, R, player, cars, peds, TUNE, MISSIONS, FREE, HOME, save, readSave, applySave, curM, pointBlocked, P, gangs, pickups, npcs, SHOPS, HOSPITAL, SHOP_ITEMS, closeShop, WEAPONS, MKT, MKW, shots, newNpc, confiscate, DAY, setClock, vendors, TALK, LINES, QAS, makeVip, startTalk, answerTalk, pickLine, getTalk: () => talk, camera, BOAT, PORT, MX, STORY, SNEAK, freeOpen, story, say, finish, openSleep, sleepTo, bump, CLUB, NEON_MATS, STALL_POS,
+  G, R, player, cars, peds, TUNE, MISSIONS, FREE, HOME, save, readSave, applySave, curM, pointBlocked, P, gangs, pickups, npcs, SHOPS, HOSPITAL, SHOP_ITEMS, closeShop, WEAPONS, MKT, MKW, shots, newNpc, confiscate, DAY, setClock, vendors, TALK, LINES, QAS, makeVip, startTalk, answerTalk, pickLine, getTalk: () => talk, camera, BOAT, PORT, MX, STORY, SNEAK, freeOpen, story, say, finish, openSleep, sleepTo, bump, CLUB, NEON_MATS, STALL_POS, APT, INTRO,
   onSend: null, onQuit: null,
   startSolo,
   showOnly, setPlaying,
