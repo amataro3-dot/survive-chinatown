@@ -100,6 +100,27 @@ with sync_playwright() as p:
     else: check(False, "警察官はたおせる。たおすと★+1(警察官が出なかった)")
     ev("(()=>{SC.G.wanted=0; return 0})()"); pg.wait_for_timeout(300)
 
+    # ---------- パトカーを奪う(v=10) ----------
+    ev("(()=>{SC.player.hp=100; SC.G.wanted=1; SC.G.spawnCd=0; SC.G.bust=0; return 0})()")
+    for t in range(30):
+        pg.wait_for_timeout(200)
+        if ev("SC.cars.some(c=>c.kind==='police')"): break
+    ev("(()=>{SC.npcs.filter(n=>n.kind==='cop').forEach(n=>{n.hp=0}); const c=SC.cars.find(c=>c.kind==='police'); c.x=SC.player.x+2.5; c.z=SC.player.z; c.v=0; c.crew=2; c.h=0; SC.G.wanted=1; return 0})()")
+    pg.click("#enterBtn"); pg.wait_for_timeout(300)
+    car = "SC.player.car"
+    check(ev("SC.player.mode") == "car" and ev(car + " && " + car + ".cop"), "止まっているパトカーに乗れる")
+    check(ev("SC.G.wanted") == 3, f"パトカーを奪うと★+2(★{ev('SC.G.wanted')})")
+    check(ev("SC.npcs.filter(n=>n.kind==='cop'&&n.hp>0).length") >= 1 and ev("SC.npcs.filter(n=>n.kind==='cop'&&n.hp>0).every(n=>!n.car||n.car.kind==='police')"), "中にいた警察官は出てきて、奪われたパトカーにはもどらない")
+    check(ev("SC.TUNE.copCarMax") > ev("SC.TUNE.carMax"), "パトカーは、ふつうの車より速い")
+    pg.screenshot(path=SHOTS + "/p_copcar.png")
+    ev("(()=>{SC.npcs.filter(n=>n.kind==='cop').forEach(n=>{n.hp=0}); return 0})()")
+    pg.click("#enterBtn"); pg.wait_for_timeout(200)
+    check(ev("SC.player.mode") == "foot" and ev("SC.cars.some(c=>c.cop&&c.kind==='parked')"), "降りると、パトカーはその場に置いたまま")
+    w = ev("SC.G.wanted"); pg.click("#enterBtn"); pg.wait_for_timeout(200)
+    check(ev("SC.player.mode") == "car" and ev("SC.G.wanted") == w, "置いたパトカーには、もう一度乗れる(★はふえない)")
+    pg.click("#enterBtn"); pg.wait_for_timeout(200)
+    ev("(()=>{SC.G.wanted=0; SC.npcs.filter(n=>n.kind==='cop').forEach(n=>{n.hp=0}); for(const c of SC.cars) if(c.kind==='police') c.gone=true; SC.player.x+=8; return 0})()"); pg.wait_for_timeout(400)
+
     # ---------- 店 ----------
     check(ev("SC.SHOPS.length") == 3 and ev("SC.SHOPS.filter(s=>s.kind==='gun').length") == 1, "店が3つ(武器屋1・薬屋2)")
     ev("(()=>{SC.G.money=2000; SC.player.inv=['fist']; SC.player.wi=0; SC.player.ammo=0; const s=SC.SHOPS.find(s=>s.kind==='gun'); SC.player.x=s.x; SC.player.z=s.z; return 0})()")

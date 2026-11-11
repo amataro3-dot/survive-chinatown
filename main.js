@@ -12,6 +12,8 @@ if (typeof THREE === 'undefined') { const d = document.getElementById('err'); d.
 const TUNE = {
   walk: 5, dash: 9.5,              // 歩く・走る速さ
   carMax: 35, carAccel: 19,        // 車の最高速度(35 = 約126km/h)と加速
+  copCarMax: 38,                   // 奪ったパトカーの最高速度(38 = 約137km/h。ふつうの車より少し速い)
+  copCarWanted: 2,                 // パトカーを奪ったときに上がる手配度
   carBrake: 45, carReverse: 10,    // ブレーキ・バックの最高速度
   steer: 1.9,                      // ハンドルの効き
   enterDist: 4.8,                  // 車に乗れる距離
@@ -502,7 +504,7 @@ function animPerson(p, speed, dt) { p.phase += dt * (2 + speed * 1.6); const s =
 /* ===== 車・歩行者・自分 ===== */
 const carColors = [0xd33c3c, 0x3c6fd3, 0xf0f0f0, 0x222222, 0xe0a020, 0x2f9e5a, 0x9a4fc4, 0x808890, 0xff7a30];
 const cars = [];
-function newCar(kind, x, z, h, color) { const m = makeCarMesh(color, kind === 'police'); const c = { kind, x, z, h, v: 0, mesh: m.g, lights: m.lights, stuck: 0, rev: 0, color, crew: kind === 'police' ? 1 + Math.floor(Math.random() * 2) : 0 }; cars.push(c); return c; }
+function newCar(kind, x, z, h, color) { const m = makeCarMesh(color, kind === 'police'); const c = { kind, x, z, h, v: 0, mesh: m.g, lights: m.lights, stuck: 0, rev: 0, color, cop: kind === 'police', crew: kind === 'police' ? 1 + Math.floor(Math.random() * 2) : 0 }; cars.push(c); return c; }
 function removeCar(c) { const i = cars.indexOf(c); if (i >= 0) cars.splice(i, 1); scene.remove(c.mesh); }
 // つなげた区画の間の道は、なくなる(車は通れない)
 const blockedEdge = (a, b) => MERGES.some(m => { const [p, q] = mergeEdge(m); return (a[0] === p[0] && a[1] === p[1] && b[0] === q[0] && b[1] === q[1]) || (a[0] === q[0] && a[1] === q[1] && b[0] === p[0] && b[1] === p[1]); });
@@ -747,7 +749,7 @@ function updateNpcs(dt) {
         if (n.life > 12 && dP > 25) { removeNpc(n); continue; }
       }
     } else { // 警察官
-      const car = n.car, carOk = car && cars.indexOf(car) >= 0;
+      const car = n.car, carOk = car && cars.indexOf(car) >= 0 && car.kind === 'police';
       if (n.state === 'chase' && (!alive || dP > 45)) n.state = 'back';
       if (n.state === 'back' && alive && dP < 25) n.state = 'chase';
       if (n.state === 'chase') {
@@ -977,16 +979,26 @@ function readInput() {
 }
 
 /* ===== 車の乗り降り ===== */
-function nearestEnterable() { let best = null, bd = TUNE.enterDist; for (const c of cars) { if (c.kind === 'police') continue; const d = Math.hypot(c.x - player.x, c.z - player.z); if (d < bd) { bd = d; best = c; } } return best; }
+function nearestEnterable() { let best = null, bd = TUNE.enterDist; for (const c of cars) { if (c.kind === 'police' && G.mode !== 'solo') continue; const d = Math.hypot(c.x - player.x, c.z - player.z); if (d < bd) { bd = d; best = c; } } return best; }
 function toggleCar() {
   if (!G.started || G.stunT > 0 || G.downT > 0 || G.shop) return; if (player.mode === 'car') { exitCar(); return; }
   const c = nearestEnterable(); if (!c) return;
   if (c.kind === 'traffic') { ejectDriver(c); if (Math.abs(c.v) > 1) { addWanted(1); if (G.mode === 'solo') toast(tr('車を奪った！'), 1.4); } }
+  else if (c.kind === 'police') stealPolice(c);
   enterCar(c);
 }
+// パトカーを奪う: ★+2。中に残っていた警察官は転がり出て、おそってくる。降りていた警察官は、もうこのパトカーにはもどらない
+function stealPolice(c) {
+  const rx = -Math.cos(c.h), rz = Math.sin(c.h);
+  for (let k = 0; k < c.crew; k++) { const s = k ? -1 : 1, n = newNpc('cop', c.x - rx * 1.8 * s, c.z - rz * 1.8 * s, c.h + Math.PI / 2); n.down = 0.9; n.kx = -rx * 5 * s; n.kz = -rz * 5 * s; resolve(n, 0.45); }
+  c.crew = 0; c.empty = 0; c.rev = 0; c.node = null;
+  for (const n of npcs) if (n.car === c) n.car = null;
+  addWanted(TUNE.copCarWanted); toast(tr('パトカーを奪った！'), 1.6);
+}
+function copLights(c, t) { if (!c.lights) return; const on = t >= 0 && Math.floor(t * 6) % 2 === 0, off = t < 0; c.lights[0].material.color.setHex(off ? 0x400000 : on ? 0xff2020 : 0x400000); c.lights[1].material.color.setHex(off ? 0x001040 : on ? 0x001040 : 0x2050ff); }
 function enterCar(c) { c.kind = 'player'; player.car = c; player.mode = 'car'; player.per.g.visible = false; releaseHeld(); }
 function exitCar() {
-  const c = player.car; if (!c) return; c.kind = 'parked';
+  const c = player.car; if (!c) return; c.kind = 'parked'; if (c.cop) copLights(c, -1); // 降りたパトカーは、ライトを消して置いておく
   const rx = -Math.cos(c.h), rz = Math.sin(c.h); player.x = c.x - rx * 2.4; player.z = c.z - rz * 2.4; player.h = c.h; resolve(player, 0.5);
   player.mode = 'foot'; player.car = null; player.per.g.visible = true; releaseHeld();
 }
@@ -1014,13 +1026,14 @@ function updatePlayer(dt) {
   } else {
     const c = player.car; const th = (input.acc ? 1 : 0) - (input.rev ? 1 : 0), st = input.jx;
     if (input.brake) { const b = Math.min(Math.abs(c.v), TUNE.carBrake * dt); c.v -= Math.sign(c.v) * b; }
-    else if (th > 0.05) { if (c.v < 0) c.v += 40 * dt * th; else c.v += TUNE.carAccel * th * dt * (1 - c.v / TUNE.carMax); }
+    else if (th > 0.05) { const vmax = c.cop ? TUNE.copCarMax : TUNE.carMax; if (c.v < 0) c.v += 40 * dt * th; else c.v += TUNE.carAccel * th * dt * (1 - c.v / vmax); }
     else if (th < -0.05) { if (c.v > 0) c.v += 38 * th * dt; else c.v = Math.max(-TUNE.carReverse, c.v + 12 * th * dt); }
     else { c.v *= 1 - 0.7 * dt; if (Math.abs(c.v) < 0.3) c.v = 0; }
     const tf = clamp(c.v / 7, -1, 1) * (Math.abs(c.v) > 22 ? 0.75 : 1); c.h -= st * TUNE.steer * dt * tf;
     c.x += Math.sin(c.h) * c.v * dt; c.z += Math.cos(c.h) * c.v * dt;
     if (resolveCar(c)) c.v *= Math.abs(c.v) > 3 ? -0.25 : 0.5;
     player.x = c.x; player.z = c.z; player.h = c.h; player.v = c.v;
+    if (c.cop) copLights(c, performance.now() / 1000); // 奪ったパトカー: 屋根のライトが光る
     $('enterBtn').textContent = tr('降りる'); $('enterBtn').classList.remove('near');
   }
 }
@@ -1041,7 +1054,7 @@ function updateTraffic(c, dt) {
 }
 function updatePolice(c, dt, t) {
   const tx = player.x, tz = player.z, d = Math.hypot(tx - c.x, tz - c.z);
-  if (c.lights) { const on = Math.floor(t * 6) % 2 === 0; c.lights[0].material.color.setHex(on ? 0xff2020 : 0x400000); c.lights[1].material.color.setHex(on ? 0x001040 : 0x2050ff); }
+  copLights(c, t);
   const out = npcs.some(n => n.car === c && n.hp > 0);
   if (out || c.crew <= 0) { // 警察官が降りている間は止まっている。全員たおされたら、しばらくして消える
     c.v *= 1 - 4 * dt; if (Math.abs(c.v) < 0.2) c.v = 0;
