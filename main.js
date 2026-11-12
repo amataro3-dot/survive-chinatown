@@ -1372,7 +1372,7 @@ const DEBT = 10000, FARE = 20000; // 情報屋に貸すお金・船代
 const STALL_POS = { x: roadC(2), z: MK.z0 + 4.6 }; // 夜市の入口のすぐ中(「夜市の屋台を守れ」でマフィアが出る所)
 // 情報屋(v=18): 夜、港の前の公園のベンチの前にいる(お金を貸したあとだけ)。だいだい色の光で、情報屋のミッションを受ける
 const PARK = mergeRect(MERGES[1]), LOT = mergeRect(MERGES[3]), TWR = mergeRect(MERGES[2]);
-const INFO = { x: (PARK.x0 + PARK.x1) / 2, z: (PARK.z0 + PARK.z1) / 2 - 20 };
+const INFO = { x: (PARK.x0 + PARK.x1) / 2 + 1.2, z: (PARK.z0 + PARK.z1) / 2 - 20 }; // だいだい色の光(情報屋とベンチは、この西がわ)
 // 「火をつけろ」: from = 黒の手下が立っている所(北の門の中)、to = 連れていく所(門の外・白のなわばり)、give = これよりはなれると手下があきらめる、near = 着いたときに、これより近くにいる手下を数える
 const LURE = { from: { x: roadC(2) + 7.3, z: roadC(2) + 26 }, to: { x: roadC(2) + 7.3, z: roadC(1) + 14 }, n: 3, need: 2, give: 24, near: 18 };
 // 「幹部の車をいただけ」: 白い高級車が止まっている所(北の大きなビルの前)と、かくす所(駐車場の、車のならびの間)
@@ -1415,9 +1415,9 @@ const FREE = [
 ];
 for (const f of FREE) Object.assign(f, glowMark(f.info ? 0xffa53a : 0xb06bff, f.at.x, f.at.z));
 // 情報屋と、公園のベンチ(乱数は使わない)
-const infoPer = makeVip('info'); infoPer.g.position.set(INFO.x - 1.9, 0.3, INFO.z); infoPer.g.rotation.y = Math.PI / 2; infoPer.g.visible = false;
-addBox(0.7, 0.14, 2.6, INFO.x - 2.7, 0.78, INFO.z, M(0x6a4a2a)); addBox(0.12, 0.6, 2.6, INFO.x - 3.0, 1.15, INFO.z, M(0x6a4a2a)); for (const dz of [-1.1, 1.1]) addBox(0.6, 0.45, 0.12, INFO.x - 2.7, 0.52, INFO.z + dz, M(0x333333));
-addCol(INFO.x - 3.1, INFO.x - 2.35, INFO.z - 1.3, INFO.z + 1.3);
+const infoPer = makeVip('info'); infoPer.g.position.set(INFO.x - 3.1, 0.3, INFO.z); infoPer.g.rotation.y = Math.PI / 2; infoPer.g.visible = false;
+addBox(0.7, 0.14, 2.6, INFO.x - 3.9, 0.78, INFO.z, M(0x6a4a2a)); addBox(0.12, 0.6, 2.6, INFO.x - 4.2, 1.15, INFO.z, M(0x6a4a2a)); for (const dz of [-1.1, 1.1]) addBox(0.6, 0.45, 0.12, INFO.x - 3.9, 0.52, INFO.z + dz, M(0x333333));
+addCol(INFO.x - 4.3, INFO.x - 3.55, INFO.z - 1.3, INFO.z + 1.3);
 // 船代をはらって街を出る(水色の光。お使いが終わると出る)
 const BOAT = { id: 'boat', title: '船で街を出る', desc: '船代をはらうと、街を出てゲームが終わる。セーブは消える。', pay: FARE, yes: 'はらう', at: PORT.boat, onYes: () => { G.money -= FARE; story(STORY.end1, () => finish(1)); } };
 Object.assign(BOAT, glowMark(0x7fe8ff, BOAT.at.x, BOAT.at.z));

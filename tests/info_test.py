@@ -45,7 +45,7 @@ with sync_playwright() as p:
 
     # ---------- 場所 ----------
     pg.goto(URL); pg.wait_for_timeout(1200)
-    bad = ev("""(()=>{ const B=(x,z)=>SC.pointBlocked(x,z), L=SC.LURE, K=SC.BOSSCAR, gz=K.z-3, pts=[SC.INFO, L.from, L.to, {x:L.from.x,z:L.from.z-3}, {x:L.from.x,z:L.from.z+3}, {x:L.to.x,z:L.to.z-4}, {x:L.to.x,z:L.to.z-6.5}, {x:L.to.x+2.5,z:L.to.z-6.8}, K, K.to, {x:K.x-4,z:gz}, {x:K.x,z:gz}, {x:K.x+4,z:gz}, {x:SC.INFO.x-1.9,z:SC.INFO.z}]; return pts.filter(q=>B(q.x,q.z)).map(q=>Math.round(q.x)+','+Math.round(q.z)).join(' ') })()""")
+    bad = ev("""(()=>{ const B=(x,z)=>SC.pointBlocked(x,z), L=SC.LURE, K=SC.BOSSCAR, gz=K.z-3, pts=[SC.INFO, L.from, L.to, {x:L.from.x,z:L.from.z-3}, {x:L.from.x,z:L.from.z+3}, {x:L.to.x,z:L.to.z-4}, {x:L.to.x,z:L.to.z-6.5}, {x:L.to.x+2.5,z:L.to.z-6.8}, K, K.to, {x:K.x-4,z:gz}, {x:K.x,z:gz}, {x:K.x+4,z:gz}, {x:SC.INFO.x-3.1,z:SC.INFO.z}]; return pts.filter(q=>B(q.x,q.z)).map(q=>Math.round(q.x)+','+Math.round(q.z)).join(' ') })()""")
     check(bad == "", "情報屋・手下・白い車・駐車場の場所は、かべの中ではない " + bad)
     check(ev("SC.inCT(SC.LURE.from.x, SC.LURE.from.z)") and not ev("SC.inCT(SC.LURE.to.x, SC.LURE.to.z)"), "火をつけろ: 黒の手下はチャイナタウンの中、連れていく所は外")
 
