@@ -6,7 +6,7 @@
 <!-- 作りかけなので Google の検索には出さない(完成してトップに載せるときに、この行を消す) -->
 <meta name="robots" content="noindex">
 <title>SURVIVE CHINATOWN</title>
-<link rel="stylesheet" href="style.css?v=19">
+<link rel="stylesheet" href="style.css?v=20">
 </head>
 <body>
 <canvas id="c"></canvas>
@@ -86,6 +86,10 @@
         <div class="players-head"><span data-t>参加者</span><span id="lbCount"></span></div>
         <ol id="lbPlayers"></ol>
       </div>
+      <!-- 時間(ホストだけえらべる。見た目だけ変わる) -->
+      <div class="times"><span class="tl" data-t>時間</span>
+        <button id="lbTday" data-time="day">☀ <span data-t>昼</span></button><button id="lbTeve" data-time="eve">◐ <span data-t>夕方</span></button><button id="lbTnight" data-time="night">☾ <span data-t>夜</span></button>
+      </div>
       <p class="msg" id="lbRoomMsg"></p>
       <button class="btn-big" id="lbStart" data-t>スタート</button>
       <button class="btn-big" id="lbReset" data-t>ロビーにもどす</button>
@@ -158,9 +162,9 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <!-- 縦に持ったときの警告(スタート・待合室・ゲーム中のどこでも出る。横にすると消える) -->
 <div id="rotate"><div class="rotBox"><div class="phone"></div><p class="rotT" data-t>⚠ 画面が縦になっています</p><p class="rotS" data-t>スマホを横にしてね</p></div></div>
-<script src="i18n.js?v=19"></script>
-<script src="backguard.js?v=19"></script>
-<script src="main.js?v=19"></script>
-<script type="module" src="lobby.js?v=19"></script>
+<script src="i18n.js?v=20"></script>
+<script src="backguard.js?v=20"></script>
+<script src="main.js?v=20"></script>
+<script type="module" src="lobby.js?v=20"></script>
 </body>
 </html>

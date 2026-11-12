@@ -70,6 +70,13 @@ body.playing #joyBase, body.playing #joyKnob { display: block; }
 .players-head { display: flex; justify-content: space-between; color: var(--muted); font-size: 13px; }
 .players ol, #resList { margin: 4px 0; padding-left: 22px; }
 .players li.off { opacity: .45; }
+/* 待合室の時間えらび(v=20)。ホスト以外は押せない(えらばれているのは見える) */
+.times { display: flex; align-items: center; gap: 6px; margin-top: 8px; }
+.times .tl { color: var(--muted); font-size: 13px; margin-right: 2px; }
+.times button { flex: 1; padding: 8px 4px; font-size: 15px; font-weight: 700; border-radius: 9px; border: 1px solid rgba(255, 255, 255, .35); background: transparent; color: var(--fg); }
+.times button.on { background: var(--accent); color: #222; border-color: var(--accent); }
+.times button:disabled { opacity: .55; }
+.times button.on:disabled { opacity: .85; }
 .players small, #resList small { color: var(--muted); }
 .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; vertical-align: middle; }
 #err { position: fixed; bottom: 0; left: 0; right: 0; color: #fff; background: #a00; font-size: 12px; padding: 4px; display: none; z-index: 20; }

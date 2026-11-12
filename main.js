@@ -24,6 +24,9 @@ const TUNE = {
   driver: { hp: 60, angry: 1 / 3, speed: 4.4, flee: 6, dmg: 5 }, // 車を奪われた運転手: 体力・おそってくる割合・速さ・逃げる速さ・パンチ
   armor: 50, healItem: 50, maxHeal: 3, // 防弾チョッキ・持っておく回復(体力+50、3つまで)
   posRate: 0.125,                  // 配達競争: 自分の位置を送る間隔(秒)
+  // 配達競争の警察(v=20): 人をひいた人だけ追われる。パトカーの数・中の警察官の数・パトカーにぶつけて手配になる速さ
+  //   逃げ切る距離と秒・つかまるまでの秒は police と同じ
+  racePolice: { cars: 1, crew: 2, ramSpeed: 9 },
   peace: true,                     // お使いの間(大きな仕事が終わるまで)は、マフィアがおそってこない
   hp: 100, deathFine: 0.1,         // 主人公の体力、やられたときに減るお金(所持金の1割。最低$100)
   gang: { count: 16, hp: 100, speed: 4.2, turf: 15, giveUp: 32, respawn: 30, feud: 12, feudGiveUp: 22, feudDmg: 2 }, // ギャング: 数(街)・体力・走る速さ・なわばりの広さ・あきらめる距離・生きかえるまでの秒
@@ -36,6 +39,8 @@ const TUNE = {
   //   far = 人がふえたり減ったりするのは、主人公からこれだけはなれた所だけ(目の前で急に消えないように)
   //   gangNight = 夜のマフィアの倍(昼は街のマフィアが半分)、pedEve = 夕方の街の人の倍、dayEvade = 昼に★がへるまでの時間の倍
   day: { len: 720, eve: 300, night: 420, start: 40, race: 560, speed: 1, far: 60, gangNight: 1.5, pedEve: 1.5, dayEvade: 1.5 },
+  // 配達競争の時間(v=20。ホストが待合室でえらぶ。時間は流れない): 昼・夕方(夕やけ)・夜の秒
+  raceAt: { day: 150, eve: 350, night: 560 },
 };
 const DAY = TUNE.day;
 
@@ -890,11 +895,12 @@ const npcs = [];
 const SKINS = [0xf0c9a0, 0xc89870, 0x8a5a3a];
 function newNpc(kind, x, z, h, look) { // look = [服, ズボン, はだ]。おこった街の人は、元と同じ見た目にする(屋台の人は { vip, shirt, apron, skin })
   const cop = kind === 'cop', skin = SKINS[Math.floor(Math.random() * 3)];
-  const per = cop ? makePerson(0x2c56b8, 0x1a2a55, skin) : look ? (look.vip ? makeVip('vendor', look) : makePerson(look[0], look[1], look[2])) : makePerson(shirts[Math.floor(Math.random() * shirts.length)], [0x2a3550, 0x333333, 0x5a4030][Math.floor(Math.random() * 3)], skin);
-  if (cop) { const cap = new THREE.Mesh(BG(0.64, 0.16, 0.72), M(0x14224a)); cap.position.set(0, 2.52, 0.05); per.g.add(cap); }
+  const per = cop ? makeCop(skin) : look ? (look.vip ? makeVip('vendor', look) : makePerson(look[0], look[1], look[2])) : makePerson(shirts[Math.floor(Math.random() * shirts.length)], [0x2a3550, 0x333333, 0x5a4030][Math.floor(Math.random() * 3)], skin);
   const n = { npc: true, kind, per, x, z, h, hp: cop ? TUNE.police.copHp : TUNE.driver.hp, state: cop ? 'chase' : 'flee', cd: 0.6, down: 0, stagger: 0, kx: 0, kz: 0, life: 0, dead: -1, swing: 0, hitCd: 0, pull: 0, car: null };
   npcs.push(n); return n;
 }
+// 警察官の見た目(青い服と帽子)。配達競争で、ほかの人の警察官を出すときにも使う
+function makeCop(skin) { const per = makePerson(0x2c56b8, 0x1a2a55, skin); const cap = new THREE.Mesh(BG(0.64, 0.16, 0.72), M(0x14224a)); cap.position.set(0, 2.52, 0.05); per.g.add(cap); return per; }
 function removeNpc(n) { const i = npcs.indexOf(n); if (i >= 0) npcs.splice(i, 1); scene.remove(n.per.g); }
 // 車を奪ったとき: 運転手が車から転がり出る。たいていは逃げるが、おそってくる人もいる
 function ejectDriver(c) {
@@ -924,10 +930,10 @@ function damageNpc(n, dmg, kx, kz) {
   }
 }
 function updateNpcs(dt) {
-  const alive = G.mode === 'solo' && player.hp > 0 && G.downT <= 0;
+  const alive = (G.mode === 'solo' || (G.mode === 'race' && !G.out)) && player.hp > 0 && G.downT <= 0;
   for (let i = npcs.length - 1; i >= 0; i--) {
     const n = npcs[i];
-    if (n.kind === 'cop' && G.mode !== 'solo') { removeNpc(n); continue; }
+    if (n.kind === 'cop' && G.mode !== 'solo' && G.mode !== 'race') { removeNpc(n); continue; }
     if (n.hp <= 0) { n.dead += dt; n.x += n.kx * dt; n.z += n.kz * dt; n.kx *= 1 - 3 * dt; n.kz *= 1 - 3 * dt; resolve(n, 0.45); n.per.g.position.set(n.x, 0.4, n.z); if (n.dead > 6) removeNpc(n); continue; }
     n.cd -= dt; n.hitCd -= dt; n.life += dt; if (n.swing > 0) n.swing -= dt;
     if (n.down > 0) { // 車から転がり出ている
@@ -1487,12 +1493,14 @@ Object.assign(BOAT, glowMark(0x7fe8ff, BOAT.at.x, BOAT.at.z));
 const sailorPer = makePerson(0x1f3a6e, 0x1a1a2a, 0xc89870); part(sailorPer, 0.62, 0.16, 0.62, 0xffffff, 0, 2.5, 0); sailorPer.g.position.set(PORT.sailor.x + 1.8, 0.3, PORT.sailor.z - 1.6); sailorPer.g.rotation.y = -Math.PI / 2; sailorPer.g.visible = false;
 // mode: 'menu'(画面の後ろで街が動いている) / 'solo'(ひとり用) / 'race'(配達競争)
 //   lent = 情報屋に 0: まだ会っていない、1: 貸した、2: 貸さなかった。tru = トゥルーエンドの順番で貸した。sis = 倉庫で妹を見た
-const G = { twrDown: false, askId: 1, askI: 0, huntT: 0, mode: 'menu', started: false, over: false, money: 0, wanted: 0, mi: 0, si: 0, timeLeft: -1, play: 0, evade: 0, bust: 0, downT: 0, stunT: 0, shop: null, shopLock: null, hitCd: 0, spawnCd: 0, failWait: 0, waitMsg: '', free: null, done: {}, offer: null, markLock: null, freeT: 0, bosses: [], lent: 0, tru: 0, sis: 0, left: 0, bumps: 0, bumpCd: 0, ramCd: 0, busy: false, tp: null, story: null, sleep: false, camYaw: Math.PI, camDrag: 0, clock: DAY.race, phase: 'night' };
+const G = { twrDown: false, askId: 1, askI: 0, huntT: 0, mode: 'menu', started: false, over: false, money: 0, wanted: 0, mi: 0, si: 0, timeLeft: -1, play: 0, evade: 0, bust: 0, downT: 0, stunT: 0, shop: null, shopLock: null, hitCd: 0, spawnCd: 0, failWait: 0, waitMsg: '', free: null, done: {}, offer: null, markLock: null, freeT: 0, bosses: [], lent: 0, tru: 0, sis: 0, left: 0, bumps: 0, bumpCd: 0, ramCd: 0, busy: false, tp: null, story: null, sleep: false, camYaw: Math.PI, camDrag: 0, clock: DAY.race, phase: 'night', out: false, watchYaw: 0 };
 // 配達競争の状態(online.js から setRace でもらう)
 const R = { me: null, state: null, remotes: {}, avatars: {}, sendT: 0 };
 let toastT = 0;
 function toast(s, t) { const e = $('toast'); e.textContent = s; e.style.opacity = 1; toastT = t || 2.2; }
 function addWanted(n) { if (G.mode !== 'solo') return; const before = G.wanted; G.wanted = Math.min(5, G.wanted + n); G.evade = 0; if (G.wanted > before && before === 0) toast(tr('警察に追われている！')); }
+// 配達競争(v=20): 人をひいた・パトカーにぶつけたときだけ追われる(★は1つだけ。ふえない)
+function raceWanted(msg) { if (G.mode !== 'race' || G.out || !G.started) return; if (!G.wanted) { G.wanted = 1; G.spawnCd = 0; toast(tr(msg), 2.4); } G.evade = 0; }
 // お使いの間(大きな仕事が終わるまで)は、マフィアはおそってこない
 const peace = () => TUNE.peace && G.mi < MISSIONS.length;
 // ゲームが止まっている間(買い物・ミッションをえらぶ・お話・ねる)
@@ -1845,9 +1853,17 @@ function sleepTo(ph) {
   toast(tr(ph === 'day' ? '朝までねた' : ph === 'eve' ? '夕方までねた' : '夜までねた'), 2.2);
 }
 function busted() {
+  if (G.mode === 'race') { raceCaught(); return; }
   G.money = Math.max(0, G.money - TUNE.police.fine); G.wanted = 0; G.bust = 0; removeAllPolice(); if (player.mode === 'car') exitCar(); resetPlayerToFoot(HOME.sx, HOME.sz, HOME.sh); // 逮捕されたら、ホームの前にもどる
   confiscate(); G.stunT = 0; player.per.g.rotation.x = 0; // 逮捕されても武器は没収
   if (missionOn()) failMission(tr('逮捕された！ -$1000　武器を没収　ミッション失敗')); else toast(tr('逮捕された！ -$1000　武器を没収'), 2.6);
+}
+// 配達競争でつかまった: その場で動けなくなって観戦する(荷物はホストが落とす)
+function raceCaught() {
+  G.wanted = 0; G.bust = 0; G.evade = 0; removeAllPolice(); if (player.mode === 'car') exitCar();
+  G.stunT = 0; player.per.g.rotation.x = 0; G.out = true; G.watchYaw = 0; releaseHeld();
+  $('warn').textContent = ''; toast(tr('つかまった！ ここからは観戦'), 3);
+  if (SC.onSend) SC.onSend(SC.getMe()); // すぐに知らせる
 }
 function removeAllPolice() {
   for (let i = cars.length - 1; i >= 0; i--) if (cars[i].kind === 'police') removeCar(cars[i]);
@@ -1951,12 +1967,13 @@ function readInput() {
   input.dash = held.dash || keys.ShiftLeft || keys.ShiftRight;
   // 車: アクセル・ブレーキ・バックのボタン(スティックは左右のハンドルだけ)。パソコンのキーは今のまま(W・S・Space)
   input.acc = held.acc || keys.KeyW || keys.ArrowUp; input.rev = held.rev || keys.KeyS || keys.ArrowDown; input.brake = held.brk || keys.Space;
+  if (G.out) { input.jx = input.jy = 0; input.dash = input.acc = input.rev = false; input.brake = true; } // 配達競争でつかまった人は動けない
 }
 
 /* ===== 車の乗り降り ===== */
 function nearestEnterable() { let best = null, bd = TUNE.enterDist; for (const c of cars) { if ((c.kind === 'police' && G.mode !== 'solo') || c.flee || c.kind === 'hunter') continue; const d = Math.hypot(c.x - player.x, c.z - player.z); if (d < bd) { bd = d; best = c; } } return best; }
 function toggleCar() {
-  if (!G.started || G.stunT > 0 || G.downT > 0 || paused()) return; if (player.mode === 'car') { exitCar(); return; }
+  if (!G.started || G.stunT > 0 || G.downT > 0 || G.out || paused()) return; if (player.mode === 'car') { exitCar(); return; }
   const c = nearestEnterable(); if (!c) return;
   if (c.kind === 'traffic') { ejectDriver(c); if (Math.abs(c.v) > 1) { addWanted(1); if (G.mode === 'solo') toast(tr('車を奪った！'), 1.4); } }
   else if (c.kind === 'police') stealPolice(c);
@@ -2071,6 +2088,21 @@ function carPairs() {
       if (Math.abs(pl.v) > 4) { if (!o.flee) bump(); if (o.kind === 'parked') { o.v = pl.v * 0.5; o.h = pl.h; } pl.v *= -0.3; } }
     a.x -= nx * push; a.z -= nz * push; b.x += nx * push; b.z += nz * push;
   }
+  // 配達競争: ほかの人のパトカー・警察官にも重ならないように、自分だけ押し返す。パトカーに速くぶつけると、自分も手配(v=20)
+  if (!G.out) for (const id in R.avatars) {
+    const av = R.avatars[id];
+    if (av.cop && av.cop.seen) {
+      const k = av.cop, r = player.mode === 'car' ? 3.6 : 2.1, dx = player.x - k.x, dz = player.z - k.z, d = Math.hypot(dx, dz);
+      if (d < r && d > 0.001) {
+        const o = player.mode === 'car' ? player.car : player; o.x = k.x + dx / d * r; o.z = k.z + dz / d * r; player.x = o.x; player.z = o.z;
+        if (player.mode === 'car') { if (Math.abs(player.car.v) > TUNE.racePolice.ramSpeed) raceWanted('パトカーにぶつけた！ 警察に追われている！'); if (Math.abs(player.car.v) > 4) player.car.v *= -0.3; }
+      }
+    }
+    for (const q of av.cops || []) {
+      if (!q.seen) continue; const r = player.mode === 'car' ? 2.4 : 1.0, dx = player.x - q.x, dz = player.z - q.z, d = Math.hypot(dx, dz);
+      if (d < r && d > 0.001) { const o = player.mode === 'car' ? player.car : player; o.x = q.x + dx / d * r; o.z = q.z + dz / d * r; player.x = o.x; player.z = o.z; if (player.mode === 'car') player.car.v *= 0.5; }
+    }
+  }
   // 配達競争: ほかの人(の車)に重ならないように、自分だけ押し返す
   for (const id in R.avatars) {
     const av = R.avatars[id]; if (!av.seen) continue; const r = (av.car ? 2 : 0.6) + (player.mode === 'car' ? 2 : 0.6);
@@ -2090,23 +2122,26 @@ function updatePeds(dt) {
     if (p.angry) { if (npcs.indexOf(p.angry) >= 0) { p.per.g.visible = false; continue; } p.angry = null; p.bi = pedBlock(); p.t = Math.random() * 160; p.per.g.visible = true; } // おこって追いかけている間は、別の人(npcs)として動く
     const fleeing = G.wanted >= 2, stop = p.talkT > 0; // 話している間は立ち止まる
     if (stop) p.talkT -= dt; else { p.t += p.dir * p.speed * (fleeing ? 2.2 : 1) * dt; const q = pedPos(p); p.x = q[0]; p.z = q[1]; p.h = q[2]; }
-    if (player.mode === 'car') { const c = player.car; const d = Math.hypot(c.x - p.x, c.z - p.z); if (d < 2.4 && Math.abs(c.v) > 5) { p.down = 7; p.per.g.rotation.x = -Math.PI / 2; p.push.x = Math.sin(c.h) * c.v * 0.6; p.push.z = Math.cos(c.h) * c.v * 0.6; addWanted(1); continue; } }
+    if (player.mode === 'car') { const c = player.car; const d = Math.hypot(c.x - p.x, c.z - p.z); if (d < 2.4 && Math.abs(c.v) > 5) { p.down = 7; p.per.g.rotation.x = -Math.PI / 2; p.push.x = Math.sin(c.h) * c.v * 0.6; p.push.z = Math.cos(c.h) * c.v * 0.6; addWanted(1); raceWanted('人をひいた！ 警察に追われている！'); continue; } }
     p.per.g.position.set(p.x, 0.3, p.z); p.per.g.rotation.y = p.h; animPerson(p.per, stop ? 0 : p.speed * (fleeing ? 2.2 : 1), dt);
   }
 }
 function managePolice(dt) {
-  const dayX = G.phase === 'day' ? 1 : G.phase === 'night' ? -1 : 0; // 昼はパトカーが1台多い、夜は1台少ない
-  const want = G.wanted === 0 ? 0 : clamp(G.wanted + dayX, 1, TUNE.police.maxCars + (dayX > 0 ? 1 : 0)); const pol = cars.filter(c => c.kind === 'police');
+  const race = G.mode === 'race'; // 配達競争: パトカー1台・警察官2人。★は1つだけ。昼・夕方・夜で変わらない
+  if (race && G.out) { $('warn').textContent = ''; return; }
+  const dayX = race ? 0 : G.phase === 'day' ? 1 : G.phase === 'night' ? -1 : 0; // 昼はパトカーが1台多い、夜は1台少ない
+  const want = G.wanted === 0 ? 0 : race ? TUNE.racePolice.cars : clamp(G.wanted + dayX, 1, TUNE.police.maxCars + (dayX > 0 ? 1 : 0)); const pol = cars.filter(c => c.kind === 'police');
+  if (race && G.wanted === 0 && npcs.some(n => n.kind === 'cop')) { removeAllPolice(); return; }
   if (G.wanted === 0 && pol.length) { removeAllPolice(); return; }
   G.spawnCd -= dt;
   if (pol.length < want && G.spawnCd <= 0) {
     G.spawnCd = 2.5; const cand = [];
     for (let i = 0; i <= N; i++) for (let j = 0; j <= N; j++) { const q = P(i, j); const d = Math.hypot(q.x - player.x, q.z - player.z); if (d > 60 && d < 130) cand.push(q); }
-    if (cand.length) { const q = cand[Math.floor(Math.random() * cand.length)]; const c = newCar('police', q.x, q.z, Math.atan2(player.x - q.x, player.z - q.z), 0); c.v = 10; }
+    if (cand.length) { const q = cand[Math.floor(Math.random() * cand.length)]; const c = newCar('police', q.x, q.z, Math.atan2(player.x - q.x, player.z - q.z), 0); c.v = 10; if (race) c.crew = TUNE.racePolice.crew; }
   }
   let nd = 1e9, nearCop = false; for (const c of pol) if (c.crew > 0) nd = Math.min(nd, Math.hypot(c.x - player.x, c.z - player.z));
   for (const n of npcs) { if (n.kind !== 'cop' || n.hp <= 0 || n.state !== 'chase' || n.blind > 0 || n.frozen > 0) continue; const d = Math.hypot(n.x - player.x, n.z - player.z); nd = Math.min(nd, d); if (player.mode === 'foot' && d < TUNE.police.catchDist && n.stagger <= 0) nearCop = true; }
-  if (G.wanted > 0) { if (nd > TUNE.police.evadeDist) G.evade += dt; else G.evade = Math.max(0, G.evade - dt * 0.5); if (G.evade > TUNE.police.evadeTime * (G.phase === 'day' ? DAY.dayEvade : 1)) { G.wanted--; G.evade = 0; toast(tr(G.wanted ? '手配度ダウン' : '逃げ切った！'), 1.6); } }
+  if (G.wanted > 0) { if (nd > TUNE.police.evadeDist) G.evade += dt; else G.evade = Math.max(0, G.evade - dt * 0.5); if (G.evade > TUNE.police.evadeTime * (G.phase === 'day' && !race ? DAY.dayEvade : 1)) { G.wanted--; G.evade = 0; toast(tr(G.wanted ? '手配度ダウン' : '逃げ切った！'), 1.6); } }
   // 逮捕: 歩いている主人公に、警察官がしばらくくっつく
   if (G.wanted > 0 && nearCop) G.bust += dt; else G.bust = Math.max(0, G.bust - dt);
   $('warn').textContent = G.bust > 0.2 ? tr('逃げろ！ 捕まるぞ！') : ''; if (G.bust > TUNE.police.bustTime) busted();
@@ -2166,13 +2201,42 @@ function updateMission(dt) {
 }
 
 /* ===== 配達競争(画面側) ===== */
+// ほかの人のパトカーと警察官(v=20): 追われている人のスマホが動かして、位置を送ってくる(p = パトカー [x, z, h]、k = 警察官 [[x, z, h], …])。ここでは見せるだけ
+function updateRemoteCops(a, r, k, dt) {
+  const pc = r && !r.out ? r.p : null, ks = r && !r.out ? r.k || [] : [];
+  if (pc) {
+    if (!a.cop) { const m = makeCarMesh(0, true); a.cop = { g: m.g, lights: m.lights, x: pc[0], z: pc[1], h: pc[2], seen: false }; }
+    const c = a.cop; if (!c.seen) { c.x = pc[0]; c.z = pc[1]; c.h = pc[2]; c.seen = true; }
+    c.x += (pc[0] - c.x) * k; c.z += (pc[1] - c.z) * k; c.h += angDiff(c.h, pc[2]) * k;
+    c.g.visible = true; c.g.position.set(c.x, 0, c.z); c.g.rotation.y = c.h; copLights(c, T);
+  } else if (a.cop) { a.cop.seen = false; a.cop.g.visible = false; }
+  a.cops = a.cops || [];
+  for (let i = 0; i < Math.max(ks.length, a.cops.length); i++) {
+    const q = ks[i]; let o = a.cops[i];
+    if (!q) { if (o) { o.seen = false; o.per.g.visible = false; } continue; }
+    if (!o) o = a.cops[i] = { per: makeCop(SKINS[i % 3]), x: q[0], z: q[1], h: q[2], seen: false };
+    if (!o.seen) { o.x = q[0]; o.z = q[1]; o.h = q[2]; o.seen = true; }
+    const ox = o.x, oz = o.z; o.x += (q[0] - o.x) * k; o.z += (q[1] - o.z) * k; o.h += angDiff(o.h, q[2]) * k;
+    o.per.g.visible = true; o.per.g.position.set(o.x, onWalk(o.x, o.z) ? 0.3 : 0, o.z); o.per.g.rotation.y = o.h; animPerson(o.per, Math.hypot(o.x - ox, o.z - oz) / Math.max(dt, 0.001), dt);
+  }
+}
+function dropAvatar(a) { scene.remove(a.carM.g); scene.remove(a.per.g); scene.remove(a.star); if (a.cop) scene.remove(a.cop.g); for (const o of a.cops || []) scene.remove(o.per.g); }
+// 観戦: つかまった人のカメラは、荷物を持っている人(いなければ、まだ走っている人)についていく
+function watchTarget() {
+  if (!G.out) return null; const h = raceHolder(), ok = id => { const a = R.avatars[id]; return a && a.seen; };
+  const id = h && ok(h) ? h : Object.keys(R.avatars).find(ok); if (!id) return null;
+  const a = R.avatars[id]; return { id, x: a.x, z: a.z, h: a.h, car: a.car };
+}
 const RACE_SPAWN = [[1, 0, 10], [-1, 0, 10], [0, 1, 10], [0, -1, 10]]; // 真ん中の交差点から4方向に並ぶ
 function raceHolder() { const s = R.state; return s && s.pkg && s.pkg.state === 'held' ? s.pkg.holder : null; }
 function updateAvatars(dt) {
   const k = 1 - Math.exp(-10 * dt);
   for (const id in R.avatars) {
     const a = R.avatars[id], r = R.remotes[id];
-    if (!r) { a.seen = false; a.carM.g.visible = false; a.per.g.visible = false; continue; }
+    updateRemoteCops(a, r, k, dt); // その人を追っているパトカーと警察官(v=20)
+    if (!r || r.out) { a.seen = false; a.carM.g.visible = false; a.per.g.visible = false; a.star.visible = false; continue; } // つかまった人は、ほかの人の画面から消える
+    a.star.visible = !!r.w; // 手配中の人の頭の上に、黄色い★
+    if (r.w) { a.star.position.set(a.x, (a.car ? 3.4 : 3.3) + Math.sin(T * 4) * 0.15, a.z); a.star.rotation.y += dt * 3; }
     if (!a.seen) { a.x = r.x; a.z = r.z; a.h = r.h; a.seen = true; }
     a.x += (r.x - a.x) * k; a.z += (r.z - a.z) * k; a.h += angDiff(a.h, r.h) * k; a.car = !!r.c;
     a.carM.g.visible = a.car; a.per.g.visible = !a.car;
@@ -2198,6 +2262,13 @@ function raceColor(id) { const p = R.state && R.state.players && R.state.players
 /* ===== カメラ ===== */
 const camPos = new THREE.Vector3(startX, 8, startZ + 10), lookT = new THREE.Vector3();
 function updateCamera(dt) {
+  const w = watchTarget();
+  if (w) { // 観戦(配達競争でつかまった): ほかの人のうしろについていく。ドラッグで回せる
+    G.watchYaw += G.camDrag; G.camDrag = 0; G.camYaw += angDiff(G.camYaw, w.h + G.watchYaw) * Math.min(1, 3 * dt);
+    const dist = w.car ? 12 : 8, hgt = w.car ? 5.5 : 4, yaw = G.camYaw;
+    camPos.lerp(new THREE.Vector3(w.x - Math.sin(yaw) * dist, hgt, w.z - Math.cos(yaw) * dist), 1 - Math.exp(-4 * dt)); camera.position.copy(camPos);
+    lookT.set(w.x + Math.sin(yaw) * 3, 1.6, w.z + Math.cos(yaw) * 3); camera.lookAt(lookT); return;
+  }
   let dist, hgt; const target = player.mode === 'car' ? player.car.h : player.h;
   if (player.mode === 'car') { G.camYaw += angDiff(G.camYaw, target) * Math.min(1, 4 * dt); dist = 11 + Math.abs(player.car.v) * 0.08; hgt = 5; G.camDrag *= 1 - 2 * dt; }
   else { if (input.jy > -0.3 && (Math.abs(input.jx) + Math.abs(input.jy)) > 0.1) G.camYaw += angDiff(G.camYaw, target) * Math.min(1, 1.2 * dt); dist = 7.5; hgt = 3.8; if (G.camDrag) { G.camYaw += G.camDrag; G.camDrag = 0; } }
@@ -2226,14 +2297,15 @@ const mapC = document.createElement('canvas'); mapC.width = mapC.height = 720;
 })();
 const mm = $('mm'), mg = mm.getContext('2d');
 function drawMinimap() {
+  const w = watchTarget(), px = w ? w.x : player.x, pz = w ? w.z : player.z, phd = w ? w.h : player.h; // 観戦中は、見ている人がまん中
   const W = 260, Rr = 130, sc = 1.3; mg.clearRect(0, 0, W, W); mg.save(); mg.beginPath(); mg.arc(Rr, Rr, Rr, 0, Math.PI * 2); mg.clip(); mg.fillStyle = '#222'; mg.fillRect(0, 0, W, W);
   const a = G.camYaw, th = -Math.PI / 2 - Math.atan2(Math.cos(a), Math.sin(a));
-  mg.translate(Rr, Rr); mg.rotate(th); mg.scale(sc, sc); mg.drawImage(mapC, -180 - player.x, -180 - player.z, 360, 360);
-  mg.rotate(Math.atan2(Math.cos(player.h), Math.sin(player.h)) + Math.PI / 2); mg.fillStyle = '#fff'; mg.beginPath(); mg.moveTo(0, -7); mg.lineTo(5, 5); mg.lineTo(0, 2); mg.lineTo(-5, 5); mg.closePath(); mg.fill(); mg.restore();
+  mg.translate(Rr, Rr); mg.rotate(th); mg.scale(sc, sc); mg.drawImage(mapC, -180 - px, -180 - pz, 360, 360);
+  mg.rotate(Math.atan2(Math.cos(phd), Math.sin(phd)) + Math.PI / 2); mg.fillStyle = '#fff'; mg.beginPath(); mg.moveTo(0, -7); mg.lineTo(5, 5); mg.lineTo(0, 2); mg.lineTo(-5, 5); mg.closePath(); mg.fill(); mg.restore();
   const ct = Math.cos(th), stn = Math.sin(th);
-  function dot(x, z, col, r, clampIt) { const dx = (x - player.x) * sc, dz = (z - player.z) * sc; let sx = dx * ct - dz * stn, sy = dx * stn + dz * ct; const l = Math.hypot(sx, sy); if (l > Rr - 10) { if (!clampIt) return; sx *= (Rr - 10) / l; sy *= (Rr - 10) / l; } mg.fillStyle = col; mg.beginPath(); mg.arc(Rr + sx, Rr + sy, r, 0, Math.PI * 2); mg.fill(); mg.strokeStyle = '#000'; mg.lineWidth = 1.5; mg.stroke(); }
+  function dot(x, z, col, r, clampIt) { const dx = (x - px) * sc, dz = (z - pz) * sc; let sx = dx * ct - dz * stn, sy = dx * stn + dz * ct; const l = Math.hypot(sx, sy); if (l > Rr - 10) { if (!clampIt) return; sx *= (Rr - 10) / l; sy *= (Rr - 10) / l; } mg.fillStyle = col; mg.beginPath(); mg.arc(Rr + sx, Rr + sy, r, 0, Math.PI * 2); mg.fill(); mg.strokeStyle = '#000'; mg.lineWidth = 1.5; mg.stroke(); }
   for (const c of cars) if (c.kind === 'police') dot(c.x, c.z, (Math.floor(performance.now() / 250) % 2) ? '#ff3030' : '#3060ff', 6, false);
-  for (const id in R.avatars) { const av = R.avatars[id]; if (av.seen) dot(av.x, av.z, raceColor(id), 7, true); }
+  for (const id in R.avatars) { const av = R.avatars[id]; if (av.seen) dot(av.x, av.z, raceColor(id), 7, true); if (av.cop && av.cop.seen) dot(av.cop.x, av.cop.z, (Math.floor(performance.now() / 250) % 2) ? '#ff3030' : '#3060ff', 5, false); } // ほかの人を追うパトカーも
   for (const c of MX.hunters) dot(c.x, c.z, '#ffffff', 6, false); // 追っ手の車(白)
   if (G.mode === 'solo') { for (const f of FREE) if (freeOpen(f)) dot(f.at.x, f.at.z, f.info ? '#ffa53a' : f.col ? '#ffe9a0' : '#b06bff', 8, true); if (boatOpen()) dot(BOAT.at.x, BOAT.at.z, '#7fe8ff', 7, true); } // 受けられるミッション(紫)・船(水色)
   if (marker.visible) dot(marker.position.x, marker.position.z, '#' + ringMat.color.getHexString(), 9, true);
@@ -2257,8 +2329,10 @@ function updateHUD() {
 }
 function updateRaceHUD() {
   const s = R.state; let html = '<div class="t">' + tr('配達競争：{n}点先取', { n: (s && s.target) || 3 }) + '</div>';
+  const w = watchTarget();
   if (!s) html += tr('準備中…');
   else if (s.phase === 'end') html += tr('おわり！');
+  else if (G.out) html += tr('つかまった… 観戦中') + (w ? '<div class="d">' + tr('{name} を見ている', { name: '<b style="color:' + raceColor(w.id) + '">' + esc(raceName(w.id)) + '</b>' }) + '</div>' : '');
   else {
     const holder = raceHolder();
     if (!holder) { html += tr('荷物(黄色い光)を取りに行け！'); html += '<div class="d">' + tr('あと {d} m', { d: Math.round(Math.hypot(s.pkg.x - player.x, s.pkg.z - player.z)) }) + '</div>'; }
@@ -2267,8 +2341,9 @@ function updateRaceHUD() {
   }
   $('mission').innerHTML = html;
   let sc = '';
-  if (s && s.players) for (const id of Object.keys(s.players).sort((a, b) => (s.players[a].slot || 0) - (s.players[b].slot || 0))) sc += '<div' + (id === R.me ? ' class="me"' : '') + '><span class="dot" style="background:' + raceColor(id) + '"></span>' + esc(s.players[id].name) + '　' + tr('{n}点', { n: (s.scores && s.scores[id]) || 0 }) + '</div>';
-  $('scores').innerHTML = sc; $('money').textContent = ''; $('stars').innerHTML = ''; $('clock').textContent = ''; $('timer').textContent = '';
+  if (s && s.players) for (const id of Object.keys(s.players).sort((a, b) => (s.players[a].slot || 0) - (s.players[b].slot || 0))) sc += '<div' + (id === R.me ? ' class="me"' : '') + '><span class="dot" style="background:' + raceColor(id) + '"></span>' + esc(s.players[id].name) + '　' + tr('{n}点', { n: (s.scores && s.scores[id]) || 0 }) + (s.out && s.out[id] ? ' <small>' + tr('つかまった') + '</small>' : '') + '</div>';
+  $('scores').innerHTML = sc; $('money').textContent = ''; $('clock').textContent = ''; $('timer').textContent = '';
+  $('stars').innerHTML = G.wanted && !G.out ? '<span style="color:#ffd23f">★</span>' : ''; // 手配中は★が1つ
   $('speed').textContent = player.mode === 'car' ? Math.round(Math.abs(player.car.v) * 3.6) + ' km/h' : '';
 }
 
@@ -2366,7 +2441,7 @@ function frame(now) {
     carPairs(); updatePeds(dt); updateVendors(dt); updateGangs(dt); updateNpcs(dt); updatePickups(dt, T); updateMkw(dt, T); updateShots(dt); updateFx(dt);
     if (G.mode === 'solo') updateCombat(dt);
     if (G.mode === 'solo') { managePolice(dt); updateMission(dt); updateSub(dt); }
-    else { $('warn').textContent = ''; updateRaceMarks(T); R.sendT -= dt; if (R.sendT <= 0 && SC.onSend) { R.sendT = TUNE.posRate; SC.onSend(SC.getMe()); } }
+    else { managePolice(dt); updateRaceMarks(T); R.sendT -= dt; if (R.sendT <= 0 && SC.onSend) { R.sendT = TUNE.posRate; SC.onSend(SC.getMe()); } }
     checkShops(T); checkMarks(T); G.hitCd -= dt; G.play += dt;
     for (const c of cars) { c.mesh.position.set(c.x, 0, c.z); c.mesh.rotation.y = c.h; }
     updateCamera(dt); updateTalk(dt); marker.rotation.y += dt; ring.position.y = 0.4 + Math.sin(T * 3) * 0.2;
@@ -2426,9 +2501,9 @@ const SC = window.SC = {
   onRoad: (x, z) => !inMerged(x, z), // 道路の上か(つなげた区画の中は道路ではない)
   extraSpots: EXTRA_SPOTS,
   // 配達競争を始める。slot は 0〜3(並ぶ場所)
-  startRace(meId, slot, color) {
-    document.body.classList.remove('solo'); G.mode = 'race'; G.wanted = 0; removeAllPolice(); R.me = meId; R.state = null; R.remotes = {};
-    setClock(DAY.race); // 配達競争は夜のまま(時間は流れない)
+  startRace(meId, slot, color, time) {
+    document.body.classList.remove('solo'); G.mode = 'race'; G.wanted = 0; G.bust = 0; G.evade = 0; G.out = false; G.stunT = 0; player.per.g.rotation.x = 0; removeAllPolice(); R.me = meId; R.state = null; R.remotes = {};
+    setClock(TUNE.raceAt[time] || DAY.race); // 配達競争の時間は、ホストがえらぶ(時間は流れない。見た目だけ変わる)
     const sp = RACE_SPAWN[slot % 4], c0 = P(3, 3); const x = c0.x + sp[0] * sp[2] + sp[1] * 3.2, z = c0.z + sp[1] * sp[2] - sp[0] * 3.2, h = Math.atan2(sp[0], sp[1]);
     resetPlayerToFoot(x, z, h);
     if (R.myCar) removeCar(R.myCar);
@@ -2438,9 +2513,10 @@ const SC = window.SC = {
   },
   stopRace() {
     if (G.mode !== 'race') return;
-    for (const id in R.avatars) { scene.remove(R.avatars[id].carM.g); scene.remove(R.avatars[id].per.g); }
+    for (const id in R.avatars) dropAvatar(R.avatars[id]);
     R.avatars = {}; R.remotes = {}; R.state = null; marker.visible = false; pkgMesh.visible = false;
-    $('scores').innerHTML = ''; setPlaying(false); G.mode = 'menu'; resetPlayerToFoot(startX, startZ, startH);
+    G.wanted = 0; G.bust = 0; G.out = false; removeAllPolice(); $('warn').textContent = '';
+    $('scores').innerHTML = ''; setPlaying(false); G.mode = 'menu'; resetPlayerToFoot(startX, startZ, startH); setClock(DAY.race);
   },
   // ほかの人の位置 { id: { x, z, h, c(車なら1), v } }
   setRemotes(pos) {
@@ -2448,7 +2524,7 @@ const SC = window.SC = {
     for (const id in pos || {}) {
       if (id === R.me || !s || !s.players || !s.players[id]) continue;
       R.remotes[id] = pos[id];
-      if (!R.avatars[id]) { const col = s.players[id].color; R.avatars[id] = { carM: makeCarMesh(col, false), per: makePerson(col, 0x23324f, 0xf0c9a0), x: 0, z: 0, h: 0, seen: false, car: false }; }
+      if (!R.avatars[id]) { const col = s.players[id].color, star = new THREE.Mesh(BG(0.75, 0.75, 0.22), MB(0xffd23f)); star.rotation.z = Math.PI / 4; star.visible = false; scene.add(star); R.avatars[id] = { carM: makeCarMesh(col, false), per: makePerson(col, 0x23324f, 0xf0c9a0), star, x: 0, z: 0, h: 0, seen: false, car: false }; }
     }
   },
   // 試合の状態(ホストが決めたもの)
@@ -2457,6 +2533,8 @@ const SC = window.SC = {
     if (!s || !prev) return;
     const ph = prev.pkg && prev.pkg.state === 'held' ? prev.pkg.holder : null, nh = s.pkg && s.pkg.state === 'held' ? s.pkg.holder : null;
     let scored = null; for (const id in s.scores || {}) if ((s.scores[id] || 0) > ((prev.scores && prev.scores[id]) || 0)) scored = id;
+    let caught = null; for (const id in s.out || {}) if (!(prev.out && prev.out[id])) caught = id; // だれかがつかまった(v=20)
+    if (caught && caught !== R.me && s.phase !== 'end') { toast(tr(ph === caught ? '{name}がつかまった！ 荷物が落ちたぞ' : '{name}がつかまった！', { name: raceName(caught) }), 2.6); return; }
     if (scored) toast(tr('{who}が配達成功！ {n}点', { who: scored === R.me ? tr('あなた') : raceName(scored), n: s.scores[scored] }), 2.4);
     else if (nh && nh !== ph) {
       if (nh === R.me) toast(tr(ph ? '荷物を奪った！' : '荷物ゲット！ 届け先へ急げ'), 2);
@@ -2464,7 +2542,17 @@ const SC = window.SC = {
       else toast(tr(ph ? '{name}が荷物を奪った' : '{name}が荷物を取った', { name: raceName(nh) }), 2);
     }
   },
-  getMe() { return { x: Math.round(player.x * 10) / 10, z: Math.round(player.z * 10) / 10, h: Math.round(player.h * 100) / 100, c: player.mode === 'car' ? 1 : 0, v: Math.round((player.v || 0) * 10) / 10 }; },
+  // 自分の位置。w = 手配中、out = つかまった、p = 自分を追うパトカー、k = 降りている警察官(v=20)
+  getMe() {
+    const r1 = n => Math.round(n * 10) / 10, r2 = n => Math.round(n * 100) / 100;
+    const me = { x: r1(player.x), z: r1(player.z), h: r2(player.h), c: player.mode === 'car' ? 1 : 0, v: r1(player.v || 0) };
+    if (G.mode === 'race') {
+      if (G.out) me.out = 1; else if (G.wanted) me.w = 1;
+      const pc = cars.find(c => c.kind === 'police'); if (pc) me.p = [r1(pc.x), r1(pc.z), r2(pc.h)];
+      const ks = npcs.filter(n => n.kind === 'cop' && n.hp > 0).slice(0, 3).map(n => [r1(n.x), r1(n.z), r2(n.h)]); if (ks.length) me.k = ks;
+    }
+    return me;
+  },
   toast,
 };
 applyEnv(G.clock);

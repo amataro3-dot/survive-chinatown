@@ -8,8 +8,8 @@
 import {
   db, auth, ref, get, set, update, remove, onValue,
   onDisconnect, serverTimestamp, runTransaction, signInAnonymously
-} from "./firebase.js?v=19";
-import { sync as syncGame, makeGame, roomPath } from "./online.js?v=19";
+} from "./firebase.js?v=20";
+import { sync as syncGame, makeGame, roomPath, TIMES } from "./online.js?v=20";
 
 const MAX_PLAYERS = 4;
 const MIN_PLAYERS = 2;
@@ -215,6 +215,9 @@ function render() {
   else note = tr("ホストがスタートするのを待っています");
   $("lbRoomMsg").textContent = note;
 
+  // 時間(v=20): ホストだけえらべる。はじめは夜
+  const time = TIMES.includes(room.meta && room.meta.time) ? room.meta.time : "night";
+  for (const k of TIMES) { const b = $("lbT" + k); b.classList.toggle("on", k === time); b.disabled = !iAmHost || started; }
   $("lbStart").classList.toggle("hidden", !iAmHost || started);
   $("lbStart").disabled = onlineCount < MIN_PLAYERS;
   $("lbReset").classList.toggle("hidden", !iAmHost || !started);
@@ -225,10 +228,16 @@ $("lbStart").addEventListener("click", () => guard(async () => {
   const list = playerList();
   const on = list.filter(isOnline);
   if (on.length < MIN_PLAYERS) return;
-  const changes = { "meta/started": true, "meta/startedAt": serverTimestamp(), game: makeGame(on), pos: null };
+  const changes = { "meta/started": true, "meta/startedAt": serverTimestamp(), game: makeGame(on, room.meta.time), pos: null };
   for (const p of list) if (!isOnline(p)) changes["players/" + p.id] = null; // 切断中の人はこの試合に入れない
   await update(ref(db, roomPath(code)), changes);
 }));
+
+// 時間をえらぶ(ホストだけ。試合の前だけ)
+for (const k of TIMES) $("lbT" + k).addEventListener("click", () => {
+  if (!room || !room.meta || room.meta.host !== uid || room.meta.started) return;
+  update(ref(db, roomPath(code) + "/meta"), { time: k }).catch(console.error);
+});
 
 // ロビーにもどす
 $("lbReset").addEventListener("click", () => guard(async () => {
