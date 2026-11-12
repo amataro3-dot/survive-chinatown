@@ -28,6 +28,9 @@ const TUNE = {
   hp: 100, deathFine: 0.1,         // 主人公の体力、やられたときに減るお金(所持金の1割。最低$100)
   gang: { count: 16, hp: 100, speed: 4.2, turf: 15, giveUp: 32, respawn: 30, feud: 12, feudGiveUp: 22, feudDmg: 2 }, // ギャング: 数(街)・体力・走る速さ・なわばりの広さ・あきらめる距離・生きかえるまでの秒
   //   v=18 黒と白のケンカ: feud = これより近くで出会うとケンカ、feudGiveUp = これよりはなれるとやめる、feudDmg = マフィアどうしのダメージの倍
+  // v=19 幹部と大ボス: hp = 幹部の体力、speed = 幹部と大ボスの走る速さ(手下より少し速い)、minions = 幹部の手下の数
+  //   oyajiHp = 大ボス(屋台のおやじ)の体力、call = 体力が半分になると呼ぶ手下の数、near = これより近いと刀・遠いとピストル、carDmg = 車でひいたときのダメージの倍、giveUp = 幹部と大ボスがあきらめる距離(遠くから撃たれても、追ってくる)
+  boss: { hp: 300, speed: 4.9, minions: 3, oyajiHp: 500, call: 6, near: 6, carDmg: 0.3, giveUp: 60 },
   hunt: { cars: 2, speed: 29, wait: 4, back: 0.9 }, // 「幹部の車をいただけ」の追っ手の車: 台数・速さ・次の1台が出るまでの秒・ぶつけたあと下がる秒
   // 昼と夜(v=12): 1日の秒・夕方が始まる秒・夜が始まる秒・ひとり用が始まる秒・配達競争とスタート画面の時間(夜)・時間の速さ(0 で止まる)
   //   far = 人がふえたり減ったりするのは、主人公からこれだけはなれた所だけ(目の前で急に消えないように)
@@ -667,7 +670,9 @@ const MKT = { max: 3, respawn: 60, blind: 4, freeze: 5, speed: 18, hitR: 1.0 };
 // ねらい方(ピストル・マシンガン): こうげきボタンを倒すと照準線、離すと撃つ。軽くタップは向いている方へ
 const AIM = { dead: 16, max: 18, assist: 0.12, tapAssist: 0.35, wait: 0.4 }; // 倒したと見なす距離(px)・ボタンが動く距離(px)・ねらった方への自動補正(ラジアン)・タップのときの補正・撃てるまで待つ秒
 // ギャングの武器
-const GANG_W = { fist: { dmg: 5, cd: 1.0, range: 1.8 }, knife: { dmg: 12, cd: 1.1, range: 2.2 }, pistol: { dmg: 8, cd: 1.5, range: 18 } };
+const GANG_W = { fist: { dmg: 5, cd: 1.0, range: 1.8 }, knife: { dmg: 12, cd: 1.1, range: 2.2 }, pistol: { dmg: 8, cd: 1.5, range: 18 },
+  // v=19 幹部と大ボスの武器: 青龍刀(黒の幹部)・マシンガン(白の幹部。burst 発うって rest 秒休む)・日本刀(大ボス)
+  dao: { dmg: 20, cd: 1.2, range: 2.8 }, mg: { dmg: 3, cd: 0.14, range: 20, burst: 6, rest: 1.6 }, katana: { dmg: 16, cd: 0.9, range: 2.5 } };
 // 病院(東側の白い建物)。やられたら、この前で目がさめる(道路の方を向いて)
 const HOSPITAL = { x: roadC(5) + 26, z: roadC(4) + 6.8, h: Math.PI };
 // ホーム(v=14): スタート地点の近くの歩道。青い光に入るとセーブして、体力が全回復する。sx・sz・sh = 「つづきから」と逮捕のあとに立つ所
@@ -753,12 +758,13 @@ function gangSpot() {
   }
   return [roadC(1) + 26, roadC(1) + 8];
 }
-function newGang(x, z) {
-  const per = makePerson(0x141414, 0x1a1a1a, [0xf0c9a0, 0xc89870, 0x8a5a3a][Math.floor(rnd() * 3)]);
-  const gl = new THREE.Mesh(BG(0.5, 0.1, 0.05), M(0x050505)); gl.position.set(0, 2.2, 0.29); per.g.add(gl);
+// vip = 幹部・大ボスの見た目(makeVip で作ったもの)。なければ、ふつうの黒い服とサングラス
+function newGang(x, z, vip) {
+  const per = vip || makePerson(0x141414, 0x1a1a1a, [0xf0c9a0, 0xc89870, 0x8a5a3a][Math.floor(rnd() * 3)]);
+  if (!vip) { const gl = new THREE.Mesh(BG(0.5, 0.1, 0.05), M(0x050505)); gl.position.set(0, 2.2, 0.29); per.g.add(gl); }
   const r = rnd(), weapon = gangWeapon(r, false);
-  const g = { per, x, z, h: rnd() * 6.28, home: { x, z }, hp: TUNE.gang.hp, weapon, state: 'idle', cd: 0, dead: -1, wt: 0, tx: x, tz: z, swing: 0, hitCd: 0, kx: 0, kz: 0, item: null, r, white: false, foe: null, scan: Math.random() };
-  setHand(per, g, weapon); gangs.push(g); return g;
+  const g = { per, x, z, h: rnd() * 6.28, home: { x, z }, hp: TUNE.gang.hp, weapon, state: 'idle', cd: 0, dead: -1, wt: 0, tx: x, tz: z, swing: 0, hitCd: 0, kx: 0, kz: 0, item: vip ? vip.item || null : null, r, white: false, foe: null, scan: Math.random(), mob: true, talkT: 0 };
+  if (!vip) setHand(per, g, weapon); gangs.push(g); return g;
 }
 // 黒と白(v=18): 黒 = チャイナタウンの中(近づいてくる)、白 = 外の街(白いスーツ。ピストルが多い)。白が出るのは、大きな仕事のあとから
 //   人数はふやさない。外の街にいる黒を、白いスーツに着せかえる(服の色を変えて、ネクタイを足すだけ)。武器は同じ乱数 r から決め直す
@@ -773,6 +779,8 @@ function setTeam(g, white, weapon) {
 }
 // 街のマフィアを、いまの進み具合に合わせて黒か白にする(ミッションの間だけ出る相手は変えない)
 function applyTeams() { const on = G.mode === 'solo' && G.mi >= MISSIONS.length; for (const g of gangs) if (!g.temp) setTeam(g, on && !inCT(g.home.x, g.home.z)); }
+// 幹部をたおしたチームは、主人公をおそってこない(v=19)。ミッションの間だけ出る相手(temp)は、いつもどおり
+const isCalm = g => !g.temp && G.mode === 'solo' && G.bosses.includes(g.white ? 'W' : 'B');
 function dropGang(g) { g.gone = true; const i = gangs.indexOf(g); if (i >= 0) gangs.splice(i, 1); scene.remove(g.per.g); }
 for (let i = 0; i < TUNE.gang.count; i++) { const q = gangSpot(); newGang(q[0], q[1]); }
 for (const k of [0, 4, 10]) { const s = EXTRA_SPOTS[k]; if (s) newGang(s.x, s.z); } // 市場の中にも
@@ -790,13 +798,13 @@ function respawnGang(g) { clearStatus(g); g.hp = TUNE.gang.hp; g.dead = -1; g.st
 function damageGang(g, dmg, kx, kz, by) {
   if (g.hp <= 0) return;
   g.hp -= dmg; g.kx = kx || 0; g.kz = kz || 0; spark(g.x, 1.6, g.z);
-  if (!by) { g.state = 'chase'; g.foe = null; } // 主人公になぐられたら、主人公を追う
+  if (!by) { if (isCalm(g)) { g.state = 'flee'; g.fleeT = 6; } else g.state = 'chase'; g.foe = null; g.talkT = 0; } // 主人公になぐられたら、主人公を追う(おとなしくなったチームは、逃げるだけ)
   else if (g.state !== 'chase' && !g.lure) g.foe = by; // マフィアにやられたら、やり返す(主人公を追っている間は、そのまま)
   if (g.hp <= 0) {
     g.dead = 0; g.foe = null; g.per.g.rotation.x = -Math.PI / 2; g.per.g.position.y = 0.4;
     if (by) { setHand(g.per, g, null); return; } // ケンカでたおれたときは、何も落とさない・★も上がらない
     dropPickup('money', g.x + 0.6, g.z, 20 + Math.floor(Math.random() * 7) * 10);
-    if (g.weapon !== 'fist') { dropPickup(g.weapon, g.x - 0.6, g.z + 0.4, g.weapon === 'pistol' ? 12 : 0); setHand(g.per, g, null); }
+    if (g.weapon !== 'fist') { dropPickup(g.weapon, g.x - 0.6, g.z + 0.4, g.weapon === 'pistol' ? 12 : g.weapon === 'mg' ? 60 : 0); setHand(g.per, g, null); }
     if (!g.temp) addWanted(1); // ミッションの相手は、たおしても★は上がらない
   }
 }
@@ -812,28 +820,35 @@ function updateGangs(dt) {
     // 黒と白のケンカ(v=18): 近くで出会うと、たがいにおそう。先に主人公を見つけていたら主人公を、先に相手を見つけていたら相手をねらう
     let foe = g.foe;
     if (foe && (!feud || g.state === 'chase' || foe.hp <= 0 || foe.off || foe.gone || foe.white === g.white || Math.hypot(foe.x - g.x, foe.z - g.z) > F.feudGiveUp)) foe = g.foe = null;
-    if (!foe && feud && g.state !== 'chase' && !g.lure) {
+    if (!foe && feud && g.state !== 'chase' && !g.lure && !g.nofeud) { // nofeud = 幹部・大ボスとその手下(ケンカに入らない)
       g.scan -= dt;
-      if (g.scan <= 0) { g.scan = 0.4 + Math.random() * 0.3; let bd = F.feud; for (const o of gangs) { if (o.white === g.white || o.hp <= 0 || o.off || o.lure || !o.per.g.visible) continue; const d = Math.hypot(o.x - g.x, o.z - g.z); if (d < bd) { bd = d; foe = o; } } g.foe = foe; }
+      if (g.scan <= 0) { g.scan = 0.4 + Math.random() * 0.3; let bd = F.feud; for (const o of gangs) { if (o.white === g.white || o.hp <= 0 || o.off || o.lure || o.nofeud || !o.per.g.visible) continue; const d = Math.hypot(o.x - g.x, o.z - g.z); if (d < bd) { bd = d; foe = o; } } g.foe = foe; }
     }
-    if (g.state === 'idle' && !foe && fight && !peace() && dHome < F.turf) g.state = 'chase'; // お使いの間は、なわばりに入ってもおそってこない(なぐれば、やり返す)
-    if (g.state === 'chase' && !g.lure && (!fight || dHome > F.giveUp)) g.state = 'idle'; // lure = 「火をつけろ」でついてくる黒の手下(あきらめるかは、ミッションの方で決める)
+    const calm = isCalm(g); // 幹部をたおしたチーム: おそってこない。なぐられたら逃げる
+    if (calm && g.state === 'chase') g.state = 'idle';
+    if (g.state === 'flee') { g.fleeT -= dt; if (g.fleeT <= 0 || !calm) g.state = 'idle'; }
+    if (g.state === 'idle' && !foe && fight && !peace() && !calm && dHome < F.turf) g.state = 'chase'; // お使いの間は、なわばりに入ってもおそってこない(なぐれば、やり返す)
+    if (g.state === 'chase' && !g.lure && (!fight || dHome > (g.boss ? TUNE.boss.giveUp : F.giveUp))) g.state = 'idle'; // lure = 「火をつけろ」でついてくる黒の手下(あきらめるかは、ミッションの方で決める)
     let sp = 0, tx = g.tx, tz = g.tz;
     const dis = statusTick(g, dt); // 1 = 豚の頭で前が見えない、2 = ヘビで動けない
+    if (g.boss === 'O' && g.state === 'chase') bossTick(g, dP, dt); // 大ボス: 遠いとピストル・近いと刀。体力が半分になると手下を呼ぶ
     if (dis) { if (dis === 1) { const q = blindWalk(g, dt); tx = q[0]; tz = q[1]; sp = 1.5; } }
+    else if (g.state === 'flee') { tx = g.x * 2 - px; tz = g.z * 2 - pz; sp = F.speed * 1.2; }
     else if (foe || g.state === 'chase') {
-      const W = GANG_W[g.weapon], dT = foe ? Math.hypot(foe.x - g.x, foe.z - g.z) : dP; tx = foe ? foe.x : px; tz = foe ? foe.z : pz;
-      if (dT > (g.weapon === 'pistol' ? 9 : W.range * 0.8)) sp = F.speed;
+      const W = GANG_W[g.weapon], ranged = g.weapon === 'pistol' || g.weapon === 'mg', dT = foe ? Math.hypot(foe.x - g.x, foe.z - g.z) : dP; tx = foe ? foe.x : px; tz = foe ? foe.z : pz;
+      if (dT > (ranged ? 9 : W.range * 0.8)) sp = g.boss ? TUNE.boss.speed : F.speed;
       if (dT < W.range && g.cd <= 0) {
-        g.cd = W.cd; g.swing = 0.25;
-        if (g.weapon === 'pistol') {
-          if (lineClear(g.x, g.z, tx, tz)) { tracer(g.x, g.z, tx + (Math.random() - 0.5), tz + (Math.random() - 0.5)); if (Math.random() < 0.6) { if (foe) damageGang(foe, W.dmg * F.feudDmg, 0, 0, g); else hurtPlayer(W.dmg * (player.mode === 'car' ? 0.5 : 1)); } }
+        g.cd = W.cd; g.swing = 0.25; const dmg = W.dmg * (g.dmgX || 1);
+        if (W.burst) { g.burst = (g.burst || W.burst) - 1; if (g.burst <= 0) { g.burst = W.burst; g.cd = W.rest; } } // マシンガン: 何発かうって、少し休む
+        if (ranged) {
+          if (lineClear(g.x, g.z, tx, tz)) { tracer(g.x, g.z, tx + (Math.random() - 0.5), tz + (Math.random() - 0.5)); if (Math.random() < 0.6) { if (foe) damageGang(foe, dmg * F.feudDmg, 0, 0, g); else hurtPlayer(dmg * (player.mode === 'car' ? 0.5 : 1)); } }
           else g.cd = 0.3;
         }
-        else if (foe) damageGang(foe, W.dmg * F.feudDmg, 0, 0, g);
-        else if (player.mode === 'foot') hurtPlayer(W.dmg);
+        else if (foe) damageGang(foe, dmg * F.feudDmg, 0, 0, g);
+        else if (player.mode === 'foot') hurtPlayer(dmg);
       }
-    } else {
+    } else if (g.talkT > 0) g.talkT -= dt; // 話している間は、立ち止まる(おとなしくなったマフィア)
+    else {
       g.wt -= dt; if (g.wt <= 0) { g.wt = 2 + Math.random() * 4; const a = Math.random() * 6.28, r = Math.random() * 6; g.tx = g.home.x + Math.cos(a) * r; g.tz = g.home.z + Math.sin(a) * r; tx = g.tx; tz = g.tz; }
       if (Math.hypot(tx - g.x, tz - g.z) > 0.6) sp = 1.4;
     }
@@ -841,7 +856,7 @@ function updateGangs(dt) {
     else if ((foe || g.state === 'chase') && !dis) g.h += angDiff(g.h, Math.atan2(tx - g.x, tz - g.z)) * Math.min(1, 8 * dt);
     g.x += g.kx * dt; g.z += g.kz * dt; g.kx *= 1 - 6 * dt; g.kz *= 1 - 6 * dt;
     resolve(g, 0.45);
-    if (player.mode === 'car' && g.hitCd <= 0) { const c = player.car, d = Math.hypot(c.x - g.x, c.z - g.z); if (d < 2.4 && Math.abs(c.v) > 5) { g.hitCd = 0.6; damageGang(g, Math.abs(c.v) * 4, Math.sin(c.h) * c.v * 0.5, Math.cos(c.h) * c.v * 0.5); } }
+    if (player.mode === 'car' && g.hitCd <= 0) { const c = player.car, d = Math.hypot(c.x - g.x, c.z - g.z); if (d < 2.4 && Math.abs(c.v) > 5) { g.hitCd = 0.6; damageGang(g, Math.abs(c.v) * 4 * (g.boss ? TUNE.boss.carDmg : 1), Math.sin(c.h) * c.v * 0.5, Math.cos(c.h) * c.v * 0.5); } }
     if (g.hp > 0) { g.per.g.position.set(g.x, onWalk(g.x, g.z) ? 0.3 : 0, g.z); g.per.g.rotation.y = g.h; animPerson(g.per, sp, dt); if (g.swing > 0) g.per.armR.rotation.x = -1.5; }
   }
 }
@@ -1145,7 +1160,7 @@ function updateCombat(dt) {
 
 /* ===== 大事な人の見た目(v=13): 四角い人に、箱の部品を足して見分ける ===== */
 function part(per, w, h, d, col, x, y, z) { const m = new THREE.Mesh(BG(w, h, d), M(col)); m.position.set(x, y, z); per.g.add(m); return m; }
-// kind: 'vendor'(屋台の人) 'oyaji'(屋台のおやじ) 'info'(情報屋) 'bossB'(黒の幹部) 'white'(白の手下) 'bossW'(白の幹部)
+// kind: 'vendor'(屋台の人) 'oyaji'(屋台のおやじ) 'info'(情報屋) 'bossB'(黒の幹部) 'white'(白の手下) 'bossW'(白の幹部) 'bossO'(大ボス) 'sis'(妹)
 //   o = { shirt, apron, skin }(屋台の人の服・エプロンの色、はだの色)。情報屋・幹部・白の手下が街に出てくるのは、あとの回(⑤⑥)
 function makeVip(kind, o) {
   o = o || {}; const skin = o.skin || 0xc89870; let per;
@@ -1168,6 +1183,11 @@ function makeVip(kind, o) {
     per = makePerson(0x141414, 0x1a1a1a, skin); per.hair.visible = false; beard(0x1a1410);
     part(per, 0.84, 0.16, 0.5, 0xc8261e, 0, 0.93, 0); part(per, 0.16, 0.42, 0.06, 0xc8261e, -0.25, 0.7, 0.27);
     per.g.scale.setScalar(1.3); setHand(per, per, 'dao');
+  } else if (kind === 'bossO') { // 大ボス(v=19。屋台のおやじが、エプロンをぬいだすがた): コック帽・白髪・赤い帯・1.1倍
+    per = makePerson(0x4a4f5a, 0x2a2a30, skin); part(per, 0.52, 0.24, 0.52, 0xf4f2ea, 0, 2.62, 0); part(per, 0.72, 0.34, 0.72, 0xffffff, 0, 2.9, 0); per.hair.material = M(0x9a9a9a);
+    part(per, 0.84, 0.14, 0.5, 0x8a1a1a, 0, 0.93, 0); per.g.scale.setScalar(1.1);
+  } else if (kind === 'sis') { // 妹(v=19。終わりの絵だけに出る): 長い髪
+    per = makePerson(0x6fa8c8, 0x3a3a48, 0xf0c9a0); part(per, 0.56, 0.7, 0.12, 0x2a1d14, 0, 2.05, -0.3);
   } else if (kind === 'white') { // 白の手下: 白いスーツ・黒いネクタイ・サングラス
     per = makePerson(0xf2f2f2, 0xf2f2f2, skin); tie(); glasses();
   } else { // 白の幹部: 1.15倍・白い帽子・ひげ・マシンガン
@@ -1216,6 +1236,12 @@ const RUMORS = [
   { text: '黒と白は、門をはさんでにらみ合ってる。ちょっとしたきっかけで、すぐ火がつくよ' },
   { text: '幹部の話？…声が大きいよ。こっちまでにらまれるじゃないか' },
 ];
+// おとなしくなったマフィアのひとこと(v=19。幹部をたおしたチームの手下に話しかけると言う)
+const CALM_LINES = [
+  { text: 'おつかれさまです！…いえ、何も見てません' },
+  { text: '前の幹部より、話がわかる人でよかった' },
+  { text: 'なぐらないでください。もう充分です' },
+];
 // Q&A。ok = ふつうのこたえ、ng = 相手がおこるこたえ(おそってくる)。who: 'shop' = 屋台の人がよく聞く、'oyaji' = 屋台のおやじだけ
 const QAS = [
   { text: 'うちの小籠包、街でいちばんだろ？', ok: 'いちばんだ', ng: 'となりの店のほうがうまい', who: 'shop' },
@@ -1253,6 +1279,7 @@ const vendors = [];
 })();
 function updateVendors(dt) {
   for (const v of vendors) {
+    if (v.oyaji) { const away = G.mode === 'solo' && (!!G.done.tower || (!!G.free && G.free.id === 'tower')); if (away !== !!v.off) { v.off = away; v.per.g.visible = !away; } if (away) continue; } // 塔の対決が始まると、おやじは屋台からいなくなる
     if (v.angry) { if (npcs.indexOf(v.angry) >= 0) { v.per.g.visible = false; continue; } v.angry = null; v.h = v.h0; v.per.g.visible = true; } // おこって追いかけたあとは、屋台にもどる
     if (v.talkT > 0) v.talkT -= dt; else v.h += angDiff(v.h, v.h0) * Math.min(1, 4 * dt);
     v.per.g.position.set(v.x, 0.34, v.z); v.per.g.rotation.y = v.h; animPerson(v.per, 0, dt);
@@ -1266,7 +1293,9 @@ function talkTarget() {
   if (!G.started || G.mode !== 'solo' || player.mode !== 'foot' || player.hp <= 0 || G.downT > 0 || G.stunT > 0 || G.shop || G.wanted > 0 || (talk && talk.qa)) return null;
   let best = null, bd = TALK.dist;
   const see = e => { if (e.off || e.down > 0 || e.angry || (talk && talk.who === e)) return; const d = Math.hypot(e.x - player.x, e.z - player.z); if (d < bd) { bd = d; best = e; } };
-  peds.forEach(see); vendors.forEach(see); return best;
+  peds.forEach(see); vendors.forEach(see);
+  for (const g of gangs) if (g.hp > 0 && g.state === 'idle' && !g.foe && g.per.g.visible && isCalm(g)) see(g); // おとなしくなったマフィアにも話せる
+  return best;
 }
 function setBubble(s) { const e = $('bubble'); e.textContent = s; e.style.display = 'block'; }
 function endTalk() { if (talk && talk.qa && !talk.who.npc) talk.who.talkT = 0; talk = null; $('bubble').style.display = 'none'; $('qa').classList.add('hidden'); }
@@ -1279,6 +1308,7 @@ function pickLine(who) {
 // 「話す」ボタン: 近くの人が立ち止まって、ひとこと言う。ときどき質問(Q&A)される
 function startTalk() {
   const who = talkTarget(); if (!who) return;
+  if (who.mob) { endTalk(); const pool = CALM_LINES.filter(l => l !== who.lastLine), l = pool[Math.floor(Math.random() * pool.length)]; who.lastLine = l; who.talkT = TALK.show; talk = { who, t: TALK.show }; setBubble(tr(l.text)); return; }
   const ask = !!asking() && who.asked !== G.askId; // 聞きこみ中で、まだ聞いていない人
   endTalk(); who.talkT = TALK.show; let qa = null;
   if (who.oyaji) { if (!who.met || Math.random() < TALK.oyajiQa) qa = QAS.find(q => q.who === 'oyaji'); who.met = true; }
@@ -1316,7 +1346,7 @@ function updateTalk(dt) {
   const tg = talkTarget(); if (!!tg !== talkShown) { talkShown = !!tg; $('talkBtn').style.display = tg ? 'flex' : 'none'; }
   if (!talk) return;
   const w = talk.who, d = Math.hypot(w.x - player.x, w.z - player.z); talk.t -= dt;
-  const gone = w.npc ? (w.hp <= 0 || npcs.indexOf(w) < 0) : (w.off || w.down > 0 || !!w.angry || G.wanted > 0); // 手配されたら、こわがって話をやめる
+  const gone = w.npc ? (w.hp <= 0 || npcs.indexOf(w) < 0) : (w.off || w.down > 0 || !!w.angry || G.wanted > 0 || (w.mob && (w.hp <= 0 || w.state !== 'idle'))); // 手配されたら、こわがって話をやめる
   if (talk.t <= 0 || gone || G.mode !== 'solo' || player.hp <= 0 || d > (talk.qa ? TALK.leave : 16) || (talk.qa && player.mode !== 'foot')) { endTalk(); return; }
   if (!w.npc) { if (talk.qa) w.talkT = Math.max(w.talkT, 0.3); w.h += angDiff(w.h, Math.atan2(player.x - w.x, player.z - w.z)) * Math.min(1, 8 * dt); } // こっちを向く
   const e = $('bubble'); bubV.set(w.x, 3.25 + (w.oyaji ? 0.55 : 0), w.z); bubV.project(camera);
@@ -1356,6 +1386,15 @@ const STORY = {
   refuse: ['「んまぁ〜！人でなし！ノーヒューマン！！」', '男は連れて行かれた。二度と会うことはなかった。'],
   sis: ['鉄のとびらの向こうに、人がいた。', 'そのひとりは、写真と同じ顔をしていた。', 'とびらは開かない。声も届かない。', '「かぎを持っているのは、この街でいちばん上の男だけだ」', '「それでも船に乗るなら、乗せてやる。決めるのはお前だ」'],
   end1: ['$20,000。船員は、数えもせずに受け取った。', '船が岸をはなれる。街の明かりが小さくなっていく。', '妹のことは、何もわからなかった。', 'それでも、生きて出た。'],
+  // v=19 塔でのネタばらし(tower → トゥルーの順番のときだけ towerT → tower2)・大ボス・終わり 3・4
+  tower: ['「ユーちゃ〜ん！来てくれたのね！ボクチンうれしいわ〜！」', '「…もういいか、この話し方も」', '「あの夜、人ごみで肩がぶつかっただろう。あれは俺だ」', '「金は使った。写真は役に立った。人をさがしてる人間は、何でもやるからな」', '「大仕事の地図をすりかえたのも俺だ。黒と白をぶつけるには、火種がいる」', '「よく働いてくれた。幹部は消えた。あとは俺が、その席に座るだけだ」', '「妹？ 前の運び屋のことか。とっくに消されたよ。この街の、いちばん上にな」'],
+  towerT: ['うそだ。妹は生きている。この目で見た。', '「…だれに聞いた」'],
+  tower2: ['「さあ、最後の仕事だ。ここで死んでくれ」', '銃声。', 'たおれたのは、情報屋のほうだった。', 'その手から、財布が落ちた。金はない。身分証が1まい、残っているだけだった。'],
+  boss: ['「口の軽い男は、長生きせん」', '「うちの屋台に、何度か来てくれたな。顔は覚えとる」', '「黒も白も、あのクラブも、ぜんぶわしの鍋の中だ。30年、つぎ足してきた」', '「運び屋はいい。よく働いて、金がかからん。お前の前の子も、そうだった」', '「幹部を2人つぶしたな。その席は、命で払ってもらう」'],
+  bossEnd: ['「…鍋は、火を止めたら終わりだ。次は、お前がかき回せ」'],
+  key: ['おやじの手から、かぎが落ちた。'],
+  end3: ['街は静かになった。黒も白も、頭を下げた。', '妹は、もういない。そう聞かされた。', '塔の上から見る街は、きれいだった。', 'ここを出る理由は、もう残っていなかった。', '港の倉庫で、だれかが夜空を見上げていた。'],
+  end4: ['とびらが開く。朝の光が入る。', '「…おそいよ」', '「むかえに来た」', '朝のチャイナタウン。港から、船が出ていく。', 'もう、乗る必要はなかった。', 'この街は、ふたりのものになった。'],
   end2: ['コンテナのかげで、人が働かされていた。', 'そのひとりが、顔を上げた。', '「…うそ。なんで、ここに」', '「話はあとだ。走れるか」', '船は、夜のうちに出た。', '何も持たずに来て、何も持たずに出ていく。', 'となりに妹がいる。それで充分だった。'],
 };
 /* story:end */
@@ -1377,6 +1416,14 @@ const INFO = { x: (PARK.x0 + PARK.x1) / 2 + 1.2, z: (PARK.z0 + PARK.z1) / 2 - 20
 const LURE = { from: { x: roadC(2) + 7.3, z: roadC(2) + 26 }, to: { x: roadC(2) + 7.3, z: roadC(1) + 14 }, n: 3, need: 2, give: 24, near: 18 };
 // 「幹部の車をいただけ」: 白い高級車が止まっている所(北の大きなビルの前)と、かくす所(駐車場の、車のならびの間)
 const BOSSCAR = { x: TWR.x0 + 32, z: roadC(1) - 4.3, h: Math.PI / 2, to: { x: LOT.x0 + 26, z: (LOT.z0 + LOT.z1) / 2 } };
+// v=19 幹部・塔: PGD = 塔(パゴダ)のまん中、TOWER = 塔の広場のだいだい色の光(info = 情報屋が立つ所、boss = 大ボスが出てくる所)
+//   INFO2 = 「白の幹部をたおせ」の光(情報屋の光のとなり。幹部2人は好きな順番でえらべるように、光を2つならべる)
+//   BOSS_AT = 幹部と大ボスが出る所(B = 黒の幹部: 市場の奥、W = 白の幹部: 北の大きなビルの前、O = 大ボス: 塔の広場)
+const PGD = { x: roadC(3) + 26, z: roadC(2) + 26 };
+const TOWER = { x: PGD.x, z: PGD.z + 13, info: { x: PGD.x, z: PGD.z + 9.2 }, boss: { x: PGD.x + 3.5, z: PGD.z + 8.2 } };
+const INFO2 = { x: INFO.x, z: INFO.z + 6.5 };
+const BOSS_AT = { B: () => ({ x: MK_DEEP.x, z: MK_DEEP.z, h: 0 }), W: () => ({ x: TWR.x0 + 44, z: TWR.z1 - 1.4, h: 0 }), O: () => ({ x: TOWER.boss.x, z: TOWER.boss.z, h: 0 }) };
+const INFO_GO = { name: '情報屋', text: '場所はもう教えたわよん。ここから先はユーちゃんのお仕事。ボクチンは応援する係やねん。フレー、フレー！' };
 const FREE = [
   { id: 'market', title: '市場のおつかい', desc: '市場の奥で品物を受け取って、店に届ける。市場には歩いてしか入れない。', reward: 2000, at: { x: roadC(2), z: MK.z0 + 3.2 }, steps: [{ type: 'go', pos: MK_DEEP, text: '市場の奥で品物を受け取ろう(歩いて入る)', done: '品物ゲット！' }, { type: 'go', pos: { x: roadC(4) - 7.5, z: roadC(2) + 26 }, text: '品物を店に届けよう' }] },
   { id: 'guard', title: '用心棒', desc: '店をおそいに来るマフィアを、5人たおす。', reward: 3000, at: { x: -90, z: 57.3 }, steps: [{ type: 'kill', pos: { x: -76, z: 52 }, n: 5, text: '店をおそうマフィアをたおせ(のこり {n}人)' }] },
@@ -1412,8 +1459,23 @@ const FREE = [
     steps: [{ type: 'getin', boss: 1, keep: 1, text: '北の大きなビルの前の、白い車をうばえ', done: '追っ手が来る！ 駐車場へ！' },
       { type: 'go', car: 2, keep: 1, hunt: 1, pos: BOSSCAR.to, fragile: 5, fail: '車がきずだらけだ… ミッション失敗', text: '追っ手をかわして、車を駐車場にかくせ(ぶつけていいのは5回まで)', done: '着いた！' },
       { type: 'leave', text: '車から降りよう' }] },
+  // 情報屋のミッションのつづき(v=19): 幹部2人(好きな順番)→ 塔でのネタばらし → 大ボス
+  //   steps の kill に boss がつくと、幹部か大ボスが出る(B・W・O)。その1人をたおすとクリア。{n} は相手の体力
+  //   intro(next) = 受けたときに、ミッションの前に出すお話。ending が関数のときは、終わりの番号を返す(0 = 終わらない)。col = 光の色
+  { id: 'info4', alt: 1, info: 1, when: 'night', after: 'info3', need: () => G.lent === 1, doneMsg: '黒の幹部をたおした！ 黒のマフィアは、もうおそってこない', title: '黒の幹部をたおせ', desc: '市場のいちばん奥にいる、黒の幹部をたおす。手下が3人いる。市場には歩いてしか入れない。', reward: 0, at: INFO, say: INFO_GO, onDone: () => bossDown('B'),
+    steps: [{ type: 'kill', boss: 'B', text: '市場の奥にいる黒の幹部(赤い光)をたおせ(幹部の体力 {n})' }] },
+  { id: 'info5', alt: 1, info: 1, when: 'night', after: 'info3', need: () => G.lent === 1, doneMsg: '白の幹部をたおした！ 白のマフィアは、もうおそってこない', title: '白の幹部をたおせ', desc: '北の大きなビルの前にいる、白の幹部をたおす。手下が3人いる。', reward: 0, at: INFO2, say: INFO_GO, onDone: () => bossDown('W'),
+    steps: [{ type: 'kill', boss: 'W', text: '北の大きなビルの前にいる白の幹部(赤い光)をたおせ(幹部の体力 {n})' }] },
+  { id: 'tower', alt: 1, info: 1, when: 'night', need: () => G.lent === 1 && !!G.done.info4 && !!G.done.info5, ending: () => G.sis ? 0 : 3, doneMsg: 'かぎを手に入れた！ 港の奥の倉庫へ行こう', title: '塔の対決', desc: '情報屋が、塔の前で待っている。話を聞いたら、最後の戦いになる。', reward: 0, at: TOWER, intro: towerIntro,
+    steps: [{ type: 'kill', boss: 'O', text: '大ボスをたおせ(大ボスの体力 {n})', hook: next => story(STORY.bossEnd.concat(G.sis ? STORY.key : []), next) }] },
+  // 裏のトゥルー: 大ボスが落としたかぎで、港の奥の倉庫のとびらを開ける(終わり 4)
+  { id: 'rescue', alt: 1, col: 0xffe9a0, after: 'tower', title: '倉庫のとびら', desc: '大ボスのかぎで、倉庫のとびらを開ける。開けると、ゲームが終わる。セーブは消える。', yes: '開ける', reward: 0, at: { x: 162.5, z: 151 }, steps: [], onYes: () => { endScene(4); story(STORY.end4, () => finish(4), i => { if (i === 3) endScene(6); }); } },
 ];
-for (const f of FREE) Object.assign(f, glowMark(f.info ? 0xffa53a : 0xb06bff, f.at.x, f.at.z));
+for (const f of FREE) Object.assign(f, glowMark(f.col || (f.info ? 0xffa53a : 0xb06bff), f.at.x, f.at.z));
+// 塔の前の情報屋・ネタばらしのあとに出てくる大ボス・落ちた財布(v=19。乱数は使わない)
+const twrInfo = makeVip('info'), twrOyaji = makeVip('bossO'); setHand(twrOyaji, twrOyaji, 'pistol');
+twrInfo.g.position.set(TOWER.info.x, 0.34, TOWER.info.z); twrOyaji.g.position.set(TOWER.boss.x, 0.34, TOWER.boss.z);
+const twrWallet = addBox(0.34, 0.07, 0.22, TOWER.info.x + 1.1, 0.4, TOWER.info.z + 0.7, M(0x6a4a2a)); twrInfo.g.visible = twrOyaji.g.visible = twrWallet.visible = false;
 // 情報屋と、公園のベンチ(乱数は使わない)
 const infoPer = makeVip('info'); infoPer.g.position.set(INFO.x - 3.1, 0.3, INFO.z); infoPer.g.rotation.y = Math.PI / 2; infoPer.g.visible = false;
 addBox(0.7, 0.14, 2.6, INFO.x - 3.9, 0.78, INFO.z, M(0x6a4a2a)); addBox(0.12, 0.6, 2.6, INFO.x - 4.2, 1.15, INFO.z, M(0x6a4a2a)); for (const dz of [-1.1, 1.1]) addBox(0.6, 0.45, 0.12, INFO.x - 3.9, 0.52, INFO.z + dz, M(0x333333));
@@ -1425,7 +1487,7 @@ Object.assign(BOAT, glowMark(0x7fe8ff, BOAT.at.x, BOAT.at.z));
 const sailorPer = makePerson(0x1f3a6e, 0x1a1a2a, 0xc89870); part(sailorPer, 0.62, 0.16, 0.62, 0xffffff, 0, 2.5, 0); sailorPer.g.position.set(PORT.sailor.x + 1.8, 0.3, PORT.sailor.z - 1.6); sailorPer.g.rotation.y = -Math.PI / 2; sailorPer.g.visible = false;
 // mode: 'menu'(画面の後ろで街が動いている) / 'solo'(ひとり用) / 'race'(配達競争)
 //   lent = 情報屋に 0: まだ会っていない、1: 貸した、2: 貸さなかった。tru = トゥルーエンドの順番で貸した。sis = 倉庫で妹を見た
-const G = { askId: 1, askI: 0, huntT: 0, mode: 'menu', started: false, over: false, money: 0, wanted: 0, mi: 0, si: 0, timeLeft: -1, play: 0, evade: 0, bust: 0, downT: 0, stunT: 0, shop: null, shopLock: null, hitCd: 0, spawnCd: 0, failWait: 0, waitMsg: '', free: null, done: {}, offer: null, markLock: null, freeT: 0, bosses: [], lent: 0, tru: 0, sis: 0, left: 0, bumps: 0, bumpCd: 0, ramCd: 0, busy: false, tp: null, story: null, sleep: false, camYaw: Math.PI, camDrag: 0, clock: DAY.race, phase: 'night' };
+const G = { twrDown: false, askId: 1, askI: 0, huntT: 0, mode: 'menu', started: false, over: false, money: 0, wanted: 0, mi: 0, si: 0, timeLeft: -1, play: 0, evade: 0, bust: 0, downT: 0, stunT: 0, shop: null, shopLock: null, hitCd: 0, spawnCd: 0, failWait: 0, waitMsg: '', free: null, done: {}, offer: null, markLock: null, freeT: 0, bosses: [], lent: 0, tru: 0, sis: 0, left: 0, bumps: 0, bumpCd: 0, ramCd: 0, busy: false, tp: null, story: null, sleep: false, camYaw: Math.PI, camDrag: 0, clock: DAY.race, phase: 'night' };
 // 配達競争の状態(online.js から setRace でもらう)
 const R = { me: null, state: null, remotes: {}, avatars: {}, sendT: 0 };
 let toastT = 0;
@@ -1439,14 +1501,15 @@ function stopInput() { releaseHeld(); if (joy) { joy = null; setKnob(0, 0); } ca
 
 /* ===== お話の場面・ひとこと(v=15) ===== */
 // お話: 文字が1行ずつ出る。タップで次へ。「とばす」で終わりまで。出ている間はゲームが止まる。終わったら done()
-function story(lines, done) { G.story = { lines, i: 0, done }; stopInput(); document.body.classList.add('story'); $('story').classList.remove('hidden'); drawStory(); }
+//   on(i) = i 行目が出たときにすること(場面を変えるなど。なくてもよい)
+function story(lines, done, on) { G.story = { lines, i: 0, done, on }; stopInput(); document.body.classList.add('story'); $('story').classList.remove('hidden'); drawStory(); }
 function drawStory() {
   const s = G.story, a = Math.max(0, s.i - 4), show = s.lines.slice(a, s.i + 1);
   $('storyLines').innerHTML = show.map((l, k) => '<p class="' + (l[0] === '「' ? 'q' : '') + (k < show.length - 1 ? ' old' : '') + '">' + esc(tr(l)) + '</p>').join('');
 }
 function storyNext(skip) {
   const s = G.story; if (!s) return;
-  if (!skip && s.i < s.lines.length - 1) { s.i++; drawStory(); return; }
+  if (!skip && s.i < s.lines.length - 1) { s.i++; drawStory(); if (s.on) s.on(s.i); return; }
   G.story = null; document.body.classList.remove('story'); $('story').classList.add('hidden'); if (s.done) s.done();
 }
 $('story').addEventListener('click', () => storyNext(false));
@@ -1523,24 +1586,25 @@ function updateSub(dt) {
   const e = $('sub'); if (subT > 0) { subT -= dt; if (subT > 0) return; e.style.opacity = 0; }
   if (subQ.length) { const l = subQ.shift(); $('subName').textContent = tr(l.name); $('subText').textContent = tr(l.text); e.style.opacity = 1; subT = 4.6; }
 }
-// 終わり(n = 1: 船代をはらう、2: 忍び込む)。セーブは消える。見た終わりは sc-ends に残す
+// 終わり(n = 1: 船代をはらう、2: 忍び込む、3: 裏(大ボスをたおす)、4: 裏のトゥルー(妹も助ける))。セーブは消える。見た終わりは sc-ends に残す
+const ENDS = [{ text: '船代をはらって、ひとりで街を出た' }, { text: '妹といっしょに、街を出た' }, { text: '大ボスをたおして、この街のてっぺんに立った' }, { text: '妹を助けて、この街をふたりのものにした' }];
 function finish(n) {
   clearSave(); try { const a = JSON.parse(localStorage.getItem('sc-ends') || '[]'); if (!a.includes(n)) a.push(n); localStorage.setItem('sc-ends', JSON.stringify(a)); } catch (e) { /* 残せなくてもよい */ }
   G.over = true; marker.visible = false; setPlaying(false);
-  $('clearPanel').innerHTML = '<h1>SURVIVE CHINATOWN</h1><p class="sub">' + tr('おわり {n}/4', { n }) + '</p><h2>' + tr(n === 1 ? '船代をはらって、ひとりで街を出た' : '妹といっしょに、街を出た') + '</h2><p>' + tr('所持金 ${m}', { m: G.money.toLocaleString() }) + '　' + tr('遊んだ時間 {m}分', { m: Math.floor(G.play / 60) }) + '</p><p class="sub">' + tr('終わり方は、ほかにもある。') + '</p><button class="btn-big" id="clearBtn">' + tr('タイトルへ') + '</button>';
+  $('clearPanel').innerHTML = '<h1>SURVIVE CHINATOWN</h1><p class="sub">' + tr('おわり {n}/4', { n }) + '</p><h2>' + tr(ENDS[n - 1].text) + '</h2><p>' + tr('所持金 ${m}', { m: G.money.toLocaleString() }) + '　' + tr('遊んだ時間 {m}分', { m: Math.floor(G.play / 60) }) + '</p><p class="sub">' + tr(n === 4 ? '4つ目の終わり。ここまで遊んでくれて、ありがとう！' : '終わり方は、ほかにもある。') + '</p><button class="btn-big" id="clearBtn">' + tr('タイトルへ') + '</button>';
   showOnly('clear'); $('clearBtn').addEventListener('click', () => location.reload());
 }
 
 /* ===== ミッションの進み方 ===== */
 // ミッションの間だけ出るもの: たおす相手・拾う物・立っている人・見はりの警察官・逃げる車・運ぶ車
-const MX = { foes: [], items: [], props: [], guards: [], hunters: [], runner: null, mcar: null };
+const MX = { foes: [], items: [], props: [], guards: [], hunters: [], runner: null, mcar: null, boss: null };
 const SNEAK = { x: 166, z0: -82, z1: -38, speed: 3.2, see: 8, half: 0.5 }; // 見はりが歩く所・速さ・ライトのとどく距離・広がり
 function aim(x, z) { marker.visible = true; marker.position.set(x, 0, z); G.tp = { x, z }; }
 // その段だけのものを消す
 function clearStep() {
   for (const g of MX.foes) dropGang(g);
   for (const it of MX.items) scene.remove(it.g); for (const p of MX.props) scene.remove(p); for (const g of MX.guards) scene.remove(g.per.g);
-  MX.foes.length = MX.items.length = MX.props.length = MX.guards.length = 0;
+  MX.foes.length = MX.items.length = MX.props.length = MX.guards.length = 0; MX.boss = null;
 }
 // ミッションが終わったとき(クリア・失敗): 逃げる車・運ぶ車も消す(主人公が乗っている車は残す)
 function clearMission() {
@@ -1560,7 +1624,8 @@ function beginStep() {
   if (st.time) G.timeLeft = st.time; if (st.wanted) G.wanted = Math.max(G.wanted, st.wanted);
   markerColor(0xffd23f); marker.visible = false; if (st.pos) aim(st.pos.x, st.pos.z);
   if (st.guest) { const per = makePerson(0xff8040, 0x333333, 0xc89870); per.g.position.set(st.pos.x, 0, st.pos.z + 2.3 * st.guest); per.g.rotation.y = st.guest > 0 ? Math.PI : 0; if (st.guest < 0) per.g.rotation.z = 0.14; MX.props.push(per.g); } // 待っているお客さん(guest: -1 = 行き先の北がわ。酔っぱらいは少しかたむく)
-  if (st.type === 'kill') for (let k = 0; k < st.n; k++) { // おそってくるマフィア
+  if (st.type === 'kill' && st.boss) spawnBoss(st.boss); // 幹部か大ボス
+  else if (st.type === 'kill') for (let k = 0; k < st.n; k++) { // おそってくるマフィア
     const a = k / st.n * 6.28, g = newGang(st.pos.x + Math.cos(a) * 5, st.pos.z + Math.sin(a) * 3);
     g.temp = true; g.tier = 0; g.weapon = k === 0 ? 'pistol' : k % 2 ? 'knife' : 'fist'; setHand(g.per, g, g.weapon); g.state = 'chase'; MX.foes.push(g);
   }
@@ -1598,7 +1663,8 @@ function stepNext() {
   const m = curM(); if (!m.steps[G.si].keep) clearStep(); G.si++;
   if (G.si < m.steps.length) { toast(tr(m.steps[G.si - 1].done || 'チェックポイント通過！'), 1.2); beginStep(); return; }
   G.timeLeft = -1; marker.visible = false; clearMission();
-  if (m.ending) { G.free = null; story(STORY['end' + m.ending], () => finish(m.ending)); return; } // 船に乗って終わり
+  const en = typeof m.ending === 'function' ? m.ending() : m.ending;
+  if (en) { G.free = null; endScene(en); story(STORY['end' + en], () => finish(en), en === 3 ? i => { if (i === 4) endScene(5); } : null); return; } // 船に乗って終わり・大ボスをたおして終わり
   G.money += m.reward; toast(m.doneMsg ? tr(m.doneMsg) : m.reward ? tr('ミッション完了！ +${r}', { r: m.reward.toLocaleString() }) : tr('ミッション完了！'), 2.6);
   if (m.endSay) say(m.endSay, true);
   if (m.wantedOff) { G.wanted = 0; removeAllPolice(); }
@@ -1656,6 +1722,82 @@ function updateHunter(c, dt) {
   if (resolveCar(c)) { c.v *= 0.3; c.stuck += dt; } else c.stuck = Math.max(0, c.stuck - dt * 0.5);
   if (c.stuck > 1.2 && c.rev <= 0) { c.rev = 1.1; c.turn = true; c.stuck = 0; c.node = null; }
   if (d > 190) { c.gone = true; const i = MX.hunters.indexOf(c); if (i >= 0) MX.hunters.splice(i, 1); } // 遠くにおいていかれたら消えて、近くにまた出る
+}
+/* ===== 幹部・塔・大ボス・終わり 3・4(v=19) ===== */
+// 幹部(B = 黒・青龍刀、W = 白・マシンガン)と手下3人、または大ボス(O = 屋台のおやじ。ピストルと日本刀)を出す
+function spawnBoss(k) {
+  const B = TUNE.boss, q = BOSS_AT[k](), g = newGang(q.x, q.z, makeVip(k === 'B' ? 'bossB' : k === 'W' ? 'bossW' : 'bossO'));
+  g.temp = true; g.tier = 0; g.boss = k; g.nofeud = true; g.white = k === 'W'; g.h = q.h; g.hp = k === 'O' ? B.oyajiHp : B.hp; g.weapon = k === 'B' ? 'dao' : k === 'W' ? 'mg' : 'pistol';
+  if (k === 'O') { g.dmgX = 1.25; g.state = 'chase'; g.cd = 1.6; setHand(g.per, g, g.weapon); twrOyaji.g.visible = false; } // 大ボスは、お話のあとすぐおそってくる
+  g.per.g.position.set(g.x, 0.3, g.z); g.per.g.rotation.y = g.h; MX.foes.push(g); MX.boss = g; markerColor(0xff4a4a); aim(g.x, g.z);
+  if (k === 'O') return;
+  const off = k === 'W' ? [[-5, 0], [5, 0], [9, 0]] : [[3, 0], [-3, 0.5], [0, 3]], ws = k === 'W' ? ['pistol', 'pistol', 'knife'] : ['knife', 'fist', 'pistol'];
+  for (let i = 0; i < B.minions; i++) { // 手下(幹部のまわり)
+    const o = off[i % 3], w = ws[i % 3], m = newGang(q.x + o[0], q.z + o[1]); m.temp = true; m.tier = 0; m.nofeud = true;
+    if (k === 'W') setTeam(m, true, w); else { m.weapon = w; setHand(m.per, m, w); }
+    resolve(m, 0.45); m.home = { x: m.x, z: m.z }; MX.foes.push(m);
+  }
+}
+// 大ボス: 遠いとピストル・近いと日本刀に持ちかえる。体力が半分になると、黒と白の手下を呼ぶ(1回だけ)
+function bossTick(g, dP, dt) {
+  const B = TUNE.boss, want = dP > B.near ? 'pistol' : 'katana'; g.swap = (g.swap || 0) - dt;
+  if (want !== g.weapon && g.swap <= 0) { g.weapon = want; g.swap = 1.2; g.cd = Math.max(g.cd, 0.5); setHand(g.per, g, want); }
+  if (!g.called && g.hp <= B.oyajiHp / 2) { g.called = true; callMinions(); }
+}
+function callMinions() {
+  const pts = [[-12, 12], [12, 12], [-16, 2], [16, 2], [-6, 17], [6, 17]], ws = ['knife', 'pistol', 'fist'];
+  for (let i = 0; i < TUNE.boss.call; i++) { // 黒と白が半分ずつ(広場のまわりから走ってくる)
+    const o = pts[i % pts.length], w = ws[i % 3], m = newGang(PGD.x + o[0], PGD.z + o[1]); m.temp = true; m.tier = 0; m.nofeud = true;
+    if (i % 2) setTeam(m, true, w); else { m.weapon = w; setHand(m.per, m, w); }
+    m.state = 'chase'; resolve(m, 0.45); MX.foes.push(m);
+  }
+  toast(tr('大ボスが手下を呼んだ！'), 2);
+}
+// 幹部をたおした: そのチームは、もうおそってこない。情報屋がひとこと
+function bossDown(k) {
+  if (!G.bosses.includes(k)) G.bosses.push(k);
+  say({ name: '情報屋', text: G.bosses.length < 2 ? 'ワンダウン！んまぁ〜、ユーちゃん、思ったよりストロングじゃないの！' : 'オールクリアよ〜！今夜、タワーにいらっしゃい。ボクチン、ぜ〜んぶお話しするわ' }, true);
+}
+// 塔の前の情報屋(幹部を2人たおしたあとの夜に立っている。ネタばらしのあとは、たおれている)
+function poseTwr() {
+  const mine = !!G.free && G.free.id === 'tower', on = G.mode === 'solo' && G.lent === 1 && !!G.done.info4 && !!G.done.info5 && !G.done.tower && !G.over, down = mine && G.twrDown;
+  twrInfo.g.visible = on && (mine || (!G.free && G.phase === 'night')); twrWallet.visible = on && down;
+  twrInfo.g.rotation.x = down ? -Math.PI / 2 : 0; twrInfo.g.position.y = down ? 0.75 : 0.34;
+}
+// カメラを、決めた所に止める(お話の間は、カメラが動かない)
+function camAt(px, py, pz, lx, ly, lz) { camera.position.set(px, py, pz); camera.lookAt(lx, ly, lz); camPos.copy(camera.position); }
+function hideMarks() { for (const f of FREE) f.g.visible = false; BOAT.g.visible = false; } // お話の間は、光るマークを消す
+function standAt(per, x, y, z, h) { per.g.visible = true; per.g.position.set(x, y, z); per.g.rotation.set(0, h, 0); }
+// 「塔の対決」を受けたとき: 情報屋のネタばらし → 銃声 → 大ボス(屋台のおやじ)が出てくる → 戦い(next)
+function towerIntro(next) {
+  G.si = 0; G.timeLeft = -1; G.twrDown = false; twrOyaji.g.visible = false; poseTwr();
+  player.x = TOWER.x; player.z = TOWER.z; player.h = G.camYaw = Math.PI; standAt(player.per, player.x, 0.3, player.z, Math.PI); // 塔のほう(北)を向く
+  camAt(TOWER.x + 4.5, 3, TOWER.z + 3.5, TOWER.x - 2, 1.5, TOWER.z - 4.5); hideMarks();
+  const lines = STORY.tower.concat(G.sis ? STORY.towerT : [], STORY.tower2), shot = lines.length - 2; // shot =「たおれたのは、情報屋のほうだった」の行
+  const fall = () => { G.twrDown = true; poseTwr(); twrOyaji.g.visible = true; };
+  story(lines, () => { fall(); story(STORY.boss, next); }, i => { if (i >= shot) fall(); });
+}
+// 終わりの絵(お話の間、カメラを止めて見せる)。3 = 裏: 夜、塔の上から街を見下ろす。5 = 港の倉庫(夜)。4 = 朝、倉庫のとびらの前で妹と会う。6 = 朝、港でふたりで船を見送る
+const END = { crowd: null, sis: null, ship: null, scene: 0 }; // scene = いま見せている絵
+function endScene(n) {
+  if (n < 3) return; END.scene = n;
+  marker.visible = false; hideMarks(); twrInfo.g.visible = twrOyaji.g.visible = twrWallet.visible = false; endTalk(); $('toast').style.opacity = 0; toastT = 0;
+  if (player.mode === 'car') exitCar(); player.per.g.rotation.x = 0;
+  if (n === 3) {
+    setClock(DAY.night + 80);
+    if (!END.crowd) { END.crowd = []; for (let i = 0; i < 12; i++) { const white = (i + (i >= 6 ? 1 : 0)) % 2, c = white ? 0xf2f2f2 : 0x141414, per = makePerson(c, white ? 0xf2f2f2 : 0x1a1a1a, SKINS[i % 3]); standAt(per, PGD.x - 7.5 + (i % 6) * 3, 0.34, PGD.z + 12 + (i >= 6 ? 3 : 0), Math.PI); per.g.rotation.x = -0.55; END.crowd.push(per); } } // 黒と白が、塔に向かって頭を下げる
+    standAt(player.per, PGD.x, 6.2, PGD.z + 5.4, 0);
+    camAt(PGD.x - 7, 7.5, PGD.z + 27, PGD.x + 1, 6, PGD.z + 4);
+  } else if (n === 5) camAt(149, 3.2, WAREHOUSE.z + 13, WAREHOUSE.x, 6.5, WAREHOUSE.z);
+  else {
+    setClock(22); if (!END.sis) END.sis = makeVip('sis');
+    if (n === 4) { player.x = 160.5; player.z = WAREHOUSE.z; standAt(player.per, player.x, 0.3, player.z, Math.PI / 2); standAt(END.sis, 163.7, 0.3, WAREHOUSE.z, -Math.PI / 2); camAt(153.5, 3.4, WAREHOUSE.z + 3.2, 164, 1.9, WAREHOUSE.z - 0.4); }
+    else {
+      if (!END.ship) { END.ship = 1; addBox(9, 3, 26, 206, 1.5, 104, M(0xeeeeee)); addBox(7, 3.2, 8, 206, 4.6, 110, M(0x2f5f9f)); addBox(1.6, 3, 1.6, 206, 7.6, 110, M(0xc8261e)); } // 港から出ていく船
+      player.x = 173.4; player.z = 126; standAt(player.per, player.x, 0.3, player.z, Math.PI / 2); standAt(END.sis, 173.4, 0.3, 127.5, Math.PI / 2);
+      camAt(166, 4.2, 130.5, 192, 1.6, 120);
+    }
+  }
 }
 // 借金の取り立て: 車を止めたら、中から情報屋が出てくる →「貸す」「貸さない」
 function debtHook(next) {
@@ -1988,6 +2130,10 @@ function updateMission(dt) {
     }
     if (Math.hypot(st.pos.x - player.x, st.pos.z - player.z) < (st.type === 'sneak' ? 3.5 : 5.5) && (!st.car || (!foot && (st.car !== 2 || player.car === MX.mcar))) && (!st.foot || foot)) stepDone();
   }
+  else if (st.type === 'kill' && st.boss) { // 幹部・大ボス: その1人をたおすとクリア。赤い光がついていく。幹部がおそってきたら、手下もいっしょに来る
+    const b = MX.boss; if (!b || b.hp <= 0) { G.left = 0; stepDone(); return; }
+    G.left = Math.ceil(b.hp); aim(b.x, b.z); if (b.state === 'chase') for (const g of MX.foes) if (g.hp > 0 && g.state === 'idle') g.state = 'chase';
+  }
   else if (st.type === 'kill') { G.left = MX.foes.filter(g => g.hp > 0).length; if (!G.left) stepDone(); }
   else if (st.type === 'collect') { // 歩いて近づくと拾う。光は、いちばん近い1つに出す
     let best = null, bd = 1e9;
@@ -2089,7 +2235,7 @@ function drawMinimap() {
   for (const c of cars) if (c.kind === 'police') dot(c.x, c.z, (Math.floor(performance.now() / 250) % 2) ? '#ff3030' : '#3060ff', 6, false);
   for (const id in R.avatars) { const av = R.avatars[id]; if (av.seen) dot(av.x, av.z, raceColor(id), 7, true); }
   for (const c of MX.hunters) dot(c.x, c.z, '#ffffff', 6, false); // 追っ手の車(白)
-  if (G.mode === 'solo') { for (const f of FREE) if (freeOpen(f)) dot(f.at.x, f.at.z, f.info ? '#ffa53a' : '#b06bff', 8, true); if (boatOpen()) dot(BOAT.at.x, BOAT.at.z, '#7fe8ff', 7, true); } // 受けられるミッション(紫)・船(水色)
+  if (G.mode === 'solo') { for (const f of FREE) if (freeOpen(f)) dot(f.at.x, f.at.z, f.info ? '#ffa53a' : f.col ? '#ffe9a0' : '#b06bff', 8, true); if (boatOpen()) dot(BOAT.at.x, BOAT.at.z, '#7fe8ff', 7, true); } // 受けられるミッション(紫)・船(水色)
   if (marker.visible) dot(marker.position.x, marker.position.z, '#' + ringMat.color.getHexString(), 9, true);
 }
 
@@ -2097,7 +2243,7 @@ function drawMinimap() {
 function updateHUD() {
   if (G.mode === 'race') { updateRaceHUD(); return; }
   const m = curM(); let html = '';
-  if (G.over || !m) html = '<div class="t">' + tr('フリー走行') + '</div>' + tr(FREE.some(freeOpen) ? '紫の光で、好きなミッションを受けよう' : '街を自由に走り回ろう');
+  if (G.over || !m) html = '<div class="t">' + tr('フリー走行') + '</div>' + tr(G.done.tower ? '港の奥の倉庫へ行って、とびらを開けよう' : FREE.some(freeOpen) ? '紫の光で、好きなミッションを受けよう' : '街を自由に走り回ろう');
   else if (!G.free && G.failWait > 0) html = '<div class="t">' + tr('ミッション{n}', { n: G.mi + 1 }) + '</div>' + G.waitMsg;
   else { const st = m.steps[G.si]; html = '<div class="t">' + (G.free ? tr('ミッション：{title}', { title: tr(m.title) }) : tr('ミッション{n}/{total}：{title}', { n: G.mi + 1, total: MISSIONS.length, title: tr(m.title) })) + '</div>' + tr(st.text, { n: G.left }); if (G.tp) { const d = Math.hypot(G.tp.x - player.x, G.tp.z - player.z); html += '<div class="d">' + tr('あと {d} m', { d: Math.round(d) }) + '</div>'; } }
   $('mission').innerHTML = html; $('money').textContent = '$' + G.money.toLocaleString();
@@ -2176,7 +2322,7 @@ function checkShops(t) {
 // o = ミッション(FREE)か、えらぶもの { title, desc, yes, no, onYes, onNo, pay(いるお金) }。when = 'night'・'day' のものは、その時間だけ受けられる
 function openOffer(o) {
   G.offer = o; stopInput();
-  $('offerKind').textContent = o.steps ? tr('ミッション') : ''; $('offerName').textContent = tr(o.title); $('offerDesc').textContent = tr(o.desc);
+  $('offerKind').textContent = o.steps && o.steps.length ? tr('ミッション') : ''; $('offerName').textContent = tr(o.title); $('offerDesc').textContent = tr(o.desc);
   $('offerReward').textContent = o.reward ? tr('ほうび ${r}', { r: o.reward.toLocaleString() }) : o.pay ? tr('船代 ${r}', { r: o.pay.toLocaleString() }) + '　' + tr('所持金 ${m}', { m: G.money.toLocaleString() }) : '';
   const note = o.when && o.when !== G.phase ? tr(o.when === 'night' ? '夜だけ受けられる(家でねると、夜にできる)' : '昼だけ受けられる(家でねると、朝にできる)') : o.pay && G.money < o.pay ? tr('お金がたりない') : '';
   $('offerNote').textContent = note; $('offerYes').disabled = !!note;
@@ -2185,7 +2331,7 @@ function openOffer(o) {
 }
 function closeOffer(take) {
   const o = G.offer; if (!o || (take && $('offerYes').disabled)) return; G.offer = null; if (o.at) G.markLock = o; $('offer').classList.add('hidden');
-  if (take) { if (o.onYes) o.onYes(); else { G.free = o; beginMission(); } } else if (o.onNo) o.onNo();
+  if (take) { if (o.onYes) o.onYes(); else { G.free = o; if (o.intro) o.intro(beginMission); else beginMission(); } } else if (o.onNo) o.onNo();
   updateHUD();
 }
 $('offerYes').addEventListener('click', () => closeOffer(true));
@@ -2194,7 +2340,8 @@ $('offerNo').addEventListener('click', () => closeOffer(false));
 let sleepShown = null;
 function checkMarks(t) {
   const solo = G.mode === 'solo', y = 0.5 + Math.sin(t * 3) * 0.15;
-  HOME.g.visible = solo; HOME.ring.position.y = y; sailorPer.g.visible = solo; infoPer.g.visible = solo && G.lent === 1 && G.phase === 'night'; // 情報屋は、貸したあとの夜だけ公園にいる
+  HOME.g.visible = solo; HOME.ring.position.y = y; sailorPer.g.visible = solo; infoPer.g.visible = solo && G.lent === 1 && G.phase === 'night' && !(G.done.info4 && G.done.info5); // 情報屋は、貸したあとの夜だけ公園にいる(幹部を2人たおしたあとは、塔の前)
+  poseTwr();
   for (const f of FREE) { f.g.visible = solo && freeOpen(f); f.ring.position.y = y; }
   BOAT.g.visible = solo && boatOpen(); BOAT.ring.position.y = y;
   const sl = solo && canSleep(); if (sl !== sleepShown) { sleepShown = sl; $('sleepBtn').style.display = sl ? 'flex' : 'none'; } // 家の光の近くでは「ねる」ボタンが出る
@@ -2272,7 +2419,7 @@ $('quitBtn').addEventListener('click', () => { if (G.mode === 'solo') location.r
 if (window.BackGuard) BackGuard.set('home');
 
 const SC = window.SC = {
-  G, R, player, cars, peds, TUNE, MISSIONS, FREE, HOME, save, readSave, applySave, curM, pointBlocked, P, gangs, pickups, npcs, SHOPS, HOSPITAL, SHOP_ITEMS, closeShop, WEAPONS, MKT, MKW, shots, newNpc, confiscate, DAY, setClock, vendors, TALK, LINES, QAS, makeVip, startTalk, answerTalk, pickLine, getTalk: () => talk, camera, BOAT, PORT, MX, STORY, SNEAK, freeOpen, story, say, finish, openSleep, sleepTo, bump, CLUB, NEON_MATS, STALL_POS, APT, INTRO, INFO, LURE, BOSSCAR, RUMORS, infoPer, setTeam, applyTeams, inCT, newGang, damageGang, GANG_W,
+  G, R, player, cars, peds, TUNE, MISSIONS, FREE, HOME, save, readSave, applySave, curM, pointBlocked, P, gangs, pickups, npcs, SHOPS, HOSPITAL, SHOP_ITEMS, closeShop, WEAPONS, MKT, MKW, shots, newNpc, confiscate, DAY, setClock, vendors, TALK, LINES, QAS, makeVip, startTalk, answerTalk, pickLine, getTalk: () => talk, camera, BOAT, PORT, MX, STORY, SNEAK, freeOpen, story, say, finish, openSleep, sleepTo, bump, CLUB, NEON_MATS, STALL_POS, APT, INTRO, INFO, LURE, BOSSCAR, RUMORS, infoPer, setTeam, applyTeams, inCT, newGang, damageGang, GANG_W, PGD, TOWER, INFO2, BOSS_AT, MK_DEEP, WAREHOUSE, twrInfo, twrOyaji, isCalm, CALM_LINES, endScene, END, ENDS, closeOffer, hurtPlayer, callMinions,
   onSend: null, onQuit: null,
   startSolo,
   showOnly, setPlaying,

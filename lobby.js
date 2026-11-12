@@ -8,8 +8,8 @@
 import {
   db, auth, ref, get, set, update, remove, onValue,
   onDisconnect, serverTimestamp, runTransaction, signInAnonymously
-} from "./firebase.js?v=18";
-import { sync as syncGame, makeGame, roomPath } from "./online.js?v=18";
+} from "./firebase.js?v=19";
+import { sync as syncGame, makeGame, roomPath } from "./online.js?v=19";
 
 const MAX_PLAYERS = 4;
 const MIN_PLAYERS = 2;
