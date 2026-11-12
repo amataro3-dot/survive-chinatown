@@ -26,7 +26,9 @@ const TUNE = {
   posRate: 0.125,                  // 配達競争: 自分の位置を送る間隔(秒)
   peace: true,                     // お使いの間(大きな仕事が終わるまで)は、マフィアがおそってこない
   hp: 100, deathFine: 0.1,         // 主人公の体力、やられたときに減るお金(所持金の1割。最低$100)
-  gang: { count: 16, hp: 100, speed: 4.2, turf: 15, giveUp: 32, respawn: 30 }, // ギャング: 数(街)・体力・走る速さ・なわばりの広さ・あきらめる距離・生きかえるまでの秒
+  gang: { count: 16, hp: 100, speed: 4.2, turf: 15, giveUp: 32, respawn: 30, feud: 12, feudGiveUp: 22, feudDmg: 2 }, // ギャング: 数(街)・体力・走る速さ・なわばりの広さ・あきらめる距離・生きかえるまでの秒
+  //   v=18 黒と白のケンカ: feud = これより近くで出会うとケンカ、feudGiveUp = これよりはなれるとやめる、feudDmg = マフィアどうしのダメージの倍
+  hunt: { cars: 2, speed: 29, wait: 4, back: 0.9 }, // 「幹部の車をいただけ」の追っ手の車: 台数・速さ・次の1台が出るまでの秒・ぶつけたあと下がる秒
   // 昼と夜(v=12): 1日の秒・夕方が始まる秒・夜が始まる秒・ひとり用が始まる秒・配達競争とスタート画面の時間(夜)・時間の速さ(0 で止まる)
   //   far = 人がふえたり減ったりするのは、主人公からこれだけはなれた所だけ(目の前で急に消えないように)
   //   gangNight = 夜のマフィアの倍(昼は街のマフィアが半分)、pedEve = 夕方の街の人の倍、dayEvade = 昼に★がへるまでの時間の倍
@@ -754,10 +756,24 @@ function gangSpot() {
 function newGang(x, z) {
   const per = makePerson(0x141414, 0x1a1a1a, [0xf0c9a0, 0xc89870, 0x8a5a3a][Math.floor(rnd() * 3)]);
   const gl = new THREE.Mesh(BG(0.5, 0.1, 0.05), M(0x050505)); gl.position.set(0, 2.2, 0.29); per.g.add(gl);
-  const r = rnd(), weapon = r < 0.45 ? 'fist' : r < 0.75 ? 'knife' : 'pistol';
-  const g = { per, x, z, h: rnd() * 6.28, home: { x, z }, hp: TUNE.gang.hp, weapon, state: 'idle', cd: 0, dead: -1, wt: 0, tx: x, tz: z, swing: 0, hitCd: 0, kx: 0, kz: 0, item: null };
+  const r = rnd(), weapon = gangWeapon(r, false);
+  const g = { per, x, z, h: rnd() * 6.28, home: { x, z }, hp: TUNE.gang.hp, weapon, state: 'idle', cd: 0, dead: -1, wt: 0, tx: x, tz: z, swing: 0, hitCd: 0, kx: 0, kz: 0, item: null, r, white: false, foe: null, scan: Math.random() };
   setHand(per, g, weapon); gangs.push(g); return g;
 }
+// 黒と白(v=18): 黒 = チャイナタウンの中(近づいてくる)、白 = 外の街(白いスーツ。ピストルが多い)。白が出るのは、大きな仕事のあとから
+//   人数はふやさない。外の街にいる黒を、白いスーツに着せかえる(服の色を変えて、ネクタイを足すだけ)。武器は同じ乱数 r から決め直す
+function gangWeapon(r, white) { return white ? (r < 0.25 ? 'fist' : r < 0.5 ? 'knife' : 'pistol') : (r < 0.45 ? 'fist' : r < 0.75 ? 'knife' : 'pistol'); }
+const inCT = (x, z) => x > roadC(CT.i0) && x < roadC(CT.i1 + 1) && z > roadC(CT.j0) && z < roadC(CT.j1 + 1);
+function setTeam(g, white, weapon) {
+  white = !!white; if (g.white === white && !weapon) return; g.white = white;
+  const per = g.per, c = M(white ? 0xf2f2f2 : 0x141414), p = M(white ? 0xf2f2f2 : 0x1a1a1a);
+  per.body.material = c; per.armL.children[0].material = c; per.armR.children[0].material = c; per.legL.children[0].material = p; per.legR.children[0].material = p;
+  if (white && !g.tie) g.tie = part(per, 0.12, 0.55, 0.04, 0x111111, 0, 1.52, 0.24); if (g.tie) g.tie.visible = white;
+  g.weapon = weapon || gangWeapon(g.r, white); g.foe = null; if (g.hp > 0) setHand(per, g, g.weapon);
+}
+// 街のマフィアを、いまの進み具合に合わせて黒か白にする(ミッションの間だけ出る相手は変えない)
+function applyTeams() { const on = G.mode === 'solo' && G.mi >= MISSIONS.length; for (const g of gangs) if (!g.temp) setTeam(g, on && !inCT(g.home.x, g.home.z)); }
+function dropGang(g) { g.gone = true; const i = gangs.indexOf(g); if (i >= 0) gangs.splice(i, 1); scene.remove(g.per.g); }
 for (let i = 0; i < TUNE.gang.count; i++) { const q = gangSpot(); newGang(q[0], q[1]); }
 for (const k of [0, 4, 10]) { const s = EXTRA_SPOTS[k]; if (s) newGang(s.x, s.z); } // 市場の中にも
 // 昼と夜: tier 0 = いつもいる、1 = 夕方と夜(昼はいない)、2 = 夜だけ。off = いまは出ていない
@@ -770,34 +786,51 @@ for (let i = 0; i < Math.round(TUNE.peds * (DAY.pedEve - 1)); i++) {
   peds.push({ per, look, bi: pedBlock(), t: Math.random() * 160, dir: i % 2 ? 1 : -1, speed: 1.2 + Math.random() * 0.8, down: 0, x: 0, z: 0, h: 0, push: { x: 0, z: 0 }, tier: 1, off: true });
 }
 function respawnGang(g) { clearStatus(g); g.hp = TUNE.gang.hp; g.dead = -1; g.state = 'idle'; g.x = g.home.x; g.z = g.home.z; g.per.g.rotation.x = 0; g.per.g.visible = true; setHand(g.per, g, g.weapon); }
-function damageGang(g, dmg, kx, kz) {
+// by = やったのがマフィアのとき(黒と白のケンカ)。主人公がやったときは、なし
+function damageGang(g, dmg, kx, kz, by) {
   if (g.hp <= 0) return;
-  g.hp -= dmg; g.state = 'chase'; g.kx = kx || 0; g.kz = kz || 0; spark(g.x, 1.6, g.z);
+  g.hp -= dmg; g.kx = kx || 0; g.kz = kz || 0; spark(g.x, 1.6, g.z);
+  if (!by) { g.state = 'chase'; g.foe = null; } // 主人公になぐられたら、主人公を追う
+  else if (g.state !== 'chase' && !g.lure) g.foe = by; // マフィアにやられたら、やり返す(主人公を追っている間は、そのまま)
   if (g.hp <= 0) {
-    g.dead = 0; g.per.g.rotation.x = -Math.PI / 2; g.per.g.position.y = 0.4;
+    g.dead = 0; g.foe = null; g.per.g.rotation.x = -Math.PI / 2; g.per.g.position.y = 0.4;
+    if (by) { setHand(g.per, g, null); return; } // ケンカでたおれたときは、何も落とさない・★も上がらない
     dropPickup('money', g.x + 0.6, g.z, 20 + Math.floor(Math.random() * 7) * 10);
     if (g.weapon !== 'fist') { dropPickup(g.weapon, g.x - 0.6, g.z + 0.4, g.weapon === 'pistol' ? 12 : 0); setHand(g.per, g, null); }
     if (!g.temp) addWanted(1); // ミッションの相手は、たおしても★は上がらない
   }
 }
 function updateGangs(dt) {
-  const fight = G.mode === 'solo' && G.started && player.hp > 0;
-  for (const g of gangs) {
+  const fight = G.mode === 'solo' && G.started && player.hp > 0, F = TUNE.gang, feud = G.mode === 'solo' && G.started && G.mi >= MISSIONS.length;
+  for (let gi = gangs.length - 1; gi >= 0; gi--) {
+    const g = gangs[gi];
     if (G.mode === 'race' || g.off) { g.per.g.visible = false; continue; }
-    if (g.hp <= 0) { g.dead += dt; g.x += g.kx * dt; g.z += g.kz * dt; g.kx *= 1 - 3 * dt; g.kz *= 1 - 3 * dt; resolve(g, 0.45); g.per.g.position.set(g.x, 0.4, g.z); if (g.dead > 6) g.per.g.visible = false; if (g.dead > TUNE.gang.respawn && !g.temp) respawnGang(g); continue; }
+    if (g.hp <= 0) { g.dead += dt; g.x += g.kx * dt; g.z += g.kz * dt; g.kx *= 1 - 3 * dt; g.kz *= 1 - 3 * dt; resolve(g, 0.45); g.per.g.position.set(g.x, 0.4, g.z); if (g.dead > 6) g.per.g.visible = false; if (g.brawl && (g.dead > 6 || Math.hypot(player.x - g.x, player.z - g.z) > DAY.far)) { dropGang(g); continue; } if (g.dead > F.respawn && !g.temp) respawnGang(g); continue; }
+    if (g.brawl) { g.brawlT -= dt; if (g.brawlT <= 0 && Math.hypot(player.x - g.x, player.z - g.z) > DAY.far) { dropGang(g); continue; } } // 「火をつけろ」のあとに残った人は、しばらくして、見えない所で消える
     g.per.g.visible = true; g.cd -= dt; g.hitCd -= dt; if (g.swing > 0) g.swing -= dt;
     const px = player.x, pz = player.z, dP = Math.hypot(px - g.x, pz - g.z), dHome = Math.hypot(px - g.home.x, pz - g.home.z);
-    if (g.state === 'idle' && fight && !peace() && dHome < TUNE.gang.turf) g.state = 'chase'; // お使いの間は、なわばりに入ってもおそってこない(なぐれば、やり返す)
-    if (g.state === 'chase' && (!fight || dHome > TUNE.gang.giveUp)) g.state = 'idle';
+    // 黒と白のケンカ(v=18): 近くで出会うと、たがいにおそう。先に主人公を見つけていたら主人公を、先に相手を見つけていたら相手をねらう
+    let foe = g.foe;
+    if (foe && (!feud || g.state === 'chase' || foe.hp <= 0 || foe.off || foe.gone || foe.white === g.white || Math.hypot(foe.x - g.x, foe.z - g.z) > F.feudGiveUp)) foe = g.foe = null;
+    if (!foe && feud && g.state !== 'chase' && !g.lure) {
+      g.scan -= dt;
+      if (g.scan <= 0) { g.scan = 0.4 + Math.random() * 0.3; let bd = F.feud; for (const o of gangs) { if (o.white === g.white || o.hp <= 0 || o.off || o.lure || !o.per.g.visible) continue; const d = Math.hypot(o.x - g.x, o.z - g.z); if (d < bd) { bd = d; foe = o; } } g.foe = foe; }
+    }
+    if (g.state === 'idle' && !foe && fight && !peace() && dHome < F.turf) g.state = 'chase'; // お使いの間は、なわばりに入ってもおそってこない(なぐれば、やり返す)
+    if (g.state === 'chase' && !g.lure && (!fight || dHome > F.giveUp)) g.state = 'idle'; // lure = 「火をつけろ」でついてくる黒の手下(あきらめるかは、ミッションの方で決める)
     let sp = 0, tx = g.tx, tz = g.tz;
     const dis = statusTick(g, dt); // 1 = 豚の頭で前が見えない、2 = ヘビで動けない
     if (dis) { if (dis === 1) { const q = blindWalk(g, dt); tx = q[0]; tz = q[1]; sp = 1.5; } }
-    else if (g.state === 'chase') {
-      const W = GANG_W[g.weapon]; tx = px; tz = pz;
-      if (dP > (g.weapon === 'pistol' ? 9 : W.range * 0.8)) sp = TUNE.gang.speed;
-      if (dP < W.range && g.cd <= 0) {
+    else if (foe || g.state === 'chase') {
+      const W = GANG_W[g.weapon], dT = foe ? Math.hypot(foe.x - g.x, foe.z - g.z) : dP; tx = foe ? foe.x : px; tz = foe ? foe.z : pz;
+      if (dT > (g.weapon === 'pistol' ? 9 : W.range * 0.8)) sp = F.speed;
+      if (dT < W.range && g.cd <= 0) {
         g.cd = W.cd; g.swing = 0.25;
-        if (g.weapon === 'pistol') { if (lineClear(g.x, g.z, px, pz)) { tracer(g.x, g.z, px + (Math.random() - 0.5), pz + (Math.random() - 0.5)); if (Math.random() < 0.6) hurtPlayer(W.dmg * (player.mode === 'car' ? 0.5 : 1)); } else g.cd = 0.3; }
+        if (g.weapon === 'pistol') {
+          if (lineClear(g.x, g.z, tx, tz)) { tracer(g.x, g.z, tx + (Math.random() - 0.5), tz + (Math.random() - 0.5)); if (Math.random() < 0.6) { if (foe) damageGang(foe, W.dmg * F.feudDmg, 0, 0, g); else hurtPlayer(W.dmg * (player.mode === 'car' ? 0.5 : 1)); } }
+          else g.cd = 0.3;
+        }
+        else if (foe) damageGang(foe, W.dmg * F.feudDmg, 0, 0, g);
         else if (player.mode === 'foot') hurtPlayer(W.dmg);
       }
     } else {
@@ -805,7 +838,7 @@ function updateGangs(dt) {
       if (Math.hypot(tx - g.x, tz - g.z) > 0.6) sp = 1.4;
     }
     if (sp > 0) { g.h += angDiff(g.h, Math.atan2(tx - g.x, tz - g.z)) * Math.min(1, 8 * dt); g.x += Math.sin(g.h) * sp * dt; g.z += Math.cos(g.h) * sp * dt; }
-    else if (g.state === 'chase' && !dis) g.h += angDiff(g.h, Math.atan2(px - g.x, pz - g.z)) * Math.min(1, 8 * dt);
+    else if ((foe || g.state === 'chase') && !dis) g.h += angDiff(g.h, Math.atan2(tx - g.x, tz - g.z)) * Math.min(1, 8 * dt);
     g.x += g.kx * dt; g.z += g.kz * dt; g.kx *= 1 - 6 * dt; g.kz *= 1 - 6 * dt;
     resolve(g, 0.45);
     if (player.mode === 'car' && g.hitCd <= 0) { const c = player.car, d = Math.hypot(c.x - g.x, c.z - g.z); if (d < 2.4 && Math.abs(c.v) > 5) { g.hitCd = 0.6; damageGang(g, Math.abs(c.v) * 4, Math.sin(c.h) * c.v * 0.5, Math.cos(c.h) * c.v * 0.5); } }
@@ -1146,8 +1179,9 @@ function makeVip(kind, o) {
 
 /* ===== 街の人との会話(v=13) ===== */
 // 話せる距離・ふきだしが出ている秒・Q&A になる割合(街の人)・おやじが2回目からQ&Aになる割合・ヒントがまざる割合・こたえを待つ秒・はなれると終わる距離・屋台の人の数
-//   later = まだ出てこない物(幹部・白いスーツ・ボス・黒と白のケンカ・「あの屋台だけは…」)の話もするか。それを作る回(⑥)で true にする
-const TALK = { dist: 2.8, show: 3.2, qa: 0.3, oyajiQa: 0.5, hint: 0.3, wait: 12, leave: 7, vendors: 6, later: false };
+//   later = 幹部・白いスーツ・ボス・黒と白のケンカ・「あの屋台だけは…」の話もするか(v=18 から true。白が出る「大きな仕事のあと」から言う)
+//   rumor = 「聞きこみ」のうわさが出ている秒(文が長いので、ふつうより長い)
+const TALK = { dist: 2.8, show: 3.2, qa: 0.3, oyajiQa: 0.5, hint: 0.3, wait: 12, leave: 7, vendors: 6, later: true, rumor: 5.5 };
 // ひとこと。hint = ヒント・うわさ、self = 屋台のおやじの話(おやじ本人は言わない)
 const LINES = [
   { text: 'この街の家賃、ギャングよりこわいよ' },
@@ -1173,6 +1207,14 @@ const LINES = [
   { text: '屋台のおやじ、30年あそこにいるらしい。街が変わっても、あの鍋だけは同じだ', hint: 1, self: 1 },
   { text: '港の奥の倉庫、夜も明かりがついてる。何を積んでるんだか', hint: 1 },
   { text: '前にもいたよ、あんたみたいな運び屋。若い女の子だった。急に見なくなったけど', hint: 1 },
+];
+// 幹部のうわさ(v=18。情報屋のミッション「聞きこみ」の間だけ、いつものひとことのかわりに言う。5つを順番に)
+const RUMORS = [
+  { text: '黒の幹部？市場のいちばん奥だよ。でっかい刀をいつも持ってる。魚をさばくんじゃないよ、あれは' },
+  { text: '白の幹部は北の大きなビルにいるよ。スーツにしわがつくと、手下がおこられるらしい' },
+  { text: '白の幹部の車、見たことある？毎朝じぶんでみがいてるんだ。あれにさわったら終わりだね' },
+  { text: '黒と白は、門をはさんでにらみ合ってる。ちょっとしたきっかけで、すぐ火がつくよ' },
+  { text: '幹部の話？…声が大きいよ。こっちまでにらまれるじゃないか' },
 ];
 // Q&A。ok = ふつうのこたえ、ng = 相手がおこるこたえ(おそってくる)。who: 'shop' = 屋台の人がよく聞く、'oyaji' = 屋台のおやじだけ
 const QAS = [
@@ -1229,21 +1271,31 @@ function talkTarget() {
 function setBubble(s) { const e = $('bubble'); e.textContent = s; e.style.display = 'block'; }
 function endTalk() { if (talk && talk.qa && !talk.who.npc) talk.who.talkT = 0; talk = null; $('bubble').style.display = 'none'; $('qa').classList.add('hidden'); }
 function pickLine(who) {
-  const ok = LINES.filter(l => (TALK.later || !l.later) && !(who.oyaji && l.self) && l !== who.lastLine && l !== lastLine);
+  const later = TALK.later && G.mi >= MISSIONS.length; // 白や幹部の話は、大きな仕事のあとから
+  const ok = LINES.filter(l => (later || !l.later) && !(who.oyaji && l.self) && l !== who.lastLine && l !== lastLine);
   const hints = ok.filter(l => l.hint), jokes = ok.filter(l => !l.hint), pool = hints.length && (Math.random() < TALK.hint || !jokes.length) ? hints : jokes;
   return pool[Math.floor(Math.random() * pool.length)];
 }
 // 「話す」ボタン: 近くの人が立ち止まって、ひとこと言う。ときどき質問(Q&A)される
 function startTalk() {
   const who = talkTarget(); if (!who) return;
+  const ask = !!asking() && who.asked !== G.askId; // 聞きこみ中で、まだ聞いていない人
   endTalk(); who.talkT = TALK.show; let qa = null;
   if (who.oyaji) { if (!who.met || Math.random() < TALK.oyajiQa) qa = QAS.find(q => q.who === 'oyaji'); who.met = true; }
   else if (Math.random() < TALK.qa) { const pool = QAS.filter(q => q.who !== 'oyaji' && q !== lastQA); qa = who.vendor && Math.random() < 0.5 ? QAS[0] : pool[Math.floor(Math.random() * pool.length)]; }
   if (qa) {
     lastQA = qa; const opts = [{ text: qa.ok, ng: false }, { text: qa.ng, ng: true }]; if (Math.random() < 0.5) opts.reverse();
-    talk = { who, qa, opts, t: TALK.wait }; setBubble(tr(qa.text));
+    talk = { who, qa, opts, t: TALK.wait, ask }; setBubble(tr(qa.text));
     opts.forEach((o, i) => { $('qa' + i).textContent = tr(o.text); }); $('qa').classList.remove('hidden');
-  } else { const l = pickLine(who); who.lastLine = lastLine = l; talk = { who, t: TALK.show }; setBubble(tr(l.text)); }
+  } else if (ask) tellRumor(who);
+  else { const l = pickLine(who); who.lastLine = lastLine = l; talk = { who, t: TALK.show }; setBubble(tr(l.text)); }
+}
+// 聞きこみ(v=18): いまの段が「聞きこみ」なら、その段。ちがえば null
+function asking() { const st = G.free && !G.busy && !G.over ? G.free.steps[G.si] : null; return st && st.type === 'ask' ? st : null; }
+// 幹部のうわさを言う(同じ人は1回だけ数える)
+function tellRumor(who) {
+  who.asked = G.askId; G.left = Math.max(0, G.left - 1); who.talkT = TALK.rumor; talk = { who, t: TALK.rumor };
+  setBubble(tr(RUMORS[G.askI++ % RUMORS.length].text)); toast(G.left > 0 ? tr('うわさを聞いた！ のこり {n}人', { n: G.left }) : tr('うわさを聞いた！'), 1.6);
 }
 // 街の人・屋台の人がおこって、おそってくる(車を奪われておこった運転手と同じ動き。元の人は、いなくなるまで消しておく)
 function makeAngry(who) { const n = newNpc('driver', who.x, who.z, who.h, who.look); n.state = 'angry'; n.cd = 0.8; who.angry = n; who.talkT = 0; who.per.g.visible = false; return n; }
@@ -1251,9 +1303,13 @@ function makeAngry(who) { const n = newNpc('driver', who.x, who.z, who.h, who.lo
 function answerTalk(i) {
   if (!talk || !talk.qa || !talk.opts[i]) return;
   const who = talk.who, bad = talk.opts[i].ng; $('qa').classList.add('hidden'); talk.qa = null; talk.t = who.talkT = 1.8;
-  if (!bad) setBubble('😊'); // いいこたえ(ごほうびは、なし)
+  const st = asking();
+  if (!bad) { if (st && talk.ask) tellRumor(who); else setBubble('😊'); } // いいこたえ(ごほうびは、なし。聞きこみ中なら、うわさを教えてくれる)
   else if (who.oyaji) { setBubble('…'); talk.t = who.talkT = 2.6; } // 屋台のおやじは、おこらない(だまって見るだけ)
-  else { talk.who = makeAngry(who); setBubble('💢'); talk.t = 2.4; } // おこって、おそってくる
+  else {
+    talk.who = makeAngry(who); setBubble('💢'); talk.t = 2.4; // おこって、おそってくる
+    if (st) { G.left = st.n; G.askId++; toast(tr('おこらせた！ 聞きこみは最初からやり直し'), 2.4); } // 聞きこみ中: 集めた数が0にもどる
+  }
 }
 // 毎フレーム: 「話す」ボタンを出す・消す、ふきだしを相手の頭の上に動かす
 function updateTalk(dt) {
@@ -1314,6 +1370,13 @@ const DEBT = 10000, FARE = 20000; // 情報屋に貸すお金・船代
 //     ram(逃げる車に n回ぶつける)・getin(ミッションの車に乗る)・survive(time 秒、★wanted のまま逃げる)・sneak(警察官のライトをよけて歩く)
 //     hook(next) = その段が終わったときにすること(お話など)。終わったら next() を呼ぶ
 const STALL_POS = { x: roadC(2), z: MK.z0 + 4.6 }; // 夜市の入口のすぐ中(「夜市の屋台を守れ」でマフィアが出る所)
+// 情報屋(v=18): 夜、港の前の公園のベンチの前にいる(お金を貸したあとだけ)。だいだい色の光で、情報屋のミッションを受ける
+const PARK = mergeRect(MERGES[1]), LOT = mergeRect(MERGES[3]), TWR = mergeRect(MERGES[2]);
+const INFO = { x: (PARK.x0 + PARK.x1) / 2, z: (PARK.z0 + PARK.z1) / 2 - 20 };
+// 「火をつけろ」: from = 黒の手下が立っている所(北の門の中)、to = 連れていく所(門の外・白のなわばり)、give = これよりはなれると手下があきらめる、near = 着いたときに、これより近くにいる手下を数える
+const LURE = { from: { x: roadC(2) + 7.3, z: roadC(2) + 26 }, to: { x: roadC(2) + 7.3, z: roadC(1) + 14 }, n: 3, need: 2, give: 24, near: 18 };
+// 「幹部の車をいただけ」: 白い高級車が止まっている所(北の大きなビルの前)と、かくす所(駐車場の、車のならびの間)
+const BOSSCAR = { x: TWR.x0 + 32, z: roadC(1) - 4.3, h: Math.PI / 2, to: { x: LOT.x0 + 26, z: (LOT.z0 + LOT.z1) / 2 } };
 const FREE = [
   { id: 'market', title: '市場のおつかい', desc: '市場の奥で品物を受け取って、店に届ける。市場には歩いてしか入れない。', reward: 2000, at: { x: roadC(2), z: MK.z0 + 3.2 }, steps: [{ type: 'go', pos: MK_DEEP, text: '市場の奥で品物を受け取ろう(歩いて入る)', done: '品物ゲット！' }, { type: 'go', pos: { x: roadC(4) - 7.5, z: roadC(2) + 26 }, text: '品物を店に届けよう' }] },
   { id: 'guard', title: '用心棒', desc: '店をおそいに来るマフィアを、5人たおす。', reward: 3000, at: { x: -90, z: 57.3 }, steps: [{ type: 'kill', pos: { x: -76, z: 52 }, n: 5, text: '店をおそうマフィアをたおせ(のこり {n}人)' }] },
@@ -1337,8 +1400,24 @@ const FREE = [
   // 船員のたのみを2つクリアしてから情報屋に貸すと、3つ目がこれに変わる(裏のトゥルーエンドの入口。つづきは⑥)
   { id: 'sailor3t', alt: 1, after: 'sailor2', need: () => !!G.tru && !G.done.sailor3, title: '倉庫への届け物', desc: '港の奥の倉庫へ、飯を届ける。', reward: 5000, at: PORT.sailor, say: [{ name: '船員', text: 'お前、あの情報屋と組んだのか。なら、見せておくものがある' }, { name: '船員', text: 'この飯を、奥の倉庫へ届けろ' }], onDone: () => { G.done.sailor3 = 1; G.sis = 1; }, steps: [{ type: 'go', foot: 1, pos: { x: 162.5, z: 151 }, text: '飯を、港の奥の倉庫へ届けよう(歩いて)', hook: next => story(STORY.sis, next) }] },
   { id: 'sneak', after: 'sailor3', when: 'night', ending: 2, title: '船に忍び込む', desc: '夜のうちに、警察官のライトをよけて船まで歩く。船に乗ると、街を出てゲームが終わる。セーブは消える。', reward: 0, at: PORT.sneak, steps: [{ type: 'sneak', foot: 1, pos: PORT.ship, text: '警察官のライトに入らないように、船まで歩け' }] },
+  // 情報屋のミッション(v=18。裏ルート。順番どおり。夜、公園の情報屋の所で受ける。ほうびのお金は出ない)。つづき(幹部・ボス)は⑥後半
+  //   steps の type: ask(街の人 n人から、うわさを聞く)・bait(黒の手下に気づかせる)・lure(歩いて、手下を to まで連れていく)・leave(車から降りる)
+  //     keep = 次の段になっても、出ている相手や車を消さない。boss = 白い高級車と見はり。hunt = 追っ手の車が出る
+  { id: 'info1', alt: 1, info: 1, when: 'night', need: () => G.lent === 1, title: '聞きこみ', desc: '街の人3人に話しかけて、幹部のうわさを集める。おこらせると、最初からやり直し。', reward: 0, at: INFO, say: { name: '情報屋', text: 'まずはイヤーよ、イヤー！街のピーポーに聞いて回るのね。幹部ちゃんの話は、みんなヒソヒソ・ウィスパーなんやで' },
+    steps: [{ type: 'ask', n: 3, text: '街の人に話しかけて、幹部のうわさを集めろ(のこり {n}人)' }] },
+  { id: 'info2', alt: 1, info: 1, when: 'night', after: 'info1', need: () => G.lent === 1, doneMsg: '黒と白のケンカが始まった！', title: '火をつけろ', desc: '黒の手下をおこらせて、歩いて白のなわばりまで連れていく。車に乗ると、あきらめられる。', reward: 0, at: INFO, say: { name: '情報屋', text: 'ブラックちゃんとホワイトちゃんは、ほっといてもファイヤーなの。ユーちゃんはマッチをシュッ！ってするだけよ〜ん' },
+    steps: [{ type: 'bait', keep: 1, pos: LURE.from, text: '北の門の近くの黒の手下(赤い光)に、歩いて近づけ', done: '気づかれた！ 走れ！' },
+      { type: 'lure', pos: LURE.to, text: '歩いて、門の外の白のなわばり(黄色い光)まで連れていけ(ついてきている {n}人)', hook: lureHook }] },
+  { id: 'info3', alt: 1, info: 1, when: 'night', after: 'info2', need: () => G.lent === 1, title: '幹部の車をいただけ', desc: '白の幹部の車をうばって、駐車場にかくす。追っ手の車が来る。ぶつけていいのは5回まで。', reward: 0, at: INFO, say: { name: '情報屋', text: 'ホワイトの幹部ちゃんはね、マイカーだけは自分でピッカピカにみがくの。あれがバイバイしたら、プンプンで出てくるわよ' },
+    steps: [{ type: 'getin', boss: 1, keep: 1, text: '北の大きなビルの前の、白い車をうばえ', done: '追っ手が来る！ 駐車場へ！' },
+      { type: 'go', car: 2, keep: 1, hunt: 1, pos: BOSSCAR.to, fragile: 5, fail: '車がきずだらけだ… ミッション失敗', text: '追っ手をかわして、車を駐車場にかくせ(ぶつけていいのは5回まで)', done: '着いた！' },
+      { type: 'leave', text: '車から降りよう' }] },
 ];
-for (const f of FREE) Object.assign(f, glowMark(0xb06bff, f.at.x, f.at.z));
+for (const f of FREE) Object.assign(f, glowMark(f.info ? 0xffa53a : 0xb06bff, f.at.x, f.at.z));
+// 情報屋と、公園のベンチ(乱数は使わない)
+const infoPer = makeVip('info'); infoPer.g.position.set(INFO.x - 1.9, 0.3, INFO.z); infoPer.g.rotation.y = Math.PI / 2; infoPer.g.visible = false;
+addBox(0.7, 0.14, 2.6, INFO.x - 2.7, 0.78, INFO.z, M(0x6a4a2a)); addBox(0.12, 0.6, 2.6, INFO.x - 3.0, 1.15, INFO.z, M(0x6a4a2a)); for (const dz of [-1.1, 1.1]) addBox(0.6, 0.45, 0.12, INFO.x - 2.7, 0.52, INFO.z + dz, M(0x333333));
+addCol(INFO.x - 3.1, INFO.x - 2.35, INFO.z - 1.3, INFO.z + 1.3);
 // 船代をはらって街を出る(水色の光。お使いが終わると出る)
 const BOAT = { id: 'boat', title: '船で街を出る', desc: '船代をはらうと、街を出てゲームが終わる。セーブは消える。', pay: FARE, yes: 'はらう', at: PORT.boat, onYes: () => { G.money -= FARE; story(STORY.end1, () => finish(1)); } };
 Object.assign(BOAT, glowMark(0x7fe8ff, BOAT.at.x, BOAT.at.z));
@@ -1346,7 +1425,7 @@ Object.assign(BOAT, glowMark(0x7fe8ff, BOAT.at.x, BOAT.at.z));
 const sailorPer = makePerson(0x1f3a6e, 0x1a1a2a, 0xc89870); part(sailorPer, 0.62, 0.16, 0.62, 0xffffff, 0, 2.5, 0); sailorPer.g.position.set(PORT.sailor.x + 1.8, 0.3, PORT.sailor.z - 1.6); sailorPer.g.rotation.y = -Math.PI / 2; sailorPer.g.visible = false;
 // mode: 'menu'(画面の後ろで街が動いている) / 'solo'(ひとり用) / 'race'(配達競争)
 //   lent = 情報屋に 0: まだ会っていない、1: 貸した、2: 貸さなかった。tru = トゥルーエンドの順番で貸した。sis = 倉庫で妹を見た
-const G = { mode: 'menu', started: false, over: false, money: 0, wanted: 0, mi: 0, si: 0, timeLeft: -1, play: 0, evade: 0, bust: 0, downT: 0, stunT: 0, shop: null, shopLock: null, hitCd: 0, spawnCd: 0, failWait: 0, waitMsg: '', free: null, done: {}, offer: null, markLock: null, freeT: 0, bosses: [], lent: 0, tru: 0, sis: 0, left: 0, bumps: 0, bumpCd: 0, ramCd: 0, busy: false, tp: null, story: null, sleep: false, camYaw: Math.PI, camDrag: 0, clock: DAY.race, phase: 'night' };
+const G = { askId: 1, askI: 0, huntT: 0, mode: 'menu', started: false, over: false, money: 0, wanted: 0, mi: 0, si: 0, timeLeft: -1, play: 0, evade: 0, bust: 0, downT: 0, stunT: 0, shop: null, shopLock: null, hitCd: 0, spawnCd: 0, failWait: 0, waitMsg: '', free: null, done: {}, offer: null, markLock: null, freeT: 0, bosses: [], lent: 0, tru: 0, sis: 0, left: 0, bumps: 0, bumpCd: 0, ramCd: 0, busy: false, tp: null, story: null, sleep: false, camYaw: Math.PI, camDrag: 0, clock: DAY.race, phase: 'night' };
 // 配達競争の状態(online.js から setRace でもらう)
 const R = { me: null, state: null, remotes: {}, avatars: {}, sendT: 0 };
 let toastT = 0;
@@ -1454,12 +1533,12 @@ function finish(n) {
 
 /* ===== ミッションの進み方 ===== */
 // ミッションの間だけ出るもの: たおす相手・拾う物・立っている人・見はりの警察官・逃げる車・運ぶ車
-const MX = { foes: [], items: [], props: [], guards: [], runner: null, mcar: null };
+const MX = { foes: [], items: [], props: [], guards: [], hunters: [], runner: null, mcar: null };
 const SNEAK = { x: 166, z0: -82, z1: -38, speed: 3.2, see: 8, half: 0.5 }; // 見はりが歩く所・速さ・ライトのとどく距離・広がり
 function aim(x, z) { marker.visible = true; marker.position.set(x, 0, z); G.tp = { x, z }; }
 // その段だけのものを消す
 function clearStep() {
-  for (const g of MX.foes) { const i = gangs.indexOf(g); if (i >= 0) gangs.splice(i, 1); scene.remove(g.per.g); }
+  for (const g of MX.foes) dropGang(g);
   for (const it of MX.items) scene.remove(it.g); for (const p of MX.props) scene.remove(p); for (const g of MX.guards) scene.remove(g.per.g);
   MX.foes.length = MX.items.length = MX.props.length = MX.guards.length = 0;
 }
@@ -1467,13 +1546,14 @@ function clearStep() {
 function clearMission() {
   clearStep();
   for (const k of ['runner', 'mcar']) { const c = MX[k]; MX[k] = null; if (!c) continue; if (player.car === c) { c.flee = false; continue; } removeCar(c); }
+  for (const c of MX.hunters) removeCar(c); MX.hunters.length = 0; // 追っ手の車
   G.busy = false; G.tp = null; markerColor(0xffd23f);
 }
 // いまのミッション(自由なミッションを受けていればそれ。なければ、お使いの次の1つ。全部終わっていれば null)
 function curM() { return G.free || (G.mi < MISSIONS.length ? MISSIONS[G.mi] : null); }
 // やられた・逮捕されたときに、ミッション失敗になるか(お使いは、まだ最初の所なら失敗にしない)
 function missionOn() { const m = curM(); return !!m && !G.over && (!!G.free || G.si > 0 || !!m.steps[0].wanted); }
-function freeOpen(f) { return G.mi >= MISSIONS.length && !G.free && !G.done[f.id] && (!f.after || !!G.done[f.after]) && (!f.need || f.need()); }
+function freeOpen(f) { return G.mi >= MISSIONS.length && !G.free && !G.done[f.id] && (!f.after || !!G.done[f.after]) && (!f.need || f.need()) && (!f.info || G.phase === 'night'); } // 情報屋は夜だけいる
 const boatOpen = () => G.mi >= MISSIONS.length && !G.free && !G.over;
 function beginStep() {
   const st = curM().steps[G.si]; G.left = st.n || 0; G.bumps = 0; G.tp = null;
@@ -1491,7 +1571,19 @@ function beginStep() {
   if (st.type === 'ram') { // 逃げる車(交差点 (5,5) から北へ走り出す)
     const c = MX.runner = newCar('traffic', roadC(5) - 3.2, roadC(5) - 16, Math.PI, 0x8a2be2); c.flee = true; c.a = [5, 5]; c.b = [5, 4]; c.p = 0.3; c.v = 12; markerColor(0xff4a4a); aim(c.x, c.z);
   }
-  if (st.type === 'getin') { const r = mergeRect(MERGES[3]), c = MX.mcar = newCar('parked', r.x0 + 14, (r.z0 + r.z1) / 2, 0, 0xffd23f); aim(c.x, c.z); } // 運ぶ車(駐車場の、車のならびの間)
+  if (st.type === 'getin' && st.boss) { // 白の幹部の車(北の大きなビルの前)と、見はりの白の手下3人
+    for (let i = cars.length - 1; i >= 0; i--) { const o = cars[i]; if (o !== player.car && o.kind === 'parked' && Math.hypot(o.x - BOSSCAR.x, o.z - BOSSCAR.z) < 6) removeCar(o); } // 前に失敗したときの車などが残っていたら、どける
+    const c = MX.mcar = newCar('parked', BOSSCAR.x, BOSSCAR.z, BOSSCAR.h, 0xf4f4f4); carTrim(c, 'boss'); aim(c.x, c.z);
+    ['pistol', 'knife', 'fist'].forEach((w, k) => { const g = newGang(BOSSCAR.x + [-4, 0, 4][k], TWR.z1 - 1.3); g.temp = true; g.tier = 0; setTeam(g, true, w); MX.foes.push(g); }); // 見はりは歩道に立つ
+  }
+  else if (st.type === 'getin') { const r = mergeRect(MERGES[3]), c = MX.mcar = newCar('parked', r.x0 + 14, (r.z0 + r.z1) / 2, 0, 0xffd23f); aim(c.x, c.z); } // 運ぶ車(駐車場の、車のならびの間)
+  if (st.type === 'ask') { G.askId++; G.askI = Math.floor(Math.random() * RUMORS.length); }
+  if (st.type === 'bait') { // 「火をつけろ」: 北の門の中に黒の手下3人(lure)、門の外に白の手下3人
+    markerColor(0xff4a4a);
+    for (let k = 0; k < LURE.n; k++) { const g = newGang(LURE.from.x, LURE.from.z - 3 + k * 3); g.temp = true; g.tier = 0; g.lure = true; g.weapon = k ? 'knife' : 'fist'; setHand(g.per, g, g.weapon); MX.foes.push(g); }
+    [[0, -4, 'pistol'], [0, -6.5, 'knife'], [2.5, -6.8, 'pistol']].forEach(q => { const g = newGang(LURE.to.x + q[0], LURE.to.z + q[1]); g.temp = true; g.tier = 0; setTeam(g, true, q[2]); MX.foes.push(g); });
+  }
+  if (st.hunt) G.huntT = 2; // 追っ手の車は、少ししてから出る
   if (st.type === 'sneak') for (const s of [1, -1]) { // 見はりの警察官(ライトを持って、行ったり来たりする)
     const per = makePerson(0x2c56b8, 0x1a2a55, 0xc89870), cap = new THREE.Mesh(BG(0.64, 0.16, 0.72), M(0x14224a)); cap.position.set(0, 2.52, 0.05); per.g.add(cap);
     const cg = new THREE.CircleGeometry(SNEAK.see, 14, -Math.PI / 2 - SNEAK.half, SNEAK.half * 2); cg.rotateX(-Math.PI / 2);
@@ -1503,11 +1595,11 @@ function beginMission() { G.si = 0; G.timeLeft = -1; G.busy = false; const m = c
 // 段が終わった。hook があれば、それ(お話など)が終わってから次へ
 function stepDone() { if (G.busy) return; const st = curM().steps[G.si]; if (st.hook) { G.busy = true; st.hook(() => { G.busy = false; stepNext(); }); } else stepNext(); }
 function stepNext() {
-  const m = curM(); clearStep(); G.si++;
+  const m = curM(); if (!m.steps[G.si].keep) clearStep(); G.si++;
   if (G.si < m.steps.length) { toast(tr(m.steps[G.si - 1].done || 'チェックポイント通過！'), 1.2); beginStep(); return; }
   G.timeLeft = -1; marker.visible = false; clearMission();
   if (m.ending) { G.free = null; story(STORY['end' + m.ending], () => finish(m.ending)); return; } // 船に乗って終わり
-  G.money += m.reward; toast(tr('ミッション完了！ +${r}', { r: m.reward.toLocaleString() }), 2.6);
+  G.money += m.reward; toast(m.doneMsg ? tr(m.doneMsg) : m.reward ? tr('ミッション完了！ +${r}', { r: m.reward.toLocaleString() }) : tr('ミッション完了！'), 2.6);
   if (m.endSay) say(m.endSay, true);
   if (m.wantedOff) { G.wanted = 0; removeAllPolice(); }
   if (G.free) { G.done[m.id] = 1; if (m.onDone) m.onDone(); G.markLock = G.free; G.free = null; }
@@ -1517,14 +1609,53 @@ function stepNext() {
 // 失敗: お使いは少し待ってやり直し。自由なミッションは、紫のマークがもどる(何度でも受け直せる)
 function failMission(msg) { toast(msg, 2.6); G.timeLeft = -1; marker.visible = false; clearMission(); if (G.free) { G.free = null; return; } G.failWait = 2.8; G.waitMsg = tr('もう一度挑戦…'); }
 // 車をぶつけた(「ぶつけすぎると失敗」のミッション)
-function bump() {
+function bump(hit) { // hit = 追っ手の車にぶつけられた
   const m = curM(), st = m && !G.over && !(!G.free && G.failWait > 0) ? m.steps[G.si] : null;
   if (!st || (st.fragile === undefined && !st.spill) || G.bumpCd > 0 || G.busy || (st.car === 2 && player.car !== MX.mcar)) return;
   G.bumpCd = 0.8;
   if (st.spill) { G.timeLeft = Math.max(0.01, G.timeLeft - st.spill); toast(tr('スープがこぼれた！ -{n}秒', { n: st.spill }), 1.2); return; } // 夜中の出前: 時間がへる
   G.bumps++;
   if (G.bumps > st.fragile) failMission(st.fail ? tr(st.fail) : tr('ぶつけすぎた… ミッション失敗'));
-  else { toast(tr('ぶつけた！ あと{n}回で失敗', { n: st.fragile - G.bumps + 1 }), 1.2); if (st.ouch) say(st.ouch[Math.min(G.bumps, st.ouch.length) - 1], true); }
+  else { toast(tr(hit ? 'ぶつけられた！ あと{n}回で失敗' : 'ぶつけた！ あと{n}回で失敗', { n: st.fragile - G.bumps + 1 }), 1.2); if (st.ouch) say(st.ouch[Math.min(G.bumps, st.ouch.length) - 1], true); }
+}
+// 「火をつけろ」: 白のなわばりに着いた。黒と白のケンカが始まる(ミッションが終わっても、しばらく残る)
+function lureHook(next) {
+  const all = MX.foes.filter(g => g.hp > 0), bl = all.filter(g => !g.white), wh = all.filter(g => g.white), near = (g, a) => a.reduce((b, o) => !b || Math.hypot(o.x - g.x, o.z - g.z) < Math.hypot(b.x - g.x, b.z - g.z) ? o : b, null);
+  for (const g of all) { g.lure = false; g.state = 'idle'; g.brawl = true; g.brawlT = 30; g.home = { x: g.x, z: g.z }; g.foe = near(g, g.white ? bl : wh); g.scan = 0; }
+  MX.foes.length = 0; next();
+}
+// 車のかざり(v=18): boss = 白の幹部の車(金のかざり)、hunt = 追っ手の車(黒い屋根と線)
+function carTrim(c, kind) {
+  const add = (w, h, d, col, x, y, z) => { const m = new THREE.Mesh(BG(w, h, d), M(col)); m.position.set(x, y, z); c.mesh.add(m); };
+  if (kind === 'boss') { for (const sx of [-1.12, 1.12]) add(0.04, 0.1, 4.2, 0xd8b13a, sx, 0.78, 0); add(0.9, 0.42, 0.06, 0xd8b13a, 0, 0.86, 2.22); add(0.12, 0.24, 0.12, 0xd8b13a, 0, 1.37, 1.95); add(1.97, 0.14, 2.02, 0x15151a, 0, 2.0, -0.2); add(2.24, 0.08, 4.44, 0xd8b13a, 0, 0.4, 0); }
+  else { add(1.97, 0.14, 2.02, 0x15151a, 0, 2.0, -0.2); add(0.7, 0.06, 4.42, 0x15151a, 0, 1.26, 0); }
+}
+// 追っ手の車を1台出す(主人公から少しはなれた交差点に)
+function spawnHunter() {
+  const cand = []; for (let i = 0; i <= N; i++) for (let j = 0; j <= N; j++) { const q = P(i, j), d = Math.hypot(q.x - player.x, q.z - player.z); if (d > 45 && d < 110) cand.push(q); }
+  if (!cand.length) return; const q = cand[Math.floor(Math.random() * cand.length)], c = newCar('hunter', q.x, q.z, Math.atan2(player.x - q.x, player.z - q.z), 0xf2f2f2); carTrim(c, 'hunt'); c.v = 10; MX.hunters.push(c);
+}
+// 追っ手の車: 主人公の車を追いかけて、ぶつけてくる(走り方はパトカーと同じ。人は降りてこない)
+function updateHunter(c, dt) {
+  const tx = player.x, tz = player.z, d = Math.hypot(tx - c.x, tz - c.z);
+  if (c.rev > 0) { c.rev -= dt; c.v += clamp(-7 - c.v, -60 * dt, 60 * dt); if (c.turn) c.h += 1.6 * dt; }
+  else if (player.mode === 'foot' && d < 12) c.v += clamp(-c.v, -35 * dt, 35 * dt); // 主人公が降りていたら、近くで止まる
+  else {
+    let gx, gz;
+    if (d < 30) { gx = tx; gz = tz; c.node = null; }
+    else {
+      if (!c.node) c.node = nearestNode(c.x, c.z);
+      let np = nodePos(c.node);
+      if (Math.hypot(np.x - c.x, np.z - c.z) < 6) { let best = null, bd = 1e9; for (const n of neighbors(c.node)) { const q = nodePos(n), dd = Math.hypot(q.x - tx, q.z - tz); if (dd < bd) { bd = dd; best = n; } } c.node = best; np = nodePos(best); }
+      gx = np.x; gz = np.z;
+    }
+    const dh = angDiff(c.h, Math.atan2(gx - c.x, gz - c.z)); c.h += clamp(dh, -2.6 * dt, 2.6 * dt);
+    const want = Math.abs(dh) > 1.2 ? 11 : TUNE.hunt.speed; c.v += clamp(want - c.v, -35 * dt, 15 * dt);
+  }
+  c.x += Math.sin(c.h) * c.v * dt; c.z += Math.cos(c.h) * c.v * dt;
+  if (resolveCar(c)) { c.v *= 0.3; c.stuck += dt; } else c.stuck = Math.max(0, c.stuck - dt * 0.5);
+  if (c.stuck > 1.2 && c.rev <= 0) { c.rev = 1.1; c.turn = true; c.stuck = 0; c.node = null; }
+  if (d > 190) { c.gone = true; const i = MX.hunters.indexOf(c); if (i >= 0) MX.hunters.splice(i, 1); } // 遠くにおいていかれたら消えて、近くにまた出る
 }
 // 借金の取り立て: 車を止めたら、中から情報屋が出てくる →「貸す」「貸さない」
 function debtHook(next) {
@@ -1610,6 +1741,7 @@ function applyEnv(t) {
 // 時間に合わせて、マフィアと街の人をふやす・減らす。force でなければ、主人公の近くでは変えない
 function applyPop(force) {
   const ph = G.mode === 'solo' ? G.phase : 'eve', far = (x, z) => force || Math.hypot(x - player.x, z - player.z) > DAY.far;
+  applyTeams();
   for (const g of gangs) {
     const on = g.tier === 0 || (g.tier === 1 ? ph !== 'day' : ph === 'night'); if (!!g.off === !on) continue;
     if (on) { if (!far(g.home.x, g.home.z)) continue; g.off = false; respawnGang(g); }
@@ -1680,7 +1812,7 @@ function readInput() {
 }
 
 /* ===== 車の乗り降り ===== */
-function nearestEnterable() { let best = null, bd = TUNE.enterDist; for (const c of cars) { if ((c.kind === 'police' && G.mode !== 'solo') || c.flee) continue; const d = Math.hypot(c.x - player.x, c.z - player.z); if (d < bd) { bd = d; best = c; } } return best; }
+function nearestEnterable() { let best = null, bd = TUNE.enterDist; for (const c of cars) { if ((c.kind === 'police' && G.mode !== 'solo') || c.flee || c.kind === 'hunter') continue; const d = Math.hypot(c.x - player.x, c.z - player.z); if (d < bd) { bd = d; best = c; } } return best; }
 function toggleCar() {
   if (!G.started || G.stunT > 0 || G.downT > 0 || paused()) return; if (player.mode === 'car') { exitCar(); return; }
   const c = nearestEnterable(); if (!c) return;
@@ -1789,11 +1921,12 @@ function updateParked(c, dt) { if (Math.abs(c.v) > 0.05) { c.v *= 1 - 2.5 * dt; 
 function carPairs() {
   for (let i = 0; i < cars.length; i++) for (let j = i + 1; j < cars.length; j++) {
     const a = cars[i], b = cars[j];
-    if (!(a.kind === 'player' || b.kind === 'player' || a.kind === 'police' || b.kind === 'police')) continue;
+    if (!(a.kind === 'player' || b.kind === 'player' || a.kind === 'police' || b.kind === 'police' || a.kind === 'hunter' || b.kind === 'hunter')) continue;
     const dx = b.x - a.x, dz = b.z - a.z, d = Math.hypot(dx, dz); if (d > 3.6 || d < 0.001) continue;
     const push = (3.6 - d) / 2, nx = dx / d, nz = dz / d;
     const pl = a.kind === 'player' ? a : b.kind === 'player' ? b : null;
-    if (pl) { const o = pl === a ? b : a; if (o.flee) { if (Math.abs(pl.v) > 6 && G.ramCd <= 0 && G.left > 0) { G.ramCd = 1; G.left--; toast(tr('ぶつけた！ あと{n}回', { n: G.left }), 1.2); } } else if (Math.abs(pl.v) > 9 && G.hitCd <= 0 && (o.kind === 'traffic' || o.kind === 'police')) { addWanted(1); G.hitCd = 3; } if (Math.abs(pl.v) > 4) { if (!o.flee) bump(); if (o.kind === 'parked') { o.v = pl.v * 0.5; o.h = pl.h; } pl.v *= -0.3; } }
+    if (pl) { const o = pl === a ? b : a; if (o.flee) { if (Math.abs(pl.v) > 6 && G.ramCd <= 0 && G.left > 0) { G.ramCd = 1; G.left--; toast(tr('ぶつけた！ あと{n}回', { n: G.left }), 1.2); } } else if (Math.abs(pl.v) > 9 && G.hitCd <= 0 && (o.kind === 'traffic' || o.kind === 'police')) { addWanted(1); G.hitCd = 3; } if (o.kind === 'hunter' && o.rev <= 0 && Math.abs(o.v) > 6) { bump(true); o.rev = TUNE.hunt.back; o.turn = false; o.v *= 0.3; } // 追っ手にぶつけられた(これも数える)。追っ手は、いったん下がる
+      if (Math.abs(pl.v) > 4) { if (!o.flee) bump(); if (o.kind === 'parked') { o.v = pl.v * 0.5; o.h = pl.h; } pl.v *= -0.3; } }
     a.x -= nx * push; a.z -= nz * push; b.x += nx * push; b.z += nz * push;
   }
   // 配達競争: ほかの人(の車)に重ならないように、自分だけ押し返す
@@ -1867,7 +2000,23 @@ function updateMission(dt) {
   }
   else if (st.type === 'ram') { const c = MX.runner; aim(c.x, c.z); if (G.left <= 0) stepDone(); }
   else if (st.type === 'getin') { const c = MX.mcar; aim(c.x, c.z); if (player.car === c) stepDone(); }
+  else if (st.type === 'ask') { if (G.left <= 0) stepDone(); } // 聞きこみ: 数えるのは startTalk・answerTalk
+  else if (st.type === 'bait') { // 黒の手下が主人公に気づいたら(なわばりに入る・なぐる)、3人とも追ってくる
+    const bl = MX.foes.filter(g => g.lure && g.hp > 0);
+    if (bl.length < LURE.need) { failMission(tr('手下をたおしすぎた… ミッション失敗')); return; }
+    if (bl.some(g => g.state === 'chase')) { for (const g of bl) g.state = 'chase'; stepDone(); }
+  }
+  else if (st.type === 'lure') { // 歩いて連れていく。車に乗る・はなれすぎると、あきらめて帰る
+    if (!foot) { failMission(tr('車に乗ったので、手下があきらめた… ミッション失敗')); return; }
+    let dead = 0;
+    for (const g of MX.foes) { if (!g.lure) continue; if (g.hp <= 0) { dead++; continue; } g.state = 'chase'; if (Math.hypot(g.x - player.x, g.z - player.z) > LURE.give) { g.lure = false; g.state = 'idle'; } }
+    const bl = MX.foes.filter(g => g.lure && g.hp > 0); G.left = bl.length;
+    if (bl.length < LURE.need) { failMission(tr(dead > LURE.n - LURE.need ? '手下をたおしすぎた… ミッション失敗' : '手下があきらめて帰った… ミッション失敗')); return; }
+    if (Math.hypot(st.pos.x - player.x, st.pos.z - player.z) < 6 && bl.filter(g => Math.hypot(g.x - player.x, g.z - player.z) < LURE.near).length >= LURE.need) stepDone();
+  }
+  else if (st.type === 'leave') { if (foot) { MX.mcar = null; stepDone(); } } // 降りた車は、そのまま駐車場に置いておく(消さない)
   else if (st.type === 'survive') { G.wanted = Math.max(G.wanted, st.wanted); G.evade = 0; } // ★は下がらない
+  if (st.hunt && !G.busy && curM() === m) { G.huntT -= dt; if (MX.hunters.length < TUNE.hunt.cars && G.huntT <= 0) { G.huntT = TUNE.hunt.wait; spawnHunter(); } } // 追っ手の車をそろえる
 }
 
 /* ===== 配達競争(画面側) ===== */
@@ -1939,7 +2088,8 @@ function drawMinimap() {
   function dot(x, z, col, r, clampIt) { const dx = (x - player.x) * sc, dz = (z - player.z) * sc; let sx = dx * ct - dz * stn, sy = dx * stn + dz * ct; const l = Math.hypot(sx, sy); if (l > Rr - 10) { if (!clampIt) return; sx *= (Rr - 10) / l; sy *= (Rr - 10) / l; } mg.fillStyle = col; mg.beginPath(); mg.arc(Rr + sx, Rr + sy, r, 0, Math.PI * 2); mg.fill(); mg.strokeStyle = '#000'; mg.lineWidth = 1.5; mg.stroke(); }
   for (const c of cars) if (c.kind === 'police') dot(c.x, c.z, (Math.floor(performance.now() / 250) % 2) ? '#ff3030' : '#3060ff', 6, false);
   for (const id in R.avatars) { const av = R.avatars[id]; if (av.seen) dot(av.x, av.z, raceColor(id), 7, true); }
-  if (G.mode === 'solo') { for (const f of FREE) if (freeOpen(f)) dot(f.at.x, f.at.z, '#b06bff', 8, true); if (boatOpen()) dot(BOAT.at.x, BOAT.at.z, '#7fe8ff', 7, true); } // 受けられるミッション(紫)・船(水色)
+  for (const c of MX.hunters) dot(c.x, c.z, '#ffffff', 6, false); // 追っ手の車(白)
+  if (G.mode === 'solo') { for (const f of FREE) if (freeOpen(f)) dot(f.at.x, f.at.z, f.info ? '#ffa53a' : '#b06bff', 8, true); if (boatOpen()) dot(BOAT.at.x, BOAT.at.z, '#7fe8ff', 7, true); } // 受けられるミッション(紫)・船(水色)
   if (marker.visible) dot(marker.position.x, marker.position.z, '#' + ringMat.color.getHexString(), 9, true);
 }
 
@@ -2044,7 +2194,7 @@ $('offerNo').addEventListener('click', () => closeOffer(false));
 let sleepShown = null;
 function checkMarks(t) {
   const solo = G.mode === 'solo', y = 0.5 + Math.sin(t * 3) * 0.15;
-  HOME.g.visible = solo; HOME.ring.position.y = y; sailorPer.g.visible = solo;
+  HOME.g.visible = solo; HOME.ring.position.y = y; sailorPer.g.visible = solo; infoPer.g.visible = solo && G.lent === 1 && G.phase === 'night'; // 情報屋は、貸したあとの夜だけ公園にいる
   for (const f of FREE) { f.g.visible = solo && freeOpen(f); f.ring.position.y = y; }
   BOAT.g.visible = solo && boatOpen(); BOAT.ring.position.y = y;
   const sl = solo && canSleep(); if (sl !== sleepShown) { sleepShown = sl; $('sleepBtn').style.display = sl ? 'flex' : 'none'; } // 家の光の近くでは「ねる」ボタンが出る
@@ -2063,7 +2213,7 @@ function frame(now) {
   if (G.started && paused()) { if (G.intro) updateIntro(dt, T); /* 買い物中・ミッションをえらんでいる間・お話の間・ねる画面は止まる(出だしのクラブだけ動く) */ }
   else if (G.started) {
     readInput(); updatePlayer(dt); updateClock(dt);
-    for (const c of cars) { if (c.kind === 'traffic') updateTraffic(c, dt); else if (c.kind === 'police') updatePolice(c, dt, T); else if (c.kind === 'parked') updateParked(c, dt); }
+    for (const c of cars) { if (c.kind === 'traffic') updateTraffic(c, dt); else if (c.kind === 'police') updatePolice(c, dt, T); else if (c.kind === 'hunter') updateHunter(c, dt); else if (c.kind === 'parked') updateParked(c, dt); }
     if (G.mode === 'race') updateAvatars(dt);
     for (let i = cars.length - 1; i >= 0; i--) if (cars[i].gone) removeCar(cars[i]);
     carPairs(); updatePeds(dt); updateVendors(dt); updateGangs(dt); updateNpcs(dt); updatePickups(dt, T); updateMkw(dt, T); updateShots(dt); updateFx(dt);
@@ -2122,7 +2272,7 @@ $('quitBtn').addEventListener('click', () => { if (G.mode === 'solo') location.r
 if (window.BackGuard) BackGuard.set('home');
 
 const SC = window.SC = {
-  G, R, player, cars, peds, TUNE, MISSIONS, FREE, HOME, save, readSave, applySave, curM, pointBlocked, P, gangs, pickups, npcs, SHOPS, HOSPITAL, SHOP_ITEMS, closeShop, WEAPONS, MKT, MKW, shots, newNpc, confiscate, DAY, setClock, vendors, TALK, LINES, QAS, makeVip, startTalk, answerTalk, pickLine, getTalk: () => talk, camera, BOAT, PORT, MX, STORY, SNEAK, freeOpen, story, say, finish, openSleep, sleepTo, bump, CLUB, NEON_MATS, STALL_POS, APT, INTRO,
+  G, R, player, cars, peds, TUNE, MISSIONS, FREE, HOME, save, readSave, applySave, curM, pointBlocked, P, gangs, pickups, npcs, SHOPS, HOSPITAL, SHOP_ITEMS, closeShop, WEAPONS, MKT, MKW, shots, newNpc, confiscate, DAY, setClock, vendors, TALK, LINES, QAS, makeVip, startTalk, answerTalk, pickLine, getTalk: () => talk, camera, BOAT, PORT, MX, STORY, SNEAK, freeOpen, story, say, finish, openSleep, sleepTo, bump, CLUB, NEON_MATS, STALL_POS, APT, INTRO, INFO, LURE, BOSSCAR, RUMORS, infoPer, setTeam, applyTeams, inCT, newGang, damageGang, GANG_W,
   onSend: null, onQuit: null,
   startSolo,
   showOnly, setPlaying,
