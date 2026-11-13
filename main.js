@@ -11,7 +11,7 @@ if (typeof THREE === 'undefined') { const d = document.getElementById('err'); d.
 /* ===== 調整用の数字 ===== */
 const TUNE = {
   walk: 5, dash: 9.5,              // 歩く・走る速さ
-  carMax: 35, carAccel: 19,        // 車の最高速度(35 = 約126km/h)と加速
+  carMax: 35, carAccel: 19,        // セダン・タクシーの最高速度(35 = 約126km/h)と加速。ほかの車の速さ・曲がりやすさ・重さは CAR_TYPES(v=21)
   copCarMax: 38,                   // 奪ったパトカーの最高速度(38 = 約137km/h。ふつうの車より少し速い)
   copCarWanted: 2,                 // パトカーを奪ったときに上がる手配度
   carBrake: 45, carReverse: 10,    // ブレーキ・バックの最高速度
@@ -593,20 +593,88 @@ function resolve(o, r) {
 }
 function resolveCar(c) {
   let hit = false; const fx = Math.sin(c.h), fz = Math.cos(c.h);
-  for (const off of [1.5, -1.5, 0]) { const p = { x: c.x + fx * off, z: c.z + fz * off }; if (resolve(p, 1.15)) { hit = true; c.x += p.x - (c.x + fx * off); c.z += p.z - (c.z + fz * off); } }
+  const ct = CAR_TYPES[c.type], walls = (ct && ct.walls) || [1.5, -1.5, 0], wr = (ct && ct.wr) || 1.15; // 長い車は、調べる点をふやす
+  for (const off of walls) { const p = { x: c.x + fx * off, z: c.z + fz * off }; if (resolve(p, wr)) { hit = true; c.x += p.x - (c.x + fx * off); c.z += p.z - (c.z + fz * off); } }
   return hit;
 }
 
 /* ===== 車と人の形 ===== */
 const wheelGeo = new THREE.CylinderGeometry(0.45, 0.45, 0.4, 12); wheelGeo.rotateZ(Math.PI / 2);
-function makeCarMesh(color, police) {
+// 車の種類(v=21)。max = 最高速度(35 = 約126km/h)、accel = 加速、steer = 曲がりやすさの倍、mass = 重さ(ぶつかったときの強さ)、
+// len = 長さ、w = 幅(ぶつかり判定)、walls = かべに当たるかを調べる点(車のまん中からの前後の距離)、wr = その点の半径、w8 = 街に出る割合、col = 決まった色
+const CAR_TYPES = {
+  sedan: { max: 35, accel: 19, steer: 1, mass: 1, len: 4.4, w8: 30 }, // セダン
+  taxi: { max: 35, accel: 19, steer: 1, mass: 1, len: 4.4, w8: 16, col: 0xf2c418 }, // タクシー
+  sports: { max: 42, accel: 27, steer: 1.18, mass: 0.75, len: 4.7, w8: 5 }, // スポーツカー
+  rally: { max: 37, accel: 22, steer: 1.15, mass: 1.3, len: 4.3, w8: 8 }, // ラリー車
+  wagon: { max: 33, accel: 18, steer: 0.95, mass: 1.15, len: 4.9, w8: 16 }, // ワゴン
+  van: { max: 30, accel: 15, steer: 0.88, mass: 1.4, len: 4.8, w8: 12 }, // ワンボックス
+  truck: { max: 26, accel: 12, steer: 0.72, mass: 2.6, len: 8.6, w8: 7, walls: [3.2, 1.6, 0, -1.6, -3.2], wr: 1.3 }, // トラック
+  bus: { max: 22, accel: 9, steer: 0.6, mass: 3.2, len: 11, w8: 6, col: 0xe07a20, walls: [4.4, 2.9, 1.45, 0, -1.45, -2.9, -4.4], wr: 1.35 }, // バス
+};
+const CAR_KEYS = Object.keys(CAR_TYPES);
+const carType = c => CAR_TYPES[c.type] || CAR_TYPES.sedan;
+// 車のまん中の線の半分の長さ(ぶつかり判定は、この線からの距離で見る。セダンは0 = 今までどおりの丸)
+const carSeg = c => Math.max(0, carType(c).len / 2 - 2.2);
+// 点から車までの距離(長い車は、まん中の線のいちばん近い所から)
+function carNear(c, x, z) { const L = carSeg(c); if (!L) return { x: c.x, z: c.z }; const fx = Math.sin(c.h), fz = Math.cos(c.h), t = clamp((x - c.x) * fx + (z - c.z) * fz, -L, L); return { x: c.x + fx * t, z: c.z + fz * t }; }
+function carDist(c, x, z) { const q = carNear(c, x, z); return Math.hypot(x - q.x, z - q.z); }
+// 車の種類をえらぶ(街の形・人の動きを変えないように、街の乱数 rnd とは別の乱数)
+let carSeed = 8; // この数だと、8種類がみんな街に出る(tests/car_test.py)
+function carRnd() { carSeed = carSeed + 0x6D2B79F5 | 0; let t = Math.imul(carSeed ^ carSeed >>> 15, 1 | carSeed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }
+function pickCarType(noLong) { const ks = noLong ? CAR_KEYS.filter(k => !CAR_TYPES[k].walls) : CAR_KEYS; let sum = 0; for (const k of ks) sum += CAR_TYPES[k].w8; let r = carRnd() * sum; for (const k of ks) { r -= CAR_TYPES[k].w8; if (r < 0) return k; } return 'sedan'; }
+const GLASS = 0x2b3a4a, carTex = {};
+function carCanvas(key, w, h, draw) { if (!carTex[key]) { carTex[key] = canvasTex(w, h, draw); if (key === 'check') carTex[key].magFilter = THREE.NearestFilter; } return carTex[key]; }
+function makeCarMesh(color, police, type) {
   const g = new THREE.Group();
-  const body = new THREE.Mesh(BG(2.2, 0.9, 4.4), M(police ? 0x1a1a1a : color)); body.position.y = 0.8; g.add(body);
-  if (police) { const s = new THREE.Mesh(BG(2.24, 0.4, 2.6), M(0xffffff)); s.position.set(0, 0.95, 0.1); g.add(s); }
-  const cab = new THREE.Mesh(BG(1.9, 0.7, 2.2), M(0x2b3a4a)); cab.position.set(0, 1.6, -0.2); g.add(cab);
-  const roof = new THREE.Mesh(BG(1.95, 0.12, 2.0), M(police ? 0xffffff : color)); roof.position.set(0, 2.0, -0.2); g.add(roof);
-  for (const sx of [-1.05, 1.05]) for (const sz of [-1.4, 1.4]) { const w = new THREE.Mesh(wheelGeo, M(0x151515)); w.position.set(sx, 0.45, sz); g.add(w); }
-  for (const sx of [-0.7, 0.7]) { const hl = new THREE.Mesh(BG(0.45, 0.25, 0.06), M(0xfff6cc)); hl.position.set(sx, 0.9, 2.21); g.add(hl); const tl = new THREE.Mesh(BG(0.45, 0.25, 0.06), M(0xd02020)); tl.position.set(sx, 0.9, -2.21); g.add(tl); }
+  const box = (w, h, d, x, y, z, col) => { const m = new THREE.Mesh(BG(w, h, d), typeof col === 'number' ? M(col) : col); m.position.set(x, y, z); g.add(m); return m; };
+  const wheels = (r, w, xs, zs) => { const k = 'w' + r + '_' + w; if (!carTex[k]) { carTex[k] = new THREE.CylinderGeometry(r, r, w, 12); carTex[k].rotateZ(Math.PI / 2); } for (const x of xs) for (const z of zs) { const m = new THREE.Mesh(r === 0.45 ? wheelGeo : carTex[k], M(0x151515)); m.position.set(x, r, z); g.add(m); } };
+  const lamps = (xs, y, zf, zb, w, h) => { for (const x of xs) { box(w || 0.45, h || 0.25, 0.06, x, y, zf, 0xfff6cc); box(w || 0.45, h || 0.25, 0.06, x, y, zb, 0xd02020); } };
+  if (police) type = 'sedan';
+  if (!type || type === 'sedan' || type === 'taxi') {
+    box(2.2, 0.9, 4.4, 0, 0.8, 0, police ? 0x1a1a1a : color);
+    if (police) box(2.24, 0.4, 2.6, 0, 0.95, 0.1, 0xffffff);
+    box(1.9, 0.7, 2.2, 0, 1.6, -0.2, GLASS);
+    box(1.95, 0.12, 2.0, 0, 2.0, -0.2, police ? 0xffffff : color);
+    wheels(0.45, 0.4, [-1.05, 1.05], [-1.4, 1.4]);
+    lamps([-0.7, 0.7], 0.9, 2.21, -2.21);
+    if (type === 'taxi') {
+      box(0.9, 0.35, 0.45, 0, 2.24, -0.2, new THREE.MeshBasicMaterial({ map: carCanvas('taxi', 128, 48, (c, w, h) => { c.fillStyle = '#fff7d0'; c.fillRect(0, 0, w, h); c.fillStyle = '#222'; c.font = 'bold 34px sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText('TAXI', w / 2, h / 2 + 2); }) }));
+      const ck = new THREE.MeshLambertMaterial({ map: carCanvas('check', 64, 8, (c) => { for (let i = 0; i < 16; i++) for (let j = 0; j < 2; j++) { c.fillStyle = (i + j) % 2 ? '#111' : '#fff'; c.fillRect(i * 4, j * 4, 4, 4); } }) });
+      for (const sx of [-1, 1]) { const m = new THREE.Mesh(new THREE.PlaneGeometry(4.0, 0.22), ck); m.rotation.y = sx * Math.PI / 2; m.position.set(sx * 1.111, 0.95, 0); g.add(m); }
+    }
+  } else if (type === 'sports') {
+    box(2.25, 0.6, 4.7, 0, 0.62, 0, color); box(2.25, 0.18, 1.6, 0, 0.95, 1.4, color);
+    box(1.8, 0.48, 1.6, 0, 1.15, -0.5, GLASS); box(1.82, 0.08, 1.3, 0, 1.42, -0.55, color);
+    box(2.1, 0.08, 0.5, 0, 1.3, -2.15, 0x111111); for (const sx of [-0.8, 0.8]) box(0.1, 0.35, 0.1, sx, 1.08, -2.15, 0x111111); // うしろの羽
+    box(2.27, 0.08, 4.72, 0, 0.42, 0, 0x111111);
+    wheels(0.4, 0.45, [-1.08, 1.08], [-1.5, 1.5]); lamps([-0.75, 0.75], 0.75, 2.36, -2.36, 0.5, 0.15);
+  } else if (type === 'rally') {
+    box(2.3, 1.0, 4.3, 0, 1.25, 0, color); box(2.0, 0.85, 2.6, 0, 2.15, -0.35, GLASS); box(2.05, 0.12, 2.5, 0, 2.62, -0.35, color);
+    box(2.32, 0.28, 4.32, 0, 1.15, 0, 0xffffff); box(1.8, 0.1, 2.0, 0, 2.78, -0.35, 0x333333); // 白いライン・屋根のラック
+    box(1.6, 0.2, 0.2, 0, 2.95, 0.6, 0x222222); for (const sx of [-0.55, -0.18, 0.18, 0.55]) box(0.28, 0.16, 0.05, sx, 2.95, 0.72, 0xfff6cc); // 屋根のライト
+    box(2.0, 0.25, 0.25, 0, 0.75, 2.25, 0x222222);
+    const sp = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.5, 0.3, 12), M(0x151515)); sp.rotation.x = Math.PI / 2; sp.position.set(0, 1.45, -2.3); g.add(sp); // スペアタイヤ
+    wheels(0.58, 0.5, [-1.1, 1.1], [-1.4, 1.4]); lamps([-0.7, 0.7], 1.4, 2.16, -2.16);
+  } else if (type === 'wagon') {
+    box(2.2, 0.9, 4.9, 0, 0.8, 0, color); box(1.9, 0.72, 3.4, 0, 1.61, -0.6, GLASS); box(1.95, 0.12, 3.3, 0, 2.02, -0.6, color);
+    for (const sx of [-0.75, 0.75]) box(0.08, 0.08, 3.0, sx, 2.12, -0.6, 0x333333); // 屋根のレール
+    wheels(0.45, 0.4, [-1.05, 1.05], [-1.6, 1.6]); lamps([-0.7, 0.7], 0.9, 2.46, -2.46);
+  } else if (type === 'van') {
+    box(2.3, 1.0, 4.8, 0, 0.9, 0, color); box(2.3, 1.15, 4.1, 0, 2.0, -0.35, color);
+    box(2.32, 0.6, 3.6, 0, 2.05, -0.55, GLASS); box(2.0, 0.75, 0.1, 0, 2.05, 1.72, GLASS); box(2.0, 0.55, 0.1, 0, 2.15, -2.42, GLASS);
+    wheels(0.47, 0.42, [-1.1, 1.1], [-1.55, 1.6]); lamps([-0.75, 0.75], 1.0, 2.41, -2.41);
+  } else if (type === 'truck') {
+    box(2.5, 1.4, 2.3, 0, 1.4, 2.6, color); box(2.3, 0.75, 0.1, 0, 2.35, 3.76, GLASS); box(2.5, 0.8, 2.3, 0, 2.5, 2.6, color); // 運転席
+    for (const sx of [-1.26, 1.26]) box(0.05, 0.6, 1.2, sx, 2.45, 3.0, GLASS);
+    box(2.6, 2.8, 5.6, 0, 2.3, -1.5, 0xe8e8e8); box(2.62, 0.3, 5.62, 0, 1.4, -1.5, color); box(2.2, 0.4, 7.8, 0, 0.75, 0, 0x2a2a2a); // 荷台
+    wheels(0.6, 0.5, [-1.15, 1.15], [2.8, -2.4, -3.7]); lamps([-0.8, 0.8], 1.0, 3.76, -4.31);
+  } else if (type === 'bus') {
+    box(2.6, 2.6, 11, 0, 1.75, 0, color); box(2.62, 0.9, 9.4, 0, 2.35, -0.6, GLASS); box(2.3, 1.2, 0.1, 0, 2.2, 5.51, GLASS);
+    box(2.64, 0.3, 11.02, 0, 1.15, 0, 0xffffff); box(2.5, 0.12, 10.6, 0, 3.1, 0, 0xdddddd);
+    box(2.0, 0.3, 0.06, 0, 3.0, 5.53, new THREE.MeshBasicMaterial({ map: carCanvas('bus', 256, 32, (c, w, h) => { c.fillStyle = '#111'; c.fillRect(0, 0, w, h); c.fillStyle = '#ffb020'; c.font = 'bold 24px sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText('港 PORT', w / 2, h / 2 + 1); }) }));
+    wheels(0.55, 0.45, [-1.2, 1.2], [3.8, -3.6]); lamps([-0.9, 0.9], 0.95, 5.52, -5.52);
+  }
   let lights = null;
   if (police) { const r = new THREE.Mesh(BG(0.6, 0.25, 0.4), new THREE.MeshBasicMaterial({ color: 0xff2020 })); r.position.set(-0.35, 2.18, -0.2); const b = new THREE.Mesh(BG(0.6, 0.25, 0.4), new THREE.MeshBasicMaterial({ color: 0x2050ff })); b.position.set(0.35, 2.18, -0.2); g.add(r); g.add(b); lights = [r, b]; }
   scene.add(g); return { g, lights };
@@ -625,7 +693,7 @@ function animPerson(p, speed, dt) { p.phase += dt * (2 + speed * 1.6); const s =
 /* ===== 車・歩行者・自分 ===== */
 const carColors = [0xd33c3c, 0x3c6fd3, 0xf0f0f0, 0x222222, 0xe0a020, 0x2f9e5a, 0x9a4fc4, 0x808890, 0xff7a30];
 const cars = [];
-function newCar(kind, x, z, h, color) { const m = makeCarMesh(color, kind === 'police'); const c = { kind, x, z, h, v: 0, mesh: m.g, lights: m.lights, stuck: 0, rev: 0, color, cop: kind === 'police', crew: kind === 'police' ? 1 + Math.floor(Math.random() * 2) : 0 }; cars.push(c); return c; }
+function newCar(kind, x, z, h, color, type) { type = kind === 'police' ? 'sedan' : (type || 'sedan'); const tc = CAR_TYPES[type].col; if (tc !== undefined) color = tc; const m = makeCarMesh(color, kind === 'police', type); const c = { kind, x, z, h, v: 0, mesh: m.g, lights: m.lights, stuck: 0, rev: 0, color, type, cop: kind === 'police', crew: kind === 'police' ? 1 + Math.floor(Math.random() * 2) : 0 }; cars.push(c); return c; }
 function removeCar(c) { const i = cars.indexOf(c); if (i >= 0) cars.splice(i, 1); scene.remove(c.mesh); }
 // つなげた区画の間の道は、なくなる(車は通れない)
 const blockedEdge = (a, b) => MERGES.some(m => { const [p, q] = mergeEdge(m); return (a[0] === p[0] && a[1] === p[1] && b[0] === q[0] && b[1] === q[1]) || (a[0] === q[0] && a[1] === q[1] && b[0] === p[0] && b[1] === p[1]); });
@@ -637,13 +705,14 @@ const startX = roadC(3) + 20, startZ = roadC(3) + 2.5, startH = Math.PI / 2; // 
 const firstCar = newCar('parked', startX + 3.5, roadC(3) + 4.3, Math.PI / 2, 0xd33c3c);
 for (let i = 0; i < TUNE.parkedCars; i++) {
   const along = Math.floor(rnd() * N), k = Math.floor(rnd() * (N + 1)), side = rnd() < 0.5 ? -1 : 1, col = carColors[Math.floor(rnd() * carColors.length)];
-  if (rnd() < 0.5) { if (!inMerged(roadC(along) + 26, roadC(k) + side * 4.3)) newCar('parked', roadC(along) + 26, roadC(k) + side * 4.3, side > 0 ? Math.PI / 2 : -Math.PI / 2, col); }
-  else if (!inMerged(roadC(k) + side * 4.3, roadC(along) + 26)) newCar('parked', roadC(k) + side * 4.3, roadC(along) + 26, side > 0 ? Math.PI : 0, col);
+  const ty = pickCarType();
+  if (rnd() < 0.5) { if (!inMerged(roadC(along) + 26, roadC(k) + side * 4.3)) newCar('parked', roadC(along) + 26, roadC(k) + side * 4.3, side > 0 ? Math.PI / 2 : -Math.PI / 2, col, ty); }
+  else if (!inMerged(roadC(k) + side * 4.3, roadC(along) + 26)) newCar('parked', roadC(k) + side * 4.3, roadC(along) + 26, side > 0 ? Math.PI : 0, col, ty);
 }
-(function parkingCars() { const m = MERGES.find(q => q.kind === 'parking'); if (!m) return; const r = mergeRect(m); for (const row of [0, 1, 2]) for (let k = 0; k < 14; k++) { if (rnd() < 0.45) continue; const x = r.x0 + 8 + row * 12, z = r.z0 + 6 + k * 6; newCar('parked', x, z, row === 1 ? -Math.PI / 2 : Math.PI / 2, carColors[Math.floor(rnd() * carColors.length)]); } })();
+(function parkingCars() { const m = MERGES.find(q => q.kind === 'parking'); if (!m) return; const r = mergeRect(m); for (const row of [0, 1, 2]) for (let k = 0; k < 14; k++) { if (rnd() < 0.45) continue; const x = r.x0 + 8 + row * 12, z = r.z0 + 6 + k * 6; newCar('parked', x, z, row === 1 ? -Math.PI / 2 : Math.PI / 2, carColors[Math.floor(rnd() * carColors.length)], pickCarType(true)); } })(); // 駐車場には、トラックとバスは止めない(ならびに入らないので)
 for (let i = 0; i < TUNE.trafficCars; i++) {
   const a = [Math.floor(rnd() * (N + 1)), Math.floor(rnd() * (N + 1))]; const nb = neighbors(a); const b = nb[Math.floor(rnd() * nb.length)];
-  const c = newCar('traffic', 0, 0, 0, carColors[Math.floor(rnd() * carColors.length)]); c.a = a; c.b = b; c.p = rnd(); c.v = 10;
+  const c = newCar('traffic', 0, 0, 0, carColors[Math.floor(rnd() * carColors.length)], pickCarType()); c.a = a; c.b = b; c.p = rnd(); c.v = 10;
   const A = nodePos(a), B = nodePos(b); const dx = (B.x - A.x) / CELL, dz = (B.z - A.z) / CELL; c.x = A.x + (B.x - A.x) * c.p + dz * 3.2; c.z = A.z + (B.z - A.z) * c.p - dx * 3.2; c.h = Math.atan2(dx, dz);
 }
 function pedBlock() { let b; do { b = Math.floor(Math.random() * blocks.length); } while (blocks[b].market || (blocks[b].merged && !blocks[b].park)); return b; }
@@ -861,7 +930,7 @@ function updateGangs(dt) {
     else if ((foe || g.state === 'chase') && !dis) g.h += angDiff(g.h, Math.atan2(tx - g.x, tz - g.z)) * Math.min(1, 8 * dt);
     g.x += g.kx * dt; g.z += g.kz * dt; g.kx *= 1 - 6 * dt; g.kz *= 1 - 6 * dt;
     resolve(g, 0.45);
-    if (player.mode === 'car' && g.hitCd <= 0) { const c = player.car, d = Math.hypot(c.x - g.x, c.z - g.z); if (d < 2.4 && Math.abs(c.v) > 5) { g.hitCd = 0.6; damageGang(g, Math.abs(c.v) * 4 * (g.boss ? TUNE.boss.carDmg : 1), Math.sin(c.h) * c.v * 0.5, Math.cos(c.h) * c.v * 0.5); } }
+    if (player.mode === 'car' && g.hitCd <= 0) { const c = player.car, d = carDist(c, g.x, g.z); if (d < 2.4 && Math.abs(c.v) > 5) { g.hitCd = 0.6; damageGang(g, Math.abs(c.v) * 4 * (g.boss ? TUNE.boss.carDmg : 1), Math.sin(c.h) * c.v * 0.5, Math.cos(c.h) * c.v * 0.5); } }
     if (g.hp > 0) { g.per.g.position.set(g.x, onWalk(g.x, g.z) ? 0.3 : 0, g.z); g.per.g.rotation.y = g.h; animPerson(g.per, sp, dt); if (g.swing > 0) g.per.armR.rotation.x = -1.5; }
   }
 }
@@ -971,7 +1040,7 @@ function updateNpcs(dt) {
     else if (faceP) n.h += angDiff(n.h, Math.atan2(px - n.x, pz - n.z)) * Math.min(1, 8 * dt);
     n.x += n.kx * dt; n.z += n.kz * dt; n.kx *= 1 - 6 * dt; n.kz *= 1 - 6 * dt;
     resolve(n, 0.45);
-    if (G.mode === 'solo' && player.mode === 'car' && n.hitCd <= 0) { const c = player.car, d = Math.hypot(c.x - n.x, c.z - n.z); if (d < 2.4 && Math.abs(c.v) > 5) { n.hitCd = 0.6; damageNpc(n, Math.abs(c.v) * 4, Math.sin(c.h) * c.v * 0.5, Math.cos(c.h) * c.v * 0.5); } }
+    if (G.mode === 'solo' && player.mode === 'car' && n.hitCd <= 0) { const c = player.car, d = carDist(c, n.x, n.z); if (d < 2.4 && Math.abs(c.v) > 5) { n.hitCd = 0.6; damageNpc(n, Math.abs(c.v) * 4, Math.sin(c.h) * c.v * 0.5, Math.cos(c.h) * c.v * 0.5); } }
     if (n.hp > 0) { n.per.g.position.set(n.x, onWalk(n.x, n.z) ? 0.3 : 0, n.z); n.per.g.rotation.y = n.h; animPerson(n.per, sp, dt); if (n.swing > 0 || n.pull > 0) n.per.armR.rotation.x = -1.5; }
   }
 }
@@ -1971,7 +2040,7 @@ function readInput() {
 }
 
 /* ===== 車の乗り降り ===== */
-function nearestEnterable() { let best = null, bd = TUNE.enterDist; for (const c of cars) { if ((c.kind === 'police' && G.mode !== 'solo') || c.flee || c.kind === 'hunter') continue; const d = Math.hypot(c.x - player.x, c.z - player.z); if (d < bd) { bd = d; best = c; } } return best; }
+function nearestEnterable() { let best = null, bd = TUNE.enterDist; for (const c of cars) { if ((c.kind === 'police' && G.mode !== 'solo') || c.flee || c.kind === 'hunter') continue; const d = carDist(c, player.x, player.z) - (c.type === 'truck' || c.type === 'bus' ? 0.4 : 0); if (d < bd) { bd = d; best = c; } } return best; }
 function toggleCar() {
   if (!G.started || G.stunT > 0 || G.downT > 0 || G.out || paused()) return; if (player.mode === 'car') { exitCar(); return; }
   const c = nearestEnterable(); if (!c) return;
@@ -2010,7 +2079,7 @@ function updatePlayer(dt) {
     let mx = fx * input.jy + rx * input.jx, mz = fz * input.jy + rz * input.jx; const l = Math.hypot(mx, mz); let sp = 0;
     if (l > 0.08) { mx /= l; mz /= l; sp = (input.dash ? TUNE.dash : TUNE.walk) * Math.min(1, l); player.x += mx * sp * dt; player.z += mz * sp * dt; player.h += angDiff(player.h, Math.atan2(mx, mz)) * Math.min(1, 12 * dt); }
     resolve(player, 0.5);
-    for (const c of cars) { const dx = player.x - c.x, dz = player.z - c.z, d = Math.hypot(dx, dz); if (d < 2.1 && d > 0.001) { player.x = c.x + dx / d * 2.1; player.z = c.z + dz / d * 2.1; } }
+    for (const c of cars) { const q = carNear(c, player.x, player.z), dx = player.x - q.x, dz = player.z - q.z, d = Math.hypot(dx, dz), r = c.type === 'truck' || c.type === 'bus' ? 1.95 : 2.1; if (d < r && d > 0.001) { player.x = q.x + dx / d * r; player.z = q.z + dz / d * r; } }
     player.v = sp;
     const per = player.per; per.g.position.set(player.x, onWalk(player.x, player.z) ? 0.3 : 0, player.z); per.g.rotation.y = player.h; animPerson(per, sp, dt);
     if (player.swing > 0) { player.swing -= dt; per.armR.rotation.x = -1.5; }
@@ -2018,10 +2087,10 @@ function updatePlayer(dt) {
   } else {
     const c = player.car; const th = (input.acc ? 1 : 0) - (input.rev ? 1 : 0), st = input.jx;
     if (input.brake) { const b = Math.min(Math.abs(c.v), TUNE.carBrake * dt); c.v -= Math.sign(c.v) * b; }
-    else if (th > 0.05) { const vmax = c.cop ? TUNE.copCarMax : TUNE.carMax; if (c.v < 0) c.v += 40 * dt * th; else c.v += TUNE.carAccel * th * dt * (1 - c.v / vmax); }
+    else if (th > 0.05) { const ct = carType(c), sedan = !c.type || c.type === 'sedan' || c.type === 'taxi', vmax = c.cop ? TUNE.copCarMax : sedan ? TUNE.carMax : ct.max, acc = sedan ? TUNE.carAccel : ct.accel; if (c.v < 0) c.v += 40 * dt * th; else c.v += acc * th * dt * (1 - c.v / vmax); }
     else if (th < -0.05) { if (c.v > 0) c.v += 38 * th * dt; else c.v = Math.max(-TUNE.carReverse, c.v + 12 * th * dt); }
     else { c.v *= 1 - 0.7 * dt; if (Math.abs(c.v) < 0.3) c.v = 0; }
-    const tf = clamp(c.v / 7, -1, 1) * (Math.abs(c.v) > 22 ? 0.75 : 1); c.h -= st * TUNE.steer * dt * tf;
+    const tf = clamp(c.v / 7, -1, 1) * (Math.abs(c.v) > 22 ? 0.75 : 1); c.h -= st * TUNE.steer * (c.cop ? 1 : carType(c).steer) * dt * tf; // 車の種類で曲がりやすさがちがう
     c.x += Math.sin(c.h) * c.v * dt; c.z += Math.cos(c.h) * c.v * dt;
     if (resolveCar(c)) { if (Math.abs(c.v) > 3) bump(); c.v *= Math.abs(c.v) > 3 ? -0.25 : 0.5; }
     player.x = c.x; player.z = c.z; player.h = c.h; player.v = c.v;
@@ -2030,15 +2099,17 @@ function updatePlayer(dt) {
   }
 }
 function updateTraffic(c, dt) {
-  const fx = Math.sin(c.h), fz = Math.cos(c.h); let blocked = false;
+  const fx = Math.sin(c.h), fz = Math.cos(c.h); let blocked = false; const ahead = (carType(c).len - 4.4) / 2; // 長い車は、人や車を前の方で見る
   const others = c.flee ? [] : [{ x: player.x, z: player.z, same: true }]; // 逃げる車は、主人公が前にいても止まらない
-  for (const o of cars) if (o !== c && o.kind !== 'player') others.push({ x: o.x, z: o.z, same: o.kind !== 'traffic' || (Math.sin(o.h) * fx + Math.cos(o.h) * fz) > 0.5 });
+  if (!c.flee && player.mode === 'car') others[0].len = carType(player.car).len;
+  for (const o of cars) if (o !== c && o.kind !== 'player') others.push({ x: o.x, z: o.z, len: carType(o).len, same: o.kind !== 'traffic' || (Math.sin(o.h) * fx + Math.cos(o.h) * fz) > 0.5 });
+  const myL = carType(c).len;
   for (const id in R.avatars) { const a = R.avatars[id]; if (a.seen) others.push({ x: a.x, z: a.z, same: true }); }
-  for (const o of others) { const rx = o.x - c.x, rz = o.z - c.z, ah = rx * fx + rz * fz, sd = Math.abs(rx * fz - rz * fx); if (ah > 0 && ah < 7.5 && sd < 2.4 && o.same) { blocked = true; break; } }
-  if (!blocked) for (const g of gangs) { if (g.hp <= 0 || !g.per.g.visible) continue; const rx = g.x - c.x, rz = g.z - c.z, ah = rx * fx + rz * fz, sd = Math.abs(rx * fz - rz * fx); if (ah > 0 && ah < 6 && sd < 2) { blocked = true; break; } }
-  if (!blocked) for (const g of npcs) { if (g.hp <= 0) continue; const rx = g.x - c.x, rz = g.z - c.z, ah = rx * fx + rz * fz, sd = Math.abs(rx * fz - rz * fx); if (ah > 0 && ah < 6 && sd < 2) { blocked = true; break; } }
-  if (!blocked) for (const p of peds) { if (p.down > 0 || p.off || p.angry) continue; const rx = p.x - c.x, rz = p.z - c.z, ah = rx * fx + rz * fz, sd = Math.abs(rx * fz - rz * fx); if (ah > 0 && ah < 6 && sd < 2) { blocked = true; break; } }
-  const tv = blocked ? 0 : c.flee ? 17 : 11; c.v += clamp(tv - c.v, -30 * dt, 8 * dt); c.p += c.v * dt / CELL;
+  for (const o of others) { const rx = o.x - c.x, rz = o.z - c.z, ah = rx * fx + rz * fz, sd = Math.abs(rx * fz - rz * fx); if (ah > 0 && ah < 3.1 + (myL + (o.len || 4.4)) / 2 && sd < 2.4 && o.same) { blocked = true; break; } } // 長い車は、前の車との間をあける
+  if (!blocked) for (const g of gangs) { if (g.hp <= 0 || !g.per.g.visible) continue; const rx = g.x - c.x, rz = g.z - c.z, ah = rx * fx + rz * fz, sd = Math.abs(rx * fz - rz * fx); if (ah > 0 && ah < 6 + ahead && sd < 2) { blocked = true; break; } }
+  if (!blocked) for (const g of npcs) { if (g.hp <= 0) continue; const rx = g.x - c.x, rz = g.z - c.z, ah = rx * fx + rz * fz, sd = Math.abs(rx * fz - rz * fx); if (ah > 0 && ah < 6 + ahead && sd < 2) { blocked = true; break; } }
+  if (!blocked) for (const p of peds) { if (p.down > 0 || p.off || p.angry) continue; const rx = p.x - c.x, rz = p.z - c.z, ah = rx * fx + rz * fz, sd = Math.abs(rx * fz - rz * fx); if (ah > 0 && ah < 6 + ahead && sd < 2) { blocked = true; break; } }
+  const tv = blocked ? 0 : c.flee ? 17 : c.type === 'bus' ? 9 : c.type === 'truck' ? 10 : 11; c.v += clamp(tv - c.v, -30 * dt, 8 * dt); c.p += c.v * dt / CELL; // バスとトラックは、ゆっくり走る
   if (c.p >= 1) { c.p -= 1; const nb = neighbors(c.b).filter(n => !sameNode(n, c.a)); const nx = nb.length ? nb[Math.floor(Math.random() * nb.length)] : c.a; c.a = c.b; c.b = nx; }
   const A = nodePos(c.a), B = nodePos(c.b); const ex = (B.x - A.x) / CELL, ez = (B.z - A.z) / CELL;
   const tx = A.x + (B.x - A.x) * c.p + ez * 3.2, tz = A.z + (B.z - A.z) * c.p - ex * 3.2; const k = 1 - Math.exp(-6 * dt); c.x += (tx - c.x) * k; c.z += (tz - c.z) * k;
@@ -2077,16 +2148,33 @@ function updatePolice(c, dt, t) {
   if (c.stuck > 1.2 && c.rev <= 0) { c.rev = 1.1; c.stuck = 0; c.node = null; }
 }
 function updateParked(c, dt) { if (Math.abs(c.v) > 0.05) { c.v *= 1 - 2.5 * dt; c.x += Math.sin(c.h) * c.v * dt; c.z += Math.cos(c.h) * c.v * dt; if (resolveCar(c)) c.v = 0; } else c.v = 0; }
+// 2つの車(または人)のまん中の線の、いちばん近い点どうし(v=21。セダンどうしは、まん中どうし = 今までどおり)
+function segPair(a, b) {
+  const La = a.type ? carSeg(a) : 0, Lb = b.type ? carSeg(b) : 0;
+  if (!La && !Lb) return [a, b];
+  if (!Lb) return [carNear(a, b.x, b.z), b];
+  if (!La) return [a, carNear(b, a.x, a.z)];
+  // 線と線: 何回か、たがいに近い点をさがす(短い線なので、これで十分)
+  let pa = carNear(a, b.x, b.z), pb = carNear(b, pa.x, pa.z);
+  for (let k = 0; k < 3; k++) { pa = carNear(a, pb.x, pb.z); pb = carNear(b, pa.x, pa.z); }
+  return [pa, pb];
+}
 function carPairs() {
   for (let i = 0; i < cars.length; i++) for (let j = i + 1; j < cars.length; j++) {
     const a = cars[i], b = cars[j];
     if (!(a.kind === 'player' || b.kind === 'player' || a.kind === 'police' || b.kind === 'police' || a.kind === 'hunter' || b.kind === 'hunter')) continue;
-    const dx = b.x - a.x, dz = b.z - a.z, d = Math.hypot(dx, dz); if (d > 3.6 || d < 0.001) continue;
-    const push = (3.6 - d) / 2, nx = dx / d, nz = dz / d;
+    if (Math.abs(b.x - a.x) > 12 || Math.abs(b.z - a.z) > 12) continue;
+    const [pa, pb] = segPair(a, b), dx = pb.x - pa.x, dz = pb.z - pa.z, d = Math.hypot(dx, dz); if (d > 3.6 || d < 0.001) continue;
+    const ma = carType(a).mass, mb = carType(b).mass, nx = dx / d, nz = dz / d, pa2 = (3.6 - d) * mb / (ma + mb), pb2 = (3.6 - d) * ma / (ma + mb); // 重い車ほど、押されない
     const pl = a.kind === 'player' ? a : b.kind === 'player' ? b : null;
     if (pl) { const o = pl === a ? b : a; if (o.flee) { if (Math.abs(pl.v) > 6 && G.ramCd <= 0 && G.left > 0) { G.ramCd = 1; G.left--; toast(tr('ぶつけた！ あと{n}回', { n: G.left }), 1.2); } } else if (Math.abs(pl.v) > 9 && G.hitCd <= 0 && (o.kind === 'traffic' || o.kind === 'police')) { addWanted(1); G.hitCd = 3; } if (o.kind === 'hunter' && o.rev <= 0 && Math.abs(o.v) > 6) { bump(true); o.rev = TUNE.hunt.back; o.turn = false; o.v *= 0.3; } // 追っ手にぶつけられた(これも数える)。追っ手は、いったん下がる
-      if (Math.abs(pl.v) > 4) { if (!o.flee) bump(); if (o.kind === 'parked') { o.v = pl.v * 0.5; o.h = pl.h; } pl.v *= -0.3; } }
-    a.x -= nx * push; a.z -= nz * push; b.x += nx * push; b.z += nz * push;
+      if (Math.abs(pl.v) > 4) {
+        if (!o.flee) bump();
+        const ratio = carType(o).mass / carType(pl).mass; // 重さのちがい(v=21)
+        if (ratio <= 0.5 && (o.kind === 'parked' || o.kind === 'traffic')) { o.kind = 'parked'; o.v = pl.v * 0.9; o.h = pl.h; pl.v *= 0.75; } // トラック・バス: 軽い車をはね飛ばして、そのまま進む
+        else { if (o.kind === 'parked' && ratio < 2) { o.v = pl.v * 0.5; o.h = pl.h; } pl.v *= ratio >= 2 ? -0.45 : -0.3; } // 軽い車で重い車にぶつかると、大きくはじかれる
+      } }
+    a.x -= nx * pa2; a.z -= nz * pa2; b.x += nx * pb2; b.z += nz * pb2;
   }
   // 配達競争: ほかの人のパトカー・警察官にも重ならないように、自分だけ押し返す。パトカーに速くぶつけると、自分も手配(v=20)
   if (!G.out) for (const id in R.avatars) {
@@ -2106,8 +2194,9 @@ function carPairs() {
   // 配達競争: ほかの人(の車)に重ならないように、自分だけ押し返す
   for (const id in R.avatars) {
     const av = R.avatars[id]; if (!av.seen) continue; const r = (av.car ? 2 : 0.6) + (player.mode === 'car' ? 2 : 0.6);
-    const dx = player.x - av.x, dz = player.z - av.z, d = Math.hypot(dx, dz); if (d > r || d < 0.001) continue;
-    const o = player.mode === 'car' ? player.car : player; o.x = av.x + dx / d * r; o.z = av.z + dz / d * r; player.x = o.x; player.z = o.z;
+    const o = player.mode === 'car' ? player.car : player, oa = av.car ? { x: av.x, z: av.z, h: av.h, type: av.type } : { x: av.x, z: av.z }; // 長い車は、まん中の線で見る(v=21)
+    const [po, pv] = segPair(player.mode === 'car' ? o : { x: o.x, z: o.z }, oa), dx = po.x - pv.x, dz = po.z - pv.z, d = Math.hypot(dx, dz); if (d > r || d < 0.001) continue;
+    o.x += dx / d * (r - d); o.z += dz / d * (r - d); player.x = o.x; player.z = o.z;
     if (player.mode === 'car' && Math.abs(player.car.v) > 4) player.car.v *= -0.3;
   }
 }
@@ -2122,7 +2211,7 @@ function updatePeds(dt) {
     if (p.angry) { if (npcs.indexOf(p.angry) >= 0) { p.per.g.visible = false; continue; } p.angry = null; p.bi = pedBlock(); p.t = Math.random() * 160; p.per.g.visible = true; } // おこって追いかけている間は、別の人(npcs)として動く
     const fleeing = G.wanted >= 2, stop = p.talkT > 0; // 話している間は立ち止まる
     if (stop) p.talkT -= dt; else { p.t += p.dir * p.speed * (fleeing ? 2.2 : 1) * dt; const q = pedPos(p); p.x = q[0]; p.z = q[1]; p.h = q[2]; }
-    if (player.mode === 'car') { const c = player.car; const d = Math.hypot(c.x - p.x, c.z - p.z); if (d < 2.4 && Math.abs(c.v) > 5) { p.down = 7; p.per.g.rotation.x = -Math.PI / 2; p.push.x = Math.sin(c.h) * c.v * 0.6; p.push.z = Math.cos(c.h) * c.v * 0.6; addWanted(1); raceWanted('人をひいた！ 警察に追われている！'); continue; } }
+    if (player.mode === 'car') { const c = player.car; const d = carDist(c, p.x, p.z); if (d < 2.4 && Math.abs(c.v) > 5) { p.down = 7; p.per.g.rotation.x = -Math.PI / 2; p.push.x = Math.sin(c.h) * c.v * 0.6; p.push.z = Math.cos(c.h) * c.v * 0.6; addWanted(1); raceWanted('人をひいた！ 警察に追われている！'); continue; } }
     p.per.g.position.set(p.x, 0.3, p.z); p.per.g.rotation.y = p.h; animPerson(p.per, stop ? 0 : p.speed * (fleeing ? 2.2 : 1), dt);
   }
 }
@@ -2239,6 +2328,7 @@ function updateAvatars(dt) {
     if (r.w) { a.star.position.set(a.x, (a.car ? 3.4 : 3.3) + Math.sin(T * 4) * 0.15, a.z); a.star.rotation.y += dt * 3; }
     if (!a.seen) { a.x = r.x; a.z = r.z; a.h = r.h; a.seen = true; }
     a.x += (r.x - a.x) * k; a.z += (r.z - a.z) * k; a.h += angDiff(a.h, r.h) * k; a.car = !!r.c;
+    if (a.car) { const ty = CAR_KEYS[r.t] || 'sedan', cc = typeof r.cc === 'number' ? r.cc : a.col; if (ty !== a.type || cc !== a.cc) { const vis = a.carM.g.visible; scene.remove(a.carM.g); a.carM = makeCarMesh(cc, false, ty); a.carM.g.visible = vis; a.type = ty; a.cc = cc; } } // 乗りかえた車の形と色(v=21)
     a.carM.g.visible = a.car; a.per.g.visible = !a.car;
     if (a.car) { a.carM.g.position.set(a.x, 0, a.z); a.carM.g.rotation.y = a.h; }
     else { a.per.g.position.set(a.x, onWalk(a.x, a.z) ? 0.3 : 0, a.z); a.per.g.rotation.y = a.h; animPerson(a.per, Math.abs(r.v || 0), dt); }
@@ -2494,6 +2584,7 @@ $('quitBtn').addEventListener('click', () => { if (G.mode === 'solo') location.r
 if (window.BackGuard) BackGuard.set('home');
 
 const SC = window.SC = {
+  CAR_TYPES, newCar, removeCar, enterCar, exitCar, carDist, segPair, carSeg, // 車の種類(v=21)
   G, R, player, cars, peds, TUNE, MISSIONS, FREE, HOME, save, readSave, applySave, curM, pointBlocked, P, gangs, pickups, npcs, SHOPS, HOSPITAL, SHOP_ITEMS, closeShop, WEAPONS, MKT, MKW, shots, newNpc, confiscate, DAY, setClock, vendors, TALK, LINES, QAS, makeVip, startTalk, answerTalk, pickLine, getTalk: () => talk, camera, BOAT, PORT, MX, STORY, SNEAK, freeOpen, story, say, finish, openSleep, sleepTo, bump, CLUB, NEON_MATS, STALL_POS, APT, INTRO, INFO, LURE, BOSSCAR, RUMORS, infoPer, setTeam, applyTeams, inCT, newGang, damageGang, GANG_W, PGD, TOWER, INFO2, BOSS_AT, MK_DEEP, WAREHOUSE, twrInfo, twrOyaji, isCalm, CALM_LINES, endScene, END, ENDS, closeOffer, hurtPlayer, callMinions,
   onSend: null, onQuit: null,
   startSolo,
@@ -2524,7 +2615,7 @@ const SC = window.SC = {
     for (const id in pos || {}) {
       if (id === R.me || !s || !s.players || !s.players[id]) continue;
       R.remotes[id] = pos[id];
-      if (!R.avatars[id]) { const col = s.players[id].color, star = new THREE.Mesh(BG(0.75, 0.75, 0.22), MB(0xffd23f)); star.rotation.z = Math.PI / 4; star.visible = false; scene.add(star); R.avatars[id] = { carM: makeCarMesh(col, false), per: makePerson(col, 0x23324f, 0xf0c9a0), star, x: 0, z: 0, h: 0, seen: false, car: false }; }
+      if (!R.avatars[id]) { const col = s.players[id].color, star = new THREE.Mesh(BG(0.75, 0.75, 0.22), MB(0xffd23f)); star.rotation.z = Math.PI / 4; star.visible = false; scene.add(star); R.avatars[id] = { carM: makeCarMesh(col, false), type: 'sedan', cc: col, col, per: makePerson(col, 0x23324f, 0xf0c9a0), star, x: 0, z: 0, h: 0, seen: false, car: false }; }
     }
   },
   // 試合の状態(ホストが決めたもの)
@@ -2546,6 +2637,7 @@ const SC = window.SC = {
   getMe() {
     const r1 = n => Math.round(n * 10) / 10, r2 = n => Math.round(n * 100) / 100;
     const me = { x: r1(player.x), z: r1(player.z), h: r2(player.h), c: player.mode === 'car' ? 1 : 0, v: r1(player.v || 0) };
+    if (player.mode === 'car') { const t = CAR_KEYS.indexOf(player.car.type); if (t > 0) me.t = t; if (player.car.color !== undefined) me.cc = player.car.color >>> 0; } // 乗っている車の種類(0 = セダンは送らない)と色(v=21)
     if (G.mode === 'race') {
       if (G.out) me.out = 1; else if (G.wanted) me.w = 1;
       const pc = cars.find(c => c.kind === 'police'); if (pc) me.p = [r1(pc.x), r1(pc.z), r2(pc.h)];
