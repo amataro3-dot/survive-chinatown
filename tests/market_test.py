@@ -26,7 +26,7 @@ with sync_playwright() as p:
 
     # ---------- 置き場所 ----------
     kinds = ev("SC.MKW.map(w=>w.kind).sort().join(',')")
-    check(kinds == "dao,pig,pig,pig,snake,snake", "市場に、豚の頭3か所・ヘビ2か所・青龍刀1か所(" + kinds + ")")
+    check(kinds == "dao,pig,pig,pig,pole,snake,snake,wok", "市場に、豚の頭3か所・ヘビ2か所・青龍刀1か所・中華なべ1か所・棒1か所(" + kinds + ")")
     def goto(kind, n=0):
         ev(f"(()=>{{ const w=SC.MKW.filter(w=>w.kind==='{kind}')[{n}]; SC.player.x=w.x; SC.player.z=w.z; return 0 }})()"); pg.wait_for_timeout(250)
     def away():
