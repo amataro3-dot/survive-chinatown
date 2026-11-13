@@ -20,7 +20,7 @@
        撃ち合い(v=28): endAt, left, kills: { 人のID: たおした数 }, deaths: { 人のID: やられた数 },
                  items: [{ k: アイテムの種類, x, z, on: 出ているか, g: 何回目か, at: また出る時刻(ホストの時計) }], got: { 人のID: [拾った種類, …] }(順に足していく) }
    pos(sc-rooms/1234/pos/人のID): { x, z, h, c, v, t(車の種類), cc(車の色), w(手配中), out(つかまった), p(パトカー), k(警察官) } … main.js の getMe。g = 試合の番号 */
-import { db, ref, set, update, onValue, onDisconnect } from "./firebase.js?v=31";
+import { db, ref, set, update, onValue, onDisconnect } from "./firebase.js?v=32";
 
 /* ===== 調整用の数字 ===== */
 export const RACE = {
