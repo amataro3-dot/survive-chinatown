@@ -11,7 +11,7 @@
        time: 'day' | 'eve' | 'night'(ホストが待合室でえらんだ時間。見た目だけ),
        out: { 人のID: true }(警察につかまった人。v=20), how: 'points'(点) | 'last'(のこり1人) | 'caught'(みんなつかまって点の多い人) | 'draw'(引き分け) }
    pos(sc-rooms/1234/pos/人のID): { x, z, h, c, v, t(車の種類), cc(車の色), w(手配中), out(つかまった), p(パトカー), k(警察官) } … main.js の getMe。g = 試合の番号 */
-import { db, ref, set, update, onValue, onDisconnect } from "./firebase.js?v=23";
+import { db, ref, set, update, onValue, onDisconnect } from "./firebase.js?v=24";
 
 /* ===== 調整用の数字 ===== */
 export const RACE = {

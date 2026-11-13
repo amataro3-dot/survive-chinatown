@@ -70,7 +70,7 @@ with sync_playwright() as p:
     check(ev("window.__g.state") == "chase" and ev("SC.player.hp") < 100, "大きな仕事のあとは、おそってくる")
     do("G.mi=0; P.hp=100; G.si=0"); quiet(); tp(20, 2.5)
     incar(); pg.wait_for_timeout(3200)
-    check(ev("SC.G.mi") == 1 and "中身は聞くな" in txt("#subText") and txt("#subName") == "黒の男" and ev("getComputedStyle(document.querySelector('#sub')).opacity") == "1", "お使いが始まるとき、画面の下に黒の男のひとこと")
+    check(ev("SC.G.mi") == 1 and "中身は聞くな" in txt("#subText") and txt("#subName") == "ジン" and ev("getComputedStyle(document.querySelector('#sub')).opacity") == "1", "お使いが始まるとき、画面の下に黒の男のひとこと")
     pg.screenshot(path=SHOTS + "/m1_sub.png")
 
     # ---------- つづきから(お使いが終わったあと) ----------
@@ -175,7 +175,7 @@ with sync_playwright() as p:
     pg.click("#storySkip"); pg.wait_for_timeout(300)
     d = saved(); check(ev("SC.G.money") == m0 - 10000 + 1500 and d['lent'] == 1 and d['tru'] == 0 and 'debt' in d['done'] and ev("SC.MX.props.length") == 0, "$10,000 がなくなる。「貸した」をセーブ(トゥルーの順番ではない)")
     # 船員のたのみ 1〜3(ふつう)
-    foot(); m0 = ev("SC.G.money"); f = take('sailor1'); check("運び屋か" in txt("#subText") and txt("#subName") == "船員", "船員のたのみ1: 船員のひとこと")
+    foot(); m0 = ev("SC.G.money"); f = take('sailor1'); check("運び屋か" in txt("#subText") and txt("#subName") == "ボースン", "船員のたのみ1: 船員のひとこと")
     for s in f['steps']: tp(s['x'], s['z'])
     pg.wait_for_timeout(300); check(ev("SC.G.money") == m0 + 3000 and "見なかったな" in txt("#subText") and opened().endswith("sailor2"), "クリア +$3,000。終わりのひとこと。2つ目が出る(" + opened() + ")")
     f = take('sailor2'); tp(f['steps'][0]['x'], f['steps'][0]['z']); check(ev("SC.G.wanted") == 2, "船員のたのみ2: 箱を受け取ると警察に追われる")

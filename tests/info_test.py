@@ -83,7 +83,7 @@ with sync_playwright() as p:
 
     # ---------- 聞きこみ ----------
     quiet(); do("SC.TALK.qa=0"); f = take('info1')
-    check(ev("SC.G.free.id") == "info1" and "のこり 3人" in txt("#mission") and txt("#subName") == "情報屋" and "イヤーよ" in txt("#subText"), "聞きこみ: 受けると、情報屋のひとこと。のこり3人")
+    check(ev("SC.G.free.id") == "info1" and "のこり 3人" in txt("#mission") and txt("#subName") == "ミーチャン" and "イヤーよ" in txt("#subText"), "聞きこみ: 受けると、情報屋のひとこと。のこり3人")
     pg.screenshot(path=SHOTS + "/i1_ask.png")
     def talkTo(i):
         do(f"const p=SC.peds.filter(p=>!p.off&&!p.angry&&p.down<=0)[{i}]; window.__p=p; p.speed=0; P.x=p.x+1.2; P.z=p.z"); pg.wait_for_timeout(150); do("SC.startTalk()"); pg.wait_for_timeout(150)
