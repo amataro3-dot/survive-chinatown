@@ -171,6 +171,25 @@ const basicCache = {};
 function MB(color) { if (!basicCache[color]) basicCache[color] = new THREE.MeshBasicMaterial({ color }); return basicCache[color]; }
 function canvasTex(w, h, draw) { const c = document.createElement('canvas'); c.width = w; c.height = h; draw(c.getContext('2d'), w, h); return new THREE.CanvasTexture(c); }
 const FONT = '"Noto Sans CJK JP","Hiragino Sans","Yu Gothic",sans-serif';
+// 通りの名前(v=23)。南北の道は西から A〜G、東西の道は北から H〜N(roadC(0)〜roadC(6))
+const STREET_NS = ['ウエスト通り', '西門通り', '夜市通り', '中央通り', '東門通り', 'パーク通り', 'ハーバー通り'];
+const STREET_EW = ['ビル街通り', 'サンセット通り', '北門通り', '塔前通り', '漢方通り', '南門通り', '倉庫通り'];
+const plateCache = {};
+function streetPlate(name) {
+  if (!plateCache[name]) {
+    const t = canvasTex(64 * name.length + 48, 72, (c, w, h) => { c.fillStyle = '#1f6b45'; c.fillRect(0, 0, w, h); c.strokeStyle = '#ffffff'; c.lineWidth = 4; c.strokeRect(5, 5, w - 10, h - 10); c.fillStyle = '#ffffff'; c.font = 'bold 50px ' + FONT; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(name, w / 2, h / 2 + 2); });
+    plateCache[name] = { mat: new THREE.MeshLambertMaterial({ map: t }), w: 0.42 * name.length + 0.32 };
+  }
+  const p = plateCache[name], m = new THREE.Mesh(BG(p.w, 0.48, 0.06), p.mat); m.userData.w = p.w; return m;
+}
+// いまいる通り(道の上にいないときは null)。交差点では、前にいた通りのまま
+function streetAt(x, z, prev) {
+  if (Math.abs(x) > HALF + 6.5 || Math.abs(z) > HALF + 6.5 || inMerged(x, z)) return null;
+  let i = Math.round((x + HALF) / CELL), j = Math.round((z + HALF) / CELL); i = clamp(i, 0, N); j = clamp(j, 0, N);
+  const dx = Math.abs(x - roadC(i)), dz = Math.abs(z - roadC(j)), ns = dx < 7 ? STREET_NS[i] : null, ew = dz < 7 ? STREET_EW[j] : null;
+  if (ns && ew) return prev === ns || prev === ew ? prev : dx < dz ? ns : ew;
+  return ns || ew;
+}
 const LANTERNS = [], GLOWS = [], WIRES = [];
 const EXTRA_SPOTS = []; // 配達競争: 道路のほかに荷物・届け先が出る場所(市場・公園・ビルの前・駐車場)
 const MK_SPOTS = []; // 市場の武器(豚の頭・ヘビ・青龍刀)が出る場所
@@ -423,7 +442,7 @@ function apartment() {
   add(BG(3.0, 0.16, 1.2), M(0x8a3a2a), dx, 3.0, f + 0.6); add(BG(0.34, 0.26, 0.26), MB(0xffe0a0), dx, 2.82, f + 0.5); add(BG(2.4, 0.16, 0.7), M(0x9a948c), dx, 0.08, f + 0.35);
   for (let c = 0; c < 4; c++) add(BG(0.42, 0.3, 0.12), M(c % 2 ? 0x6f7a80 : 0x8a949a), dx + 1.75 + (c % 2) * 0.48, 1.25 + (c > 1 ? 0.36 : 0), f + 0.07);
   add(BG(1.6, 1.4, 0.1), M(0x1f2a3a), dx - 4.6, 1.9, f + 0.04); add(BG(1.8, 0.12, 0.3), trim, dx - 4.6, 1.15, f + 0.12); // 1階の窓
-  add(BG(0.2, 5.4, 1.2), vSignMat('福安公寓', '#ffd23f'), -w / 2 + 0.7, 7.6, f + 0.7); // たての看板
+  add(BG(0.2, 5.4, 1.2), vSignMat('快晴部屋', '#ffd23f'), -w / 2 + 0.7, 7.6, f + 0.7); // たての看板
   scene.add(g); colRot(x, z, w, d, 0);
   GLOWS.push([HOME_X, z - f - 1.2, 4.5, 1]);
 }
@@ -542,6 +561,14 @@ function buildSpecial(b) {
   for (const k of [3, 4]) for (let t = roadC(CT.i0) + 4; t < roadC(CT.i1 + 1); t += 9) { if (nearX(t)) continue; lanternString(t, 6.6, roadC(k) - 6.3, t, 6.6, roadC(k) + 6.3, 6, 0.9); if (Math.round(t) % 2) GLOWS.push([t, roadC(k), 5.5, 0]); }
   // ふつうの街の交差点に、街灯のあかり
   for (let i = 0; i <= N; i++) for (let j = 0; j <= N; j++) { const x = roadC(i), z = roadC(j); if (x > roadC(CT.i0) - 1 && x < roadC(CT.i1 + 1) + 1 && z > roadC(CT.j0) - 1 && z < roadC(CT.j1 + 1) + 1) continue; GLOWS.push([x, z, 9, 2]); addBox(0.25, 6, 0.25, x + 6.5, 3, z + 6.5, M(0x333333)); addBox(0.8, 0.3, 0.8, x + 6.2, 6, z + 6.2, MB(0xfff0c8)); }
+  // 通りの名前の標識(v=23): 交差点の北西の角に、緑の板を2まい(上 = 東西の道、下 = 南北の道)。字は看板と同じで訳さない
+  for (let i = 0; i <= N; i++) for (let j = 0; j <= N; j++) {
+    const x = roadC(i) - 6.7, z = roadC(j) - 6.7; if (inMerged(x, z)) continue;
+    addBox(0.16, 3.4, 0.16, x, 1.7, z, M(0x4a5560));
+    const a = streetPlate(STREET_EW[j]), b = streetPlate(STREET_NS[i]);
+    a.position.set(x + a.userData.w / 2 - 0.1, 3.15, z); scene.add(a);
+    b.rotation.y = Math.PI / 2; b.position.set(x, 2.6, z + b.userData.w / 2 - 0.1); scene.add(b);
+  }
   // ちょうちん(まとめて1回で描く)
   const lg = new THREE.SphereGeometry(0.45, 10, 8); lg.scale(1, 1.25, 1);
   for (const ci of [0, 1]) {
@@ -1573,7 +1600,7 @@ function raceWanted(msg) { if (G.mode !== 'race' || G.out || !G.started) return;
 // お使いの間(大きな仕事が終わるまで)は、マフィアはおそってこない
 const peace = () => TUNE.peace && G.mi < MISSIONS.length;
 // ゲームが止まっている間(買い物・ミッションをえらぶ・お話・ねる)
-const paused = () => !!(G.shop || G.offer || G.story || G.sleep);
+const paused = () => !!(G.shop || G.offer || G.story || G.sleep || G.pause); // G.pause = 一時停止の窓(v=23)
 function stopInput() { releaseHeld(); if (joy) { joy = null; setKnob(0, 0); } camTouch = null; }
 
 /* ===== お話の場面・ひとこと(v=15) ===== */
@@ -1895,6 +1922,34 @@ function saveData() { return { v: 1, money: G.money, mi: G.mi, done: Object.keys
 function save() { if (G.mode !== 'solo') return false; try { localStorage.setItem(SAVE_KEY, JSON.stringify(saveData())); return true; } catch (e) { return false; } }
 function readSave() { try { const d = JSON.parse(localStorage.getItem(SAVE_KEY)); return d && d.v === 1 ? d : null; } catch (e) { return null; } }
 function clearSave() { try { localStorage.removeItem(SAVE_KEY); } catch (e) { /* 消せなくてもよい */ } }
+/* ===== 一時停止と中断(v=23) ===== */
+// 中断: セーブとは別に、いまの場所・乗っている車・時間・体力も記録する。再開すると消える(つづける・やめるでも消える)。ミッションの途中なら、受ける前にもどる
+const SUSP_KEY = 'sc-susp';
+function canSuspend() { return G.started && G.mode === 'solo' && !G.over && !G.story && !G.intro && !G.leaving; } // G.leaving = スタート画面にもどるところ(読みこみ直すときにも pagehide が来るので)
+function leave() { G.leaving = true; G.pause = false; location.reload(); }
+function writeSuspend() {
+  if (!canSuspend()) return false;
+  const d = saveData(); Object.assign(d, { susp: 1, x: Math.round(player.x * 10) / 10, z: Math.round(player.z * 10) / 10, h: Math.round(player.h * 100) / 100, clock: Math.floor(G.clock), hp: Math.ceil(player.hp) });
+  if (player.mode === 'car' && player.car && !player.car.cop) d.car = { t: player.car.type || 'sedan', c: player.car.color >>> 0 }; // パトカーは残さない(歩きにもどる)
+  try { localStorage.setItem(SUSP_KEY, JSON.stringify(d)); return true; } catch (e) { return false; }
+}
+function readSuspend() { try { const d = JSON.parse(localStorage.getItem(SUSP_KEY)); return d && d.v === 1 && d.susp ? d : null; } catch (e) { return null; } }
+function clearSuspend() { try { localStorage.removeItem(SUSP_KEY); } catch (e) { /* 消せなくてもよい */ } }
+// 中断したところの場所・車・時間・体力をもどす(applySave のあとに呼ぶ。こわれた数字なら、ホームの前に立つ)
+function applySuspend(d) {
+  const ok = v => typeof v === 'number' && isFinite(v);
+  if (ok(d.x) && ok(d.z) && Math.abs(d.x) < 200 && Math.abs(d.z) < 200) { resetPlayerToFoot(d.x, d.z, ok(d.h) ? d.h : 0); resolve(player, 0.5); } else resetPlayerToFoot(HOME.sx, HOME.sz, HOME.sh);
+  if (ok(d.clock)) setClock(((d.clock % DAY.len) + DAY.len) % DAY.len);
+  if (ok(d.hp)) player.hp = clamp(Math.ceil(d.hp), 1, TUNE.hp);
+  if (d.car && CAR_TYPES[d.car.t]) { const c = newCar('parked', player.x, player.z, player.h, ok(d.car.c) ? d.car.c : 0xd33c3c, d.car.t); resolveCar(c); player.x = c.x; player.z = c.z; enterCar(c); }
+}
+function openPause() {
+  if (!G.started || G.mode !== 'solo' || G.over || G.pause) return;
+  G.pause = true; stopInput(); $('pMenu').classList.remove('hidden'); $('pAsk').classList.add('hidden'); $('pause').classList.remove('hidden');
+}
+function closePause() { G.pause = false; $('pause').classList.add('hidden'); clearSuspend(); } // つづける: ほかのアプリから帰ってきたときの中断の記録は消す
+// ほかのアプリに切りかえたとき: 一時停止にして、中断の記録もしておく(そのままページが閉じられても、中断から遊べる)
+function autoSuspend() { if (!canSuspend()) return; openPause(); writeSuspend(); }
 // セーブの中身を、ゲームにもどす(こわれた数字が入っていても動くように、1つずつ確かめる)
 function applySave(d) {
   const num = (v, lo, hi) => { v = Math.floor(+v); return v >= lo ? Math.min(hi, v) : lo; }; // 数字でないときは lo
@@ -2401,6 +2456,7 @@ function drawMinimap() {
 
 /* ===== 画面の文字 ===== */
 function updateHUD() {
+  const st = G.started ? streetAt(player.x, player.z, G.street) : null; if (st !== G.street) { G.street = st; $('street').textContent = st ? tr(st) : ''; } // いまいる通りの名前(v=23)
   if (G.mode === 'race') { updateRaceHUD(); return; }
   const m = curM(); let html = '';
   if (G.over || !m) html = '<div class="t">' + tr('フリー走行') + '</div>' + tr(G.done.tower ? '港の奥の倉庫へ行って、とびらを開けよう' : FREE.some(freeOpen) ? '紫の光で、好きなミッションを受けよう' : '街を自由に走り回ろう');
@@ -2559,29 +2615,42 @@ function startSolo(d) {
   lockLandscape(); document.body.classList.add('solo');
   G.mode = 'solo'; showOnly(null); setPlaying(true); setClock(DAY.start); // ひとり用は昼から
   const cont = !!(d && d.v === 1), go = () => { if (curM()) beginMission(); else toast(tr('つづきから'), 2); };
-  if (cont) { applySave(d); resetPlayerToFoot(HOME.sx, HOME.sz, HOME.sh); } else resetPlayerToFoot(startX, startZ, startH);
+  if (cont) { applySave(d); if (d.susp) applySuspend(d); else resetPlayerToFoot(HOME.sx, HOME.sz, HOME.sh); } else resetPlayerToFoot(startX, startZ, startH); // d.susp = 中断したところから(v=23)
   if (!cont && !window.SC_NO_INTRO) startIntro(go); else go(); // はじめから: 出だしのお話(クラブの中)のあとに始まる
-  if (window.BackGuard) BackGuard.set('game', () => location.reload());
+  if (window.BackGuard) BackGuard.set('game', () => { clearSuspend(); leave(); }); // 戻るボタン:「ゲームをやめますか？」→ スタート画面(このファイルは全ゲーム共通なので、確認の文は変えない)
 }
 // スタート画面: セーブがあれば「つづきから」を出して、「ひとりで遊ぶ」は「はじめから」にする(1回目は確かめる。2回目でセーブを消して始める)
 let newAsk = false;
 function initStart() {
-  const d = readSave(), c = $('goCont'), n = $('goSolo'); c.classList.toggle('hidden', !d); n.classList.toggle('ghost', !!d);
+  const sp = readSuspend(), b = $('goSusp'); b.classList.toggle('hidden', !sp); // 中断したところから(v=23)
+  if (sp) b.innerHTML = tr('中断したところから') + '<small>$' + (Math.floor(+sp.money) || 0).toLocaleString() + '　' + tr('{m}分', { m: Math.floor((+sp.play || 0) / 60) }) + '</small>';
+  const d = readSave(), c = $('goCont'), n = $('goSolo'); c.classList.toggle('hidden', !d); n.classList.toggle('ghost', !!d || !!sp); c.classList.toggle('ghost', !!sp);
   if (!d) return;
   const fr = FREE.filter(f => !f.alt).map(f => f.id), total = MISSIONS.length + fr.length, cleared = Math.min(total, (+d.mi || 0) + (Array.isArray(d.done) ? d.done.filter(id => fr.includes(id)).length : 0));
   c.innerHTML = tr('つづきから') + '<small>$' + (Math.floor(+d.money) || 0).toLocaleString() + '　' + tr('ミッション {a}/{b}', { a: cleared, b: total }) + '　' + tr('{m}分', { m: Math.floor((+d.play || 0) / 60) }) + '</small>';
   n.textContent = tr('はじめから(ひとり用)');
 }
-$('goCont').addEventListener('click', () => { const d = readSave(); if (d) startSolo(d); else initStart(); });
+$('goSusp').addEventListener('click', () => { const d = readSuspend(); clearSuspend(); if (d) startSolo(d); else initStart(); }); // 再開すると、中断の記録は消える
+$('goCont').addEventListener('click', () => { const d = readSave(); if (d) { clearSuspend(); startSolo(d); } else initStart(); });
 $('goSolo').addEventListener('click', () => {
   if (readSave() && !newAsk) { newAsk = true; $('goSolo').textContent = tr('セーブが消えます。もう一度押すと、はじめから'); return; }
-  clearSave(); startSolo();
+  clearSave(); clearSuspend(); startSolo();
 });
 initStart();
-$('quitBtn').addEventListener('click', () => { if (G.mode === 'solo') location.reload(); else if (SC.onQuit) SC.onQuit(); });
+$('quitBtn').addEventListener('click', () => { if (G.mode === 'solo') location.reload(); else if (SC.onQuit) SC.onQuit(); }); // 配達競争だけに出る
+// 一時停止の窓(v=23)
+$('optBtn').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); openPause(); });
+$('pResume').addEventListener('click', closePause);
+$('pSusp').addEventListener('click', () => { writeSuspend(); leave(); });
+$('pQuit').addEventListener('click', () => { $('pMenu').classList.add('hidden'); $('pAsk').classList.remove('hidden'); });
+$('pNo').addEventListener('click', () => { $('pAsk').classList.add('hidden'); $('pMenu').classList.remove('hidden'); });
+$('pYes').addEventListener('click', () => { clearSuspend(); leave(); });
+document.addEventListener('visibilitychange', () => { if (document.hidden) autoSuspend(); });
+addEventListener('pagehide', autoSuspend);
 if (window.BackGuard) BackGuard.set('home');
 
 const SC = window.SC = {
+  openPause, closePause, writeSuspend, readSuspend, clearSuspend, autoSuspend, initStart, streetAt, // 一時停止と中断・通りの名前(v=23)
   CAR_TYPES, newCar, removeCar, enterCar, exitCar, carDist, segPair, carSeg, // 車の種類(v=21)
   G, R, player, cars, peds, TUNE, MISSIONS, FREE, HOME, save, readSave, applySave, curM, pointBlocked, P, gangs, pickups, npcs, SHOPS, HOSPITAL, SHOP_ITEMS, closeShop, WEAPONS, MKT, MKW, shots, newNpc, confiscate, DAY, setClock, vendors, TALK, LINES, QAS, makeVip, startTalk, answerTalk, pickLine, getTalk: () => talk, camera, BOAT, PORT, MX, STORY, SNEAK, freeOpen, story, say, finish, openSleep, sleepTo, bump, CLUB, NEON_MATS, STALL_POS, APT, INTRO, INFO, LURE, BOSSCAR, RUMORS, infoPer, setTeam, applyTeams, inCT, newGang, damageGang, GANG_W, PGD, TOWER, INFO2, BOSS_AT, MK_DEEP, WAREHOUSE, twrInfo, twrOyaji, isCalm, CALM_LINES, endScene, END, ENDS, closeOffer, hurtPlayer, callMinions,
   onSend: null, onQuit: null,

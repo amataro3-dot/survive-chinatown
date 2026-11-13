@@ -77,6 +77,16 @@
     'ヘビ': ['Snake', '뱀'],
     '昼': ['Day', '낮'],
     '夕方': ['Evening', '저녁'],
+    // 一時停止と中断(v=23)
+    '一時停止': ['Paused', '일시 정지'], 'つづける': ['Resume', '계속하기'], '中断する': ['Suspend', '중단하기'],
+    '中断すると、次はいまの場所から遊べます(ミッションの途中なら、受ける前にもどります)': ['Suspend to pick up from this spot next time (a mission in progress goes back to before you took it)', '중단하면 다음에 지금 있는 곳에서 이어서 할 수 있어요(미션 중이면 받기 전으로 돌아가요)'],
+    'ゲームをやめる': ['Quit game', '게임 그만두기'], '最後にセーブしたところからやり直しになります。やめますか？': ['You will restart from your last save. Quit?', '마지막으로 저장한 곳부터 다시 하게 돼요. 그만둘까요?'],
+    '中断したところから': ['Resume suspended game', '중단한 곳부터'],
+    // 通りの名前(v=23。画面に出す名前だけ訳す。標識の字は訳さない)
+    'ウエスト通り': ['West St.', '웨스트 거리'], '西門通り': ['West Gate St.', '서문 거리'], '夜市通り': ['Night Market St.', '야시장 거리'],
+    '中央通り': ['Central Ave.', '중앙 거리'], '東門通り': ['East Gate St.', '동문 거리'], 'パーク通り': ['Park St.', '파크 거리'], 'ハーバー通り': ['Harbor St.', '하버 거리'],
+    'ビル街通り': ['Highrise St.', '빌딩가 거리'], 'サンセット通り': ['Sunset Blvd.', '선셋 거리'], '北門通り': ['North Gate St.', '북문 거리'],
+    '塔前通り': ['Pagoda St.', '탑앞 거리'], '漢方通り': ['Herbal St.', '한방 거리'], '南門通り': ['South Gate St.', '남문 거리'], '倉庫通り': ['Warehouse St.', '창고 거리'],
     '夜': ['Night', '밤'],
     // 配達競争の警察と時間(v=20)
     '時間': ['Time', '시간'],
