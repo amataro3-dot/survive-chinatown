@@ -1609,6 +1609,16 @@ let toastT = 0;
 function toast(s, t) { const e = $('toast'); e.textContent = s; e.style.opacity = 1; toastT = t || 2.2; }
 function addWanted(n) { if (G.mode !== 'solo') return; const before = G.wanted; G.wanted = Math.min(5, G.wanted + n); G.evade = 0; if (G.wanted > before && before === 0) toast(tr('警察に追われている！')); }
 // 配達競争(v=20): 人をひいた・パトカーにぶつけたときだけ追われる(★は1つだけ。ふえない)
+// ケイドロ(v=27): 自分が警察か・最初の10秒で動けないか・パトカーに乗りかえる
+const kdCop = id => G.rule === 'cops' && !!(R.state && R.state.cop && R.state.cop[id || R.me]);
+const kdFrozen = () => G.mode === 'race' && kdCop() && T < G.kdFree;
+function kdMakeCop() {
+  const old = player.mode === 'car' ? player.car : null; if (!old || old.cop) return; // 歩いていたら、そのまま(ほかの人には警察官の服で見える)
+  const x = old.x, z = old.z, h = old.h, v = old.v;
+  exitCar(); removeCar(old); if (R.myCar === old) R.myCar = null;
+  const c = newCar('police', x, z, h, 0); c.crew = 0; c.v = v; if (R.myCar) removeCar(R.myCar); R.myCar = c;
+  player.x = x; player.z = z; enterCar(c);
+}
 function raceWanted(msg) { if (G.mode !== 'race' || G.rule !== 'deliver' || G.out || !G.started) return; if (!G.wanted) { G.wanted = 1; G.spawnCd = 0; toast(tr(msg), 2.4); } G.evade = 0; } // 警察が出るのは配達競争だけ(v=26)
 // お使いの間(大きな仕事が終わるまで)は、マフィアはおそってこない
 const peace = () => TUNE.peace && G.mi < MISSIONS.length;
@@ -2102,13 +2112,13 @@ function readInput() {
   input.dash = held.dash;
   // 車: アクセル・ブレーキ・バックのボタン(スティックは左右のハンドルだけ)
   input.acc = held.acc; input.rev = held.rev; input.brake = held.brk;
-  if (G.out) { input.jx = input.jy = 0; input.dash = input.acc = input.rev = false; input.brake = true; } // 配達競争でつかまった人は動けない
+  if (G.out || kdFrozen()) { input.jx = input.jy = 0; input.dash = input.acc = input.rev = false; input.brake = true; } // 配達競争でつかまった人・ケイドロの始まりの警察は動けない
 }
 
 /* ===== 車の乗り降り ===== */
 function nearestEnterable() { let best = null, bd = TUNE.enterDist; for (const c of cars) { if ((c.kind === 'police' && G.mode !== 'solo') || c.flee || c.kind === 'hunter') continue; const d = carDist(c, player.x, player.z) - (c.type === 'truck' || c.type === 'bus' ? 0.4 : 0); if (d < bd) { bd = d; best = c; } } return best; }
 function toggleCar() {
-  if (!G.started || G.stunT > 0 || G.downT > 0 || G.out || paused()) return; if (player.mode === 'car') { exitCar(); return; }
+  if (!G.started || G.stunT > 0 || G.downT > 0 || G.out || kdFrozen() || paused()) return; if (player.mode === 'car') { exitCar(); return; }
   const c = nearestEnterable(); if (!c) return;
   if (c.kind === 'traffic') { ejectDriver(c); if (Math.abs(c.v) > 1) { addWanted(1); if (G.mode === 'solo') toast(tr('車を奪った！'), 1.4); } }
   else if (c.kind === 'police') stealPolice(c);
@@ -2394,7 +2404,9 @@ function updateAvatars(dt) {
     if (r.w) { a.star.position.set(a.x, (a.car ? 3.4 : 3.3) + Math.sin(T * 4) * 0.15, a.z); a.star.rotation.y += dt * 3; }
     if (!a.seen) { a.x = r.x; a.z = r.z; a.h = r.h; a.seen = true; }
     a.x += (r.x - a.x) * k; a.z += (r.z - a.z) * k; a.h += angDiff(a.h, r.h) * k; a.car = !!r.c;
-    if (a.car) { const ty = CAR_KEYS[r.t] || 'sedan', cc = typeof r.cc === 'number' ? r.cc : a.col; if (ty !== a.type || cc !== a.cc) { const vis = a.carM.g.visible; scene.remove(a.carM.g); a.carM = makeCarMesh(cc, false, ty); a.carM.g.visible = vis; a.type = ty; a.cc = cc; } } // 乗りかえた車の形と色(v=21)
+    if (a.car) { const ty = CAR_KEYS[r.t] || 'sedan', cc = typeof r.cc === 'number' ? r.cc : a.col, pol = !!r.pc; if (ty !== a.type || cc !== a.cc || pol !== !!a.pol) { const vis = a.carM.g.visible; scene.remove(a.carM.g); a.carM = makeCarMesh(cc, pol, pol ? 'sedan' : ty); a.carM.g.visible = vis; a.type = ty; a.cc = cc; a.pol = pol; } } // 乗りかえた車の形と色(v=21)。パトカー(v=27)
+    if (a.car && a.pol) copLights(a.carM, T); // ケイドロの警察のパトカーは、屋根のライトが光る
+    const isCop = kdCop(id); if (isCop !== !!a.copPer) { const vis = a.per.g.visible; scene.remove(a.per.g); a.per = isCop ? makeCop(SKINS[0]) : makePerson(a.col, 0x23324f, 0xf0c9a0); a.per.g.visible = vis; a.copPer = isCop; } // ケイドロの警察は、歩くと警察官の服
     a.carM.g.visible = a.car; a.per.g.visible = !a.car;
     if (a.car) { a.carM.g.position.set(a.x, 0, a.z); a.carM.g.rotation.y = a.h; }
     else { a.per.g.position.set(a.x, onWalk(a.x, a.z) ? 0.3 : 0, a.z); a.per.g.rotation.y = a.h; animPerson(a.per, Math.abs(r.v || 0), dt); }
@@ -2406,6 +2418,7 @@ function updateRaceMarks(t) {
     pkgMesh.visible = false; oniMesh.visible = false; const cp = s.phase === 'play' && s.cps ? s.cps[(s.prog && s.prog[R.me]) || 0] : null;
     R.cp = cp; marker.visible = !!cp; if (cp) { markerColor(0x4cff6a); marker.position.set(cp.x, 0, cp.z); } return;
   }
+  if (G.rule === 'cops') { marker.visible = false; pkgMesh.visible = false; oniMesh.visible = false; return; } // ケイドロ(v=27): 警察はパトカーと服でわかる
   if (G.rule === 'tag') { // 鬼ごっこ(v=26): 鬼の頭の上に赤いしるし。ほかの人には、鬼の所に赤い光
     pkgMesh.visible = false; const o = s.oni; let x, z, car;
     if (o === R.me) { x = player.x; z = player.z; car = player.mode === 'car'; }
@@ -2496,7 +2509,7 @@ function updateHUD() {
   $('timer').textContent = G.timeLeft > 0 ? tr('残り {n} 秒', { n: Math.ceil(G.timeLeft) }) : ''; $('speed').textContent = player.mode === 'car' ? Math.round(Math.abs(player.car.v) * 3.6) + ' km/h' : '';
 }
 function updateRaceHUD() {
-  if (G.rule === 'race' || G.rule === 'tag') { updateRuleHUD(); return; }
+  if (G.rule === 'race' || G.rule === 'tag' || G.rule === 'cops') { updateRuleHUD(); return; }
   const s = R.state; let html = '<div class="t">' + tr('配達競争：{n}点先取', { n: (s && s.target) || 3 }) + '</div>';
   const w = watchTarget();
   if (!s) html += tr('準備中…');
@@ -2519,9 +2532,15 @@ function updateRaceHUD() {
 // レース・鬼ごっこの画面の文字(v=26)
 function updateRuleHUD() {
   const s = R.state, race = G.rule === 'race', n = race && s && s.cps ? s.cps.length : 0, who = id => '<b style="color:' + raceColor(id) + '">' + esc(raceName(id)) + '</b>';
-  let html = '<div class="t">' + (race ? tr('レース：チェックポイント{n}つ', { n: n || 8 }) : tr('鬼ごっこ：のこり {n}秒', { n: s && typeof s.left === 'number' ? s.left : 180 })) + '</div>';
+  const kd = G.rule === 'cops', left = s && typeof s.left === 'number' ? s.left : kd ? 240 : 180;
+  let html = '<div class="t">' + (race ? tr('レース：チェックポイント{n}つ', { n: n || 8 }) : kd ? tr('ケイドロ：のこり {n}秒', { n: left }) : tr('鬼ごっこ：のこり {n}秒', { n: left })) + '</div>';
   if (!s) html += tr('準備中…');
   else if (s.phase === 'end') html += tr('おわり！');
+  else if (kd) { // ケイドロ(v=27)
+    const free = G.kdFree - T, run = Object.keys(s.players || {}).filter(id => !kdCop(id)).length;
+    if (kdCop()) html += tr('あなたが警察！ 逃げる人にぶつかってつかまえよう') + '<div class="d">' + (free > 0 ? tr('{n}秒後に動ける', { n: Math.ceil(free) }) : G.kdCatch > T ? tr('{n}秒後につかまえられる', { n: Math.ceil(G.kdCatch - T) }) : tr('逃げている人 のこり{n}人', { n: run })) + '</div>';
+    else html += tr('警察から逃げろ！') + '<div class="d">' + (free > 0 ? tr('警察は{n}秒後に動き出す', { n: Math.ceil(free) }) : tr('パトカーにぶつかられると、つかまる')) + '</div>';
+  }
   else if (race) {
     const k = (s.prog && s.prog[R.me]) || 0, cp = s.cps && s.cps[k];
     html += tr('緑の光へ急げ！({a}/{b})', { a: k + 1, b: n }); if (cp) html += '<div class="d">' + tr('あと {d} m', { d: Math.round(Math.hypot(cp.x - player.x, cp.z - player.z)) }) + '</div>';
@@ -2531,8 +2550,8 @@ function updateRuleHUD() {
   $('mission').innerHTML = html;
   let sc = '';
   if (s && s.players) for (const id of Object.keys(s.players).sort((a, b) => (s.players[a].slot || 0) - (s.players[b].slot || 0))) {
-    const v = race ? tr('{a}/{b}', { a: (s.prog && s.prog[id]) || 0, b: n }) : tr('鬼 {n}秒', { n: Math.round((s.oniT && s.oniT[id]) || 0) });
-    sc += '<div' + (id === R.me ? ' class="me"' : '') + '><span class="dot" style="background:' + raceColor(id) + '"></span>' + esc(s.players[id].name) + '　' + v + (!race && s.oni === id ? ' <small>' + tr('鬼') + '</small>' : '') + '</div>';
+    const v = race ? tr('{a}/{b}', { a: (s.prog && s.prog[id]) || 0, b: n }) : kd ? (kdCop(id) ? tr('警察') : tr('逃げている')) : tr('鬼 {n}秒', { n: Math.round((s.oniT && s.oniT[id]) || 0) });
+    sc += '<div' + (id === R.me ? ' class="me"' : '') + '><span class="dot" style="background:' + raceColor(id) + '"></span>' + esc(s.players[id].name) + '　' + v + (G.rule === 'tag' && s.oni === id ? ' <small>' + tr('鬼') + '</small>' : '') + '</div>';
   }
   $('scores').innerHTML = sc; $('money').textContent = ''; $('clock').textContent = ''; $('timer').textContent = ''; $('stars').innerHTML = '';
   $('speed').textContent = player.mode === 'car' ? Math.round(Math.abs(player.car.v) * 3.6) + ' km/h' : '';
@@ -2708,7 +2727,7 @@ const SC = window.SC = {
   extraSpots: EXTRA_SPOTS,
   // 配達競争を始める。slot は 0〜3(並ぶ場所)
   startRace(meId, slot, color, time, rule) {
-    G.rule = ['race', 'tag'].includes(rule) ? rule : 'deliver'; G.tagUntil = T + 5; // ルール(v=26)。鬼ごっこは、始まって5秒はタッチできない
+    G.rule = ['race', 'tag', 'cops'].includes(rule) ? rule : 'deliver'; G.tagUntil = T + 5; G.kdFree = T + 10; G.kdCatch = 0; // ケイドロ(v=27): 最初の警察は10秒動けない // ルール(v=26)。鬼ごっこは、始まって5秒はタッチできない
     document.body.classList.remove('solo'); G.mode = 'race'; G.wanted = 0; G.bust = 0; G.evade = 0; G.out = false; G.stunT = 0; player.per.g.rotation.x = 0; removeAllPolice(); R.me = meId; R.state = null; R.remotes = {};
     setClock(TUNE.raceAt[time] || DAY.race); // 配達競争の時間は、ホストがえらぶ(時間は流れない。見た目だけ変わる)
     const sp = RACE_SPAWN[slot % 4], c0 = P(3, 3); const x = c0.x + sp[0] * sp[2] + sp[1] * 3.2, z = c0.z + sp[1] * sp[2] - sp[0] * 3.2, h = Math.atan2(sp[0], sp[1]);
@@ -2716,7 +2735,7 @@ const SC = window.SC = {
     if (R.myCar) removeCar(R.myCar);
     const car = R.myCar = newCar('parked', x, z, h, color || 0xffffff);
     enterCar(car);
-    showOnly(null); setPlaying(true); toast(tr(G.rule === 'race' ? 'レーススタート！' : G.rule === 'tag' ? '鬼ごっこスタート！' : '配達競争スタート！'), 2.2);
+    showOnly(null); setPlaying(true); toast(tr(G.rule === 'race' ? 'レーススタート！' : G.rule === 'tag' ? '鬼ごっこスタート！' : G.rule === 'cops' ? 'ケイドロスタート！' : '配達競争スタート！'), 2.2);
   },
   stopRace() {
     if (G.mode !== 'race') return;
@@ -2743,6 +2762,16 @@ const SC = window.SC = {
       else { G.tagUntil = T + 3; toast(s.oni === R.me ? tr('タッチされた！ あなたが鬼') : prev.oni === R.me ? tr('タッチ！ {name}が鬼になった', { name: nm }) : tr('{name}が鬼になった', { name: nm }), 2.2); }
       return;
     }
+    if (s && G.rule === 'cops') { // ケイドロ(v=27): 警察になった(始まり・つかまった)。乗っている車がパトカーに変わる
+      const was = !!(prev && prev.cop && prev.cop[R.me]), now = !!(s.cop && s.cop[R.me]);
+      if (now && !was) {
+        kdMakeCop();
+        if (!prev) toast(tr('あなたが警察！ 10秒後に追いかけられる'), 2.6);
+        else { G.kdCatch = T + 3; toast(tr(s.phase === 'end' ? 'つかまった！' : 'つかまった！ 警察の仲間になった'), 2.4); }
+      } else if (!prev) { const f = Object.keys(s.cop || {})[0]; toast(tr('{name}が警察！ 逃げろ！', { name: raceName(f) }), 2.6); }
+      else { const nw = Object.keys(s.cop || {}).filter(id => !(prev.cop && prev.cop[id]) && id !== R.me); if (nw.length && s.phase === 'play') toast(tr('{name}がつかまった！', { name: raceName(nw[0]) }), 2.2); }
+      return;
+    }
     if (!s || !prev) return;
     if (G.rule === 'race') { const a = (prev.prog && prev.prog[R.me]) || 0, b = (s.prog && s.prog[R.me]) || 0; if (b > a && s.phase === 'play') toast(tr('チェックポイント {a}/{b}！', { a: b, b: (s.cps || []).length }), 1.6); return; } // レース(v=26)
     if (G.rule === 'tag') return;
@@ -2761,7 +2790,7 @@ const SC = window.SC = {
   getMe() {
     const r1 = n => Math.round(n * 10) / 10, r2 = n => Math.round(n * 100) / 100;
     const me = { x: r1(player.x), z: r1(player.z), h: r2(player.h), c: player.mode === 'car' ? 1 : 0, v: r1(player.v || 0) };
-    if (player.mode === 'car') { const t = CAR_KEYS.indexOf(player.car.type); if (t > 0) me.t = t; if (player.car.color !== undefined) me.cc = player.car.color >>> 0; } // 乗っている車の種類(0 = セダンは送らない)と色(v=21)
+    if (player.mode === 'car') { const t = CAR_KEYS.indexOf(player.car.type); if (t > 0) me.t = t; if (player.car.color !== undefined) me.cc = player.car.color >>> 0; if (player.car.cop) me.pc = 1; } // 乗っている車の種類(0 = セダンは送らない)と色(v=21)
     if (G.mode === 'race') {
       if (G.out) me.out = 1; else if (G.wanted) me.w = 1;
       const pc = cars.find(c => c.kind === 'police'); if (pc) me.p = [r1(pc.x), r1(pc.z), r2(pc.h)];

@@ -6,7 +6,7 @@
 <!-- 作りかけなので Google の検索には出さない(完成してトップに載せるときに、この行を消す) -->
 <meta name="robots" content="noindex">
 <title>SURVIVE CHINATOWN</title>
-<link rel="stylesheet" href="style.css?v=26">
+<link rel="stylesheet" href="style.css?v=27">
 </head>
 <body>
 <canvas id="c"></canvas>
@@ -59,7 +59,7 @@
     <p data-t>マフィアのお使いをこなして、お金をかせごう。人をはねたり、車にぶつけたりすると手配度(★)が上がって警察が追ってくる。警察官につかまると逮捕！<br>光るマークの店で、武器(赤)や薬(緑)が買える。<br>家(青い光)に入るとセーブして、体力が全回復する。ミッションをクリアしたときも、自動でセーブする。</p>
     <p data-t>家の「ねる」で、朝・夕方・夜を変えられる(夜だけ・昼だけのミッションがある)。<br>お金をためて、港の船(水色の光)で街を出よう。</p>
     <h2 data-t>オンライン対戦(2〜4人)</h2>
-    <p data-t>ルールはホストが待合室でえらぶ。<br>配達競争：荷物を先に取って、届け先まで運ぶと1点。荷物を持っている人にぶつかると奪える。先に3点取った人の勝ち！<br>レース：光るチェックポイントを順番に8つ回って、先にゴールした人の勝ち！<br>鬼ごっこ：鬼にぶつかられると鬼が交代。3分たったときに鬼だった人の負け！</p>
+    <p data-t>ルールはホストが待合室でえらぶ。<br>配達競争：荷物を先に取って、届け先まで運ぶと1点。荷物を持っている人にぶつかると奪える。先に3点取った人の勝ち！<br>レース：光るチェックポイントを順番に8つ回って、先にゴールした人の勝ち！<br>鬼ごっこ：鬼にぶつかられると鬼が交代。3分たったときに鬼だった人の負け！<br>ケイドロ：警察1人がパトカーで追いかける。つかまると警察の仲間に。4分逃げ切った人の勝ち！</p>
     <p class="links"><a href="https://muddys-games.com/" data-home data-t>Muddy's Games トップ</a>　<a href="https://muddys-games.com/privacy.html" data-t>プライバシーポリシー</a></p>
   </div>
 </section>
@@ -92,7 +92,7 @@
       </div>
       <!-- ルール(ホストだけえらべる。v=26) -->
       <div class="times rules"><span class="tl" data-t>ルール</span>
-        <button id="lbRdeliver" data-t>配達競争</button><button id="lbRrace" data-t>レース</button><button id="lbRtag" data-t>鬼ごっこ</button>
+        <button id="lbRdeliver" data-t>配達競争</button><button id="lbRrace" data-t>レース</button><button id="lbRtag" data-t>鬼ごっこ</button><button id="lbRcops" data-t>ケイドロ</button>
       </div>
       <p class="sub ruleNote" id="lbRuleNote"></p>
       <!-- 時間(ホストだけえらべる。見た目だけ変わる) -->
@@ -188,9 +188,9 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <!-- 縦に持ったときの警告(スタート・待合室・ゲーム中のどこでも出る。横にすると消える) -->
 <div id="rotate"><div class="rotBox"><div class="phone"></div><p class="rotT" data-t>⚠ 画面が縦になっています</p><p class="rotS" data-t>スマホを横にしてね</p></div></div>
-<script src="i18n.js?v=26"></script>
-<script src="backguard.js?v=26"></script>
-<script src="main.js?v=26"></script>
-<script type="module" src="lobby.js?v=26"></script>
+<script src="i18n.js?v=27"></script>
+<script src="backguard.js?v=27"></script>
+<script src="main.js?v=27"></script>
+<script type="module" src="lobby.js?v=27"></script>
 </body>
 </html>
