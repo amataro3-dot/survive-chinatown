@@ -1,4 +1,4 @@
-/* オンラインの通信係(配達競争)
+/* オンラインの通信係(配達競争・レース・鬼ごっこ。v=26 でルールをえらべるようにした)
    - みんな: 自分の位置を pos/自分のID に送る(1秒に8回くらい)。ほかの人の位置を見張って画面に出す
    - ホストだけ: みんなの位置を見て、荷物を取った・届けた・奪ったを決めて game に書く
    game(sc-rooms/1234/game):
@@ -9,9 +9,13 @@
        dest: { x, z } (届け先。持っている人がいるときだけ),
        winner: 勝った人のID(引き分けのときは null),
        time: 'day' | 'eve' | 'night'(ホストが待合室でえらんだ時間。見た目だけ),
-       out: { 人のID: true }(警察につかまった人。v=20), how: 'points'(点) | 'last'(のこり1人) | 'caught'(みんなつかまって点の多い人) | 'draw'(引き分け) }
+       out: { 人のID: true }(警察につかまった人。v=20), how: 'points'(点) | 'last'(のこり1人) | 'caught'(みんなつかまって点の多い人) | 'draw'(引き分け),
+       rule: 'deliver'(配達競争) | 'race'(レース) | 'tag'(鬼ごっこ)(v=26。ないときは配達競争),
+       レース: cps: [{ x, z }, …](チェックポイント。みんな同じ順番), prog: { 人のID: 通った数 },
+       鬼ごっこ: oni: 鬼の人のID, since: 鬼になった時刻(ホストの時計。このあと tagGuard ミリ秒はタッチできない), endAt: 終わる時刻(ホストの時計),
+                 left: のこり秒(ホストが1秒ごとに書く), oniT: { 人のID: 鬼だった秒 }, loser: 最後に鬼だった人 }
    pos(sc-rooms/1234/pos/人のID): { x, z, h, c, v, t(車の種類), cc(車の色), w(手配中), out(つかまった), p(パトカー), k(警察官) } … main.js の getMe。g = 試合の番号 */
-import { db, ref, set, update, onValue, onDisconnect } from "./firebase.js?v=25";
+import { db, ref, set, update, onValue, onDisconnect } from "./firebase.js?v=26";
 
 /* ===== 調整用の数字 ===== */
 export const RACE = {
@@ -22,6 +26,11 @@ export const RACE = {
   stealGuard: 3000, // 奪った(取った)直後、奪い返されない時間(ミリ秒)
   destMin: 120, destMax: 260, // 届け先までの距離
 };
+// レース(v=26): cps = チェックポイントの数、cpDist = 通ったことになる距離、next = 次のチェックポイントまでの距離(いちばん近い〜遠い)、apart = ほかのチェックポイントとはなす距離
+export const RUN = { cps: 8, cpDist: 7, nextMin: 70, nextMax: 150, apart: 45 };
+// 鬼ごっこ(v=26): time = 試合の秒、tagDist = タッチできる距離、tagGuard = 鬼が交代したあと、タッチできないミリ秒、startGuard = 始まってから、タッチできないミリ秒
+export const TAG = { time: 180, tagDist: 4.8, tagGuard: 3000, startGuard: 5000 };
+export const RULES = ["deliver", "race", "tag"]; // ホストがえらべるルール(はじめは配達競争)
 const COLORS = [0xff4a4a, 0x3c8cff, 0x3fd06a, 0xffb020];
 export const TIMES = ["day", "eve", "night"]; // ホストがえらべる時間(はじめは夜)
 
@@ -41,18 +50,33 @@ const SPOTS = (() => {
   for (const p of SC.extraSpots || []) out.push({ x: Math.round(p.x * 10) / 10, z: Math.round(p.z * 10) / 10 }); // 市場・公園・ビルの前・駐車場
   return out;
 })();
+const ROAD = SPOTS.slice(0, SPOTS.length - (SC.extraSpots || []).length); // 道路の上だけ(レースのチェックポイント。市場などの中には置かない)
 const dist = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
 function pickSpot(ok) { const c = SPOTS.filter(ok); const list = c.length ? c : SPOTS; return { ...list[Math.floor(Math.random() * list.length)] }; }
 function newPkg(avoid) { const s = pickSpot(p => !avoid || dist(p, avoid) > 90); return { state: "free", x: s.x, z: s.z }; }
 function pickDest(from) { return pickSpot(p => { const d = dist(p, from); return d > RACE.destMin && d < RACE.destMax; }); }
 
-// 新しい試合(ロビーのスタートと「もう一度」で使う)。list は入った順の参加者
-export function makeGame(list, time) {
-  const players = {};
-  list.slice(0, 4).forEach((p, i) => { players[p.id] = { name: (p.name || "?").slice(0, 10), color: COLORS[i], slot: i }; });
-  const first = newPkg(SC.P(3, 3));
-  return { id: Math.random().toString(36).slice(2, 10), phase: "play", target: RACE.target, rev: 0, players, scores: {}, pkg: first, dest: null, winner: null, time: TIMES.includes(time) ? time : "night" };
+// レースのチェックポイント: まん中の交差点から、つぎつぎに少しはなれた道の上をえらぶ
+function makeCps() {
+  const out = []; let from = SC.P(3, 3);
+  for (let i = 0; i < RUN.cps; i++) {
+    let c = ROAD.filter(p => { const d = dist(p, from); return d > RUN.nextMin && d < RUN.nextMax && out.every(q => dist(p, q) > RUN.apart); });
+    if (!c.length) c = ROAD.filter(p => out.every(q => dist(p, q) > 20));
+    const p = c.length ? c[Math.floor(Math.random() * c.length)] : ROAD[i]; out.push({ x: p.x, z: p.z }); from = p;
+  }
+  return out;
 }
+// 新しい試合(ロビーのスタートと「もう一度」で使う)。list は入った順の参加者。rule = ルール(v=26)
+export function makeGame(list, time, rule) {
+  const players = {}, ru = RULES.includes(rule) ? rule : "deliver";
+  list.slice(0, 4).forEach((p, i) => { players[p.id] = { name: (p.name || "?").slice(0, 10), color: COLORS[i], slot: i }; });
+  const g = { id: Math.random().toString(36).slice(2, 10), phase: "play", rule: ru, rev: 0, players, winner: null, time: TIMES.includes(time) ? time : "night" };
+  if (ru === "race") { g.cps = makeCps(); g.prog = {}; }
+  else if (ru === "tag") { const ids = Object.keys(players), now = Date.now(); g.oni = ids[Math.floor(Math.random() * ids.length)]; g.since = now + TAG.startGuard - TAG.tagGuard; g.endAt = now + TAG.time * 1000; g.left = TAG.time; g.oniT = {}; }
+  else Object.assign(g, { target: RACE.target, scores: {}, pkg: newPkg(SC.P(3, 3)), dest: null });
+  return g;
+}
+export const ruleOf = g => (g && RULES.includes(g.rule) ? g.rule : "deliver");
 
 let cur = null;       // 今の試合 { code, uid, gameId, resultShown, looked }
 let room = null;      // ロビーからもらったルームのデータ
@@ -78,7 +102,7 @@ function begin(uid, code, g) {
   cur = { code, uid, gameId: g.id, resultShown: false };
   positions = {};
   const me = g.players[uid];
-  SC.startRace(uid, me.slot || 0, me.color, g.time);
+  SC.startRace(uid, me.slot || 0, me.color, g.time, ruleOf(g)); tagLast = 0;
   const myPos = ref(db, roomPath(code) + "/pos/" + uid);
   onDisconnect(myPos).remove();
   SC.onSend = p => set(myPos, { ...p, g: g.id }).catch(() => {}); // g = どの試合の位置か(前の試合の「つかまった」が残らないように)
@@ -127,6 +151,8 @@ function hostTick() {
     }
     if (!hs.out[id]) pl[id] = p; // つかまった人は、荷物を取れない・奪えない
   }
+  if (ruleOf(hs) === "race") return hostRace(pl);
+  if (ruleOf(hs) === "tag") return hostTag(pl, now);
   if (lastOne()) return write(); // つかまった人がいて、のこり1人以下なら終わり(ぬけた人がいても)
   const pkg = hs.pkg || newPkg();
   if (pkg.state !== "held") {
@@ -151,7 +177,37 @@ function hostTick() {
 }
 function write() {
   hs.rev = (hs.rev || 0) + 1;
-  update(ref(db, roomPath(cur.code) + "/game"), { pkg: hs.pkg, dest: hs.dest || null, scores: hs.scores || null, phase: hs.phase, winner: hs.winner || null, rev: hs.rev, out: hs.out && Object.keys(hs.out).length ? hs.out : null, how: hs.how || null }).catch(console.error);
+  const r = ruleOf(hs), w = { phase: hs.phase, winner: hs.winner || null, rev: hs.rev };
+  if (r === "race") w.prog = hs.prog || null;
+  else if (r === "tag") Object.assign(w, { oni: hs.oni || null, since: hs.since || 0, left: hs.left, oniT: hs.oniT || null, loser: hs.loser || null });
+  else Object.assign(w, { pkg: hs.pkg, dest: hs.dest || null, scores: hs.scores || null, out: hs.out && Object.keys(hs.out).length ? hs.out : null, how: hs.how || null });
+  update(ref(db, roomPath(cur.code) + "/game"), w).catch(console.error);
+}
+// レース(v=26): 次のチェックポイントに近づいたら、通った数を1ふやす。ぜんぶ通った人の勝ち
+function hostRace(pl) {
+  const cps = hs.cps || [], prog = { ...(hs.prog || {}) }; let changed = false;
+  for (const id in pl) {
+    const n = prog[id] || 0; if (n >= cps.length) continue;
+    if (dist(pl[id], cps[n]) < RUN.cpDist) { prog[id] = n + 1; changed = true; if (n + 1 >= cps.length && hs.phase === "play") { hs.phase = "end"; hs.winner = id; } }
+  }
+  if (changed) { hs.prog = prog; write(); }
+}
+// 鬼ごっこ(v=26): 鬼がぶつかると交代。時間切れのときに鬼だった人の負け
+let tagLast = 0;
+function hostTag(pl, now) {
+  let changed = false; const dt = tagLast ? Math.min(1, (now - tagLast) / 1000) : 0; tagLast = now;
+  if (!hs.players[hs.oni]) { const ids = Object.keys(hs.players); hs.oni = ids[Math.floor(Math.random() * ids.length)] || null; hs.since = now; changed = true; } // 鬼がぬけた → だれかが鬼
+  const oni = hs.oni, op = pl[oni];
+  if (oni) { const t = { ...(hs.oniT || {}) }; t[oni] = Math.round(((t[oni] || 0) + dt) * 10) / 10; hs.oniT = t; }
+  if (op && now - (hs.since || 0) > TAG.tagGuard) {
+    let best = null, bd = TAG.tagDist;
+    for (const id in pl) { if (id === oni) continue; const d = dist(pl[id], op); if (d < bd) { bd = d; best = id; } }
+    if (best) { hs.oni = best; hs.since = now; changed = true; }
+  }
+  const left = Math.max(0, Math.ceil(((hs.endAt || now) - now) / 1000));
+  if (left !== hs.left) { hs.left = left; changed = true; }
+  if (left <= 0 && hs.phase === "play") { hs.phase = "end"; hs.loser = hs.oni; hs.winner = null; changed = true; }
+  if (changed) write();
 }
 // みんなつかまって、のこり1人なら勝ち。同時にのこり0人になったら、点の多い人の勝ち(同じ点なら引き分け)
 //   試合 g を見て、終わりなら { winner, how } を返す(まだなら null)。テストからも使う
@@ -175,17 +231,20 @@ function showResult(g) {
   if (cur.resultShown) return;
   cur.resultShown = true;
   const iAmHost = room.meta.host === cur.uid;
-  const name = id => (g.players[id] ? g.players[id].name : "?");
-  $("resTitle").textContent = !g.winner ? tr("引き分け！") : g.winner === cur.uid ? tr("あなたの勝ち！") : tr("{name} の勝ち！", { name: name(g.winner) });
-  $("resNote").textContent = g.how === "last" ? tr("ほかの人がみんな警察につかまった") : g.how === "draw" ? tr("みんな警察につかまった(同じ点)") : g.how === "caught" ? tr("みんな警察につかまった(点の多い人の勝ち)") : tr("{n}点先取の配達競争", { n: g.target || RACE.target });
+  const name = id => (g.players[id] ? g.players[id].name : "?"), rule = ruleOf(g);
+  if (rule === "tag") $("resTitle").textContent = g.loser === cur.uid ? tr("あなたの負け…") : g.loser ? tr("{name} の負け！", { name: name(g.loser) }) : tr("おわり！");
+  else $("resTitle").textContent = !g.winner ? tr("引き分け！") : g.winner === cur.uid ? tr("あなたの勝ち！") : tr("{name} の勝ち！", { name: name(g.winner) });
+  $("resNote").textContent = rule === "race" ? tr("チェックポイント{n}つのレース", { n: (g.cps || []).length }) : rule === "tag" ? tr("{n}分の鬼ごっこ。最後に鬼だった人の負け", { n: Math.round(TAG.time / 60) })
+    : g.how === "last" ? tr("ほかの人がみんな警察につかまった") : g.how === "draw" ? tr("みんな警察につかまった(同じ点)") : g.how === "caught" ? tr("みんな警察につかまった(点の多い人の勝ち)") : tr("{n}点先取の配達競争", { n: g.target || RACE.target });
   const ol = $("resList"); ol.textContent = "";
-  const ids = Object.keys(g.players).sort((a, b) => ((g.scores && g.scores[b]) || 0) - ((g.scores && g.scores[a]) || 0));
+  const val = id => rule === "race" ? (g.prog && g.prog[id]) || 0 : rule === "tag" ? -((g.oniT && g.oniT[id]) || 0) : (g.scores && g.scores[id]) || 0; // 上から、よかった順(鬼ごっこは、鬼だった時間が短い順)
+  const ids = Object.keys(g.players).sort((a, b) => val(b) - val(a));
   for (const id of ids) {
     const li = document.createElement("li");
     const dot = document.createElement("span"); dot.className = "dot"; dot.style.background = "#" + g.players[id].color.toString(16).padStart(6, "0");
-    const t = document.createElement("span"); t.textContent = name(id) + "　" + tr("{n}点", { n: (g.scores && g.scores[id]) || 0 });
+    const t = document.createElement("span"); t.textContent = name(id) + "　" + (rule === "race" ? tr("{a}/{b}", { a: val(id), b: (g.cps || []).length }) : rule === "tag" ? tr("鬼 {n}秒", { n: Math.round(-val(id)) }) : tr("{n}点", { n: val(id) }));
     li.append(dot, t);
-    const tags = []; if (id === cur.uid) tags.push(tr("あなた")); if (g.out && g.out[id]) tags.push(tr("つかまった"));
+    const tags = []; if (id === cur.uid) tags.push(tr("あなた")); if (g.out && g.out[id]) tags.push(tr("つかまった")); if (rule === "tag" && g.loser === id) tags.push(tr("最後の鬼"));
     if (tags.length) { const s = document.createElement("small"); s.textContent = " " + tags.join("・"); li.append(s); }
     ol.append(li);
   }
@@ -199,7 +258,7 @@ $("resAgain").addEventListener("click", () => {
   if (!cur || !room || room.meta.host !== cur.uid) return;
   const list = Object.entries(room.players || {}).map(([id, p]) => ({ id, ...p })).filter(p => p.online !== false)
     .sort((a, b) => (a.joinedAt || 0) - (b.joinedAt || 0) || (a.id < b.id ? -1 : 1));
-  update(ref(db, roomPath(cur.code)), { game: makeGame(list, room.meta.time), pos: null }).catch(console.error);
+  update(ref(db, roomPath(cur.code)), { game: makeGame(list, room.meta.time, room.meta.rule), pos: null }).catch(console.error);
 });
 $("resLobby").addEventListener("click", () => {
   if (!cur || !room || room.meta.host !== cur.uid) return;

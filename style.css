@@ -78,6 +78,8 @@ body.playing #joyBase, body.playing #joyKnob { display: block; }
 .times button.on { background: var(--accent); color: #222; border-color: var(--accent); }
 .times button:disabled { opacity: .55; }
 .times button.on:disabled { opacity: .85; }
+.times.rules button { font-size: 14px; }
+.ruleNote { margin: 4px 0 0; font-size: 12px; min-height: 1.2em; }
 .players small, #resList small { color: var(--muted); }
 .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; vertical-align: middle; }
 #err { position: fixed; bottom: 0; left: 0; right: 0; color: #fff; background: #a00; font-size: 12px; padding: 4px; display: none; z-index: 20; }

@@ -1479,6 +1479,8 @@ function markerColor(hex) { beamMat.color.setHex(hex); ringMat.color.setHex(hex)
 const pkgMesh = new THREE.Group();
 (function () { const b = new THREE.Mesh(BG(1.4, 1.1, 1.4), M(0xb07a3c)); pkgMesh.add(b); const t = new THREE.Mesh(BG(1.42, 0.2, 0.3), M(0xe8d7a0)); t.position.y = 0.46; pkgMesh.add(t); })();
 scene.add(pkgMesh); pkgMesh.visible = false;
+// 鬼ごっこの鬼のしるし(頭の上の赤いひし形。v=26)
+const oniMesh = new THREE.Mesh(BG(0.95, 0.95, 0.3), MB(0xff3030)); oniMesh.rotation.z = Math.PI / 4; scene.add(oniMesh); oniMesh.visible = false;
 
 /* ===== ゲームの状態 ===== */
 // お使い(黒マフィア)。say = 始まるときに、画面の下に出るひとこと
@@ -1600,14 +1602,14 @@ Object.assign(BOAT, glowMark(0x7fe8ff, BOAT.at.x, BOAT.at.z));
 const sailorPer = makePerson(0x1f3a6e, 0x1a1a2a, 0xc89870); part(sailorPer, 0.62, 0.16, 0.62, 0xffffff, 0, 2.5, 0); sailorPer.g.position.set(PORT.sailor.x + 1.8, 0.3, PORT.sailor.z - 1.6); sailorPer.g.rotation.y = -Math.PI / 2; sailorPer.g.visible = false;
 // mode: 'menu'(画面の後ろで街が動いている) / 'solo'(ひとり用) / 'race'(配達競争)
 //   lent = 情報屋に 0: まだ会っていない、1: 貸した、2: 貸さなかった。tru = トゥルーエンドの順番で貸した。sis = 倉庫で妹を見た
-const G = { twrDown: false, askId: 1, askI: 0, huntT: 0, mode: 'menu', started: false, over: false, money: 0, wanted: 0, mi: 0, si: 0, timeLeft: -1, play: 0, evade: 0, bust: 0, downT: 0, stunT: 0, shop: null, shopLock: null, hitCd: 0, spawnCd: 0, failWait: 0, waitMsg: '', free: null, done: {}, offer: null, markLock: null, freeT: 0, bosses: [], lent: 0, tru: 0, sis: 0, left: 0, bumps: 0, bumpCd: 0, ramCd: 0, busy: false, tp: null, story: null, sleep: false, camYaw: Math.PI, camDrag: 0, clock: DAY.race, phase: 'night', out: false, watchYaw: 0 };
+const G = { twrDown: false, askId: 1, askI: 0, huntT: 0, mode: 'menu', started: false, over: false, money: 0, wanted: 0, mi: 0, si: 0, timeLeft: -1, play: 0, evade: 0, bust: 0, downT: 0, stunT: 0, shop: null, shopLock: null, hitCd: 0, spawnCd: 0, failWait: 0, waitMsg: '', free: null, done: {}, offer: null, markLock: null, freeT: 0, bosses: [], lent: 0, tru: 0, sis: 0, left: 0, bumps: 0, bumpCd: 0, ramCd: 0, busy: false, tp: null, story: null, sleep: false, camYaw: Math.PI, camDrag: 0, clock: DAY.race, phase: 'night', out: false, watchYaw: 0, rule: 'deliver', tagUntil: 0 };
 // 配達競争の状態(online.js から setRace でもらう)
 const R = { me: null, state: null, remotes: {}, avatars: {}, sendT: 0 };
 let toastT = 0;
 function toast(s, t) { const e = $('toast'); e.textContent = s; e.style.opacity = 1; toastT = t || 2.2; }
 function addWanted(n) { if (G.mode !== 'solo') return; const before = G.wanted; G.wanted = Math.min(5, G.wanted + n); G.evade = 0; if (G.wanted > before && before === 0) toast(tr('警察に追われている！')); }
 // 配達競争(v=20): 人をひいた・パトカーにぶつけたときだけ追われる(★は1つだけ。ふえない)
-function raceWanted(msg) { if (G.mode !== 'race' || G.out || !G.started) return; if (!G.wanted) { G.wanted = 1; G.spawnCd = 0; toast(tr(msg), 2.4); } G.evade = 0; }
+function raceWanted(msg) { if (G.mode !== 'race' || G.rule !== 'deliver' || G.out || !G.started) return; if (!G.wanted) { G.wanted = 1; G.spawnCd = 0; toast(tr(msg), 2.4); } G.evade = 0; } // 警察が出るのは配達競争だけ(v=26)
 // お使いの間(大きな仕事が終わるまで)は、マフィアはおそってこない
 const peace = () => TUNE.peace && G.mi < MISSIONS.length;
 // ゲームが止まっている間(買い物・ミッションをえらぶ・お話・ねる)
@@ -2399,7 +2401,18 @@ function updateAvatars(dt) {
   }
 }
 function updateRaceMarks(t) {
-  const s = R.state; if (!s) { marker.visible = false; pkgMesh.visible = false; return; }
+  const s = R.state; if (!s) { marker.visible = false; pkgMesh.visible = false; oniMesh.visible = false; return; }
+  if (G.rule === 'race') { // レース(v=26): 自分の次のチェックポイント(緑の光)
+    pkgMesh.visible = false; oniMesh.visible = false; const cp = s.phase === 'play' && s.cps ? s.cps[(s.prog && s.prog[R.me]) || 0] : null;
+    R.cp = cp; marker.visible = !!cp; if (cp) { markerColor(0x4cff6a); marker.position.set(cp.x, 0, cp.z); } return;
+  }
+  if (G.rule === 'tag') { // 鬼ごっこ(v=26): 鬼の頭の上に赤いしるし。ほかの人には、鬼の所に赤い光
+    pkgMesh.visible = false; const o = s.oni; let x, z, car;
+    if (o === R.me) { x = player.x; z = player.z; car = player.mode === 'car'; }
+    else { const a = R.avatars[o]; if (!a || !a.seen) { oniMesh.visible = false; marker.visible = false; return; } x = a.x; z = a.z; car = a.car; }
+    oniMesh.visible = true; oniMesh.position.set(x, (car ? 3.2 : 3.4) + Math.sin(t * 4) * 0.15, z); oniMesh.rotation.y = t * 2;
+    marker.visible = o !== R.me && s.phase === 'play'; if (marker.visible) { markerColor(0xff4a4a); marker.position.set(x, 0, z); } return;
+  }
   const holder = raceHolder();
   pkgMesh.visible = true; pkgMesh.rotation.y = t * 1.5;
   if (!holder) { marker.visible = true; markerColor(0xffd23f); marker.position.set(s.pkg.x, 0, s.pkg.z); pkgMesh.position.set(s.pkg.x, 1.3 + Math.sin(t * 3) * 0.3, s.pkg.z); return; }
@@ -2483,6 +2496,7 @@ function updateHUD() {
   $('timer').textContent = G.timeLeft > 0 ? tr('残り {n} 秒', { n: Math.ceil(G.timeLeft) }) : ''; $('speed').textContent = player.mode === 'car' ? Math.round(Math.abs(player.car.v) * 3.6) + ' km/h' : '';
 }
 function updateRaceHUD() {
+  if (G.rule === 'race' || G.rule === 'tag') { updateRuleHUD(); return; }
   const s = R.state; let html = '<div class="t">' + tr('配達競争：{n}点先取', { n: (s && s.target) || 3 }) + '</div>';
   const w = watchTarget();
   if (!s) html += tr('準備中…');
@@ -2499,6 +2513,28 @@ function updateRaceHUD() {
   if (s && s.players) for (const id of Object.keys(s.players).sort((a, b) => (s.players[a].slot || 0) - (s.players[b].slot || 0))) sc += '<div' + (id === R.me ? ' class="me"' : '') + '><span class="dot" style="background:' + raceColor(id) + '"></span>' + esc(s.players[id].name) + '　' + tr('{n}点', { n: (s.scores && s.scores[id]) || 0 }) + (s.out && s.out[id] ? ' <small>' + tr('つかまった') + '</small>' : '') + '</div>';
   $('scores').innerHTML = sc; $('money').textContent = ''; $('clock').textContent = ''; $('timer').textContent = '';
   $('stars').innerHTML = G.wanted && !G.out ? '<span style="color:#ffd23f">★</span>' : ''; // 手配中は★が1つ
+  $('speed').textContent = player.mode === 'car' ? Math.round(Math.abs(player.car.v) * 3.6) + ' km/h' : '';
+}
+
+// レース・鬼ごっこの画面の文字(v=26)
+function updateRuleHUD() {
+  const s = R.state, race = G.rule === 'race', n = race && s && s.cps ? s.cps.length : 0, who = id => '<b style="color:' + raceColor(id) + '">' + esc(raceName(id)) + '</b>';
+  let html = '<div class="t">' + (race ? tr('レース：チェックポイント{n}つ', { n: n || 8 }) : tr('鬼ごっこ：のこり {n}秒', { n: s && typeof s.left === 'number' ? s.left : 180 })) + '</div>';
+  if (!s) html += tr('準備中…');
+  else if (s.phase === 'end') html += tr('おわり！');
+  else if (race) {
+    const k = (s.prog && s.prog[R.me]) || 0, cp = s.cps && s.cps[k];
+    html += tr('緑の光へ急げ！({a}/{b})', { a: k + 1, b: n }); if (cp) html += '<div class="d">' + tr('あと {d} m', { d: Math.round(Math.hypot(cp.x - player.x, cp.z - player.z)) }) + '</div>';
+  } else if (s.oni === R.me) {
+    const w = G.tagUntil - T; html += tr('あなたが鬼！ だれかにぶつかってタッチしよう') + '<div class="d">' + (w > 0 ? tr('{n}秒後にタッチできる', { n: Math.ceil(w) }) : tr('ミニマップで、みんなの場所がわかる')) + '</div>';
+  } else html += tr('{name}が鬼！ 逃げろ！', { name: who(s.oni) }) + '<div class="d">' + tr('赤い光の人が鬼') + '</div>';
+  $('mission').innerHTML = html;
+  let sc = '';
+  if (s && s.players) for (const id of Object.keys(s.players).sort((a, b) => (s.players[a].slot || 0) - (s.players[b].slot || 0))) {
+    const v = race ? tr('{a}/{b}', { a: (s.prog && s.prog[id]) || 0, b: n }) : tr('鬼 {n}秒', { n: Math.round((s.oniT && s.oniT[id]) || 0) });
+    sc += '<div' + (id === R.me ? ' class="me"' : '') + '><span class="dot" style="background:' + raceColor(id) + '"></span>' + esc(s.players[id].name) + '　' + v + (!race && s.oni === id ? ' <small>' + tr('鬼') + '</small>' : '') + '</div>';
+  }
+  $('scores').innerHTML = sc; $('money').textContent = ''; $('clock').textContent = ''; $('timer').textContent = ''; $('stars').innerHTML = '';
   $('speed').textContent = player.mode === 'car' ? Math.round(Math.abs(player.car.v) * 3.6) + ' km/h' : '';
 }
 
@@ -2664,13 +2700,15 @@ const SC = window.SC = {
   openPause, closePause, writeSuspend, readSuspend, clearSuspend, autoSuspend, initStart, streetAt, // 一時停止と中断・通りの名前(v=23)
   CAR_TYPES, newCar, removeCar, enterCar, exitCar, carDist, segPair, carSeg, // 車の種類(v=21)
   G, R, player, cars, peds, TUNE, MISSIONS, FREE, HOME, save, readSave, applySave, curM, pointBlocked, P, gangs, pickups, npcs, SHOPS, HOSPITAL, SHOP_ITEMS, closeShop, WEAPONS, MKT, MKW, shots, newNpc, confiscate, DAY, setClock, vendors, TALK, LINES, QAS, makeVip, startTalk, answerTalk, pickLine, getTalk: () => talk, camera, BOAT, PORT, MX, STORY, SNEAK, freeOpen, story, say, finish, openSleep, sleepTo, bump, CLUB, NEON_MATS, STALL_POS, APT, INTRO, INFO, LURE, BOSSCAR, RUMORS, infoPer, setTeam, applyTeams, inCT, newGang, damageGang, GANG_W, PGD, TOWER, INFO2, BOSS_AT, MK_DEEP, WAREHOUSE, twrInfo, twrOyaji, isCalm, CALM_LINES, endScene, END, ENDS, closeOffer, hurtPlayer, callMinions,
+  raceMarker: () => marker, oniMark: () => oniMesh, // テスト用(v=26)
   onSend: null, onQuit: null,
   startSolo,
   showOnly, setPlaying,
   onRoad: (x, z) => !inMerged(x, z), // 道路の上か(つなげた区画の中は道路ではない)
   extraSpots: EXTRA_SPOTS,
   // 配達競争を始める。slot は 0〜3(並ぶ場所)
-  startRace(meId, slot, color, time) {
+  startRace(meId, slot, color, time, rule) {
+    G.rule = ['race', 'tag'].includes(rule) ? rule : 'deliver'; G.tagUntil = T + 5; // ルール(v=26)。鬼ごっこは、始まって5秒はタッチできない
     document.body.classList.remove('solo'); G.mode = 'race'; G.wanted = 0; G.bust = 0; G.evade = 0; G.out = false; G.stunT = 0; player.per.g.rotation.x = 0; removeAllPolice(); R.me = meId; R.state = null; R.remotes = {};
     setClock(TUNE.raceAt[time] || DAY.race); // 配達競争の時間は、ホストがえらぶ(時間は流れない。見た目だけ変わる)
     const sp = RACE_SPAWN[slot % 4], c0 = P(3, 3); const x = c0.x + sp[0] * sp[2] + sp[1] * 3.2, z = c0.z + sp[1] * sp[2] - sp[0] * 3.2, h = Math.atan2(sp[0], sp[1]);
@@ -2678,13 +2716,13 @@ const SC = window.SC = {
     if (R.myCar) removeCar(R.myCar);
     const car = R.myCar = newCar('parked', x, z, h, color || 0xffffff);
     enterCar(car);
-    showOnly(null); setPlaying(true); toast(tr('配達競争スタート！'), 2.2);
+    showOnly(null); setPlaying(true); toast(tr(G.rule === 'race' ? 'レーススタート！' : G.rule === 'tag' ? '鬼ごっこスタート！' : '配達競争スタート！'), 2.2);
   },
   stopRace() {
     if (G.mode !== 'race') return;
     for (const id in R.avatars) dropAvatar(R.avatars[id]);
-    R.avatars = {}; R.remotes = {}; R.state = null; marker.visible = false; pkgMesh.visible = false;
-    G.wanted = 0; G.bust = 0; G.out = false; removeAllPolice(); $('warn').textContent = '';
+    R.avatars = {}; R.remotes = {}; R.state = null; marker.visible = false; pkgMesh.visible = false; oniMesh.visible = false;
+    G.wanted = 0; G.bust = 0; G.out = false; G.rule = 'deliver'; removeAllPolice(); $('warn').textContent = '';
     $('scores').innerHTML = ''; setPlaying(false); G.mode = 'menu'; resetPlayerToFoot(startX, startZ, startH); setClock(DAY.race);
   },
   // ほかの人の位置 { id: { x, z, h, c(車なら1), v } }
@@ -2699,7 +2737,15 @@ const SC = window.SC = {
   // 試合の状態(ホストが決めたもの)
   setRace(s) {
     const prev = R.state; R.state = s;
+    if (s && G.rule === 'tag' && s.oni && (!prev || prev.oni !== s.oni)) { // 鬼ごっこ(v=26): 鬼が変わった
+      const nm = raceName(s.oni);
+      if (!prev) toast(tr(s.oni === R.me ? 'あなたが鬼！ 5秒後にタッチできる' : '{name}が鬼！ 逃げろ！', { name: nm }), 2.6);
+      else { G.tagUntil = T + 3; toast(s.oni === R.me ? tr('タッチされた！ あなたが鬼') : prev.oni === R.me ? tr('タッチ！ {name}が鬼になった', { name: nm }) : tr('{name}が鬼になった', { name: nm }), 2.2); }
+      return;
+    }
     if (!s || !prev) return;
+    if (G.rule === 'race') { const a = (prev.prog && prev.prog[R.me]) || 0, b = (s.prog && s.prog[R.me]) || 0; if (b > a && s.phase === 'play') toast(tr('チェックポイント {a}/{b}！', { a: b, b: (s.cps || []).length }), 1.6); return; } // レース(v=26)
+    if (G.rule === 'tag') return;
     const ph = prev.pkg && prev.pkg.state === 'held' ? prev.pkg.holder : null, nh = s.pkg && s.pkg.state === 'held' ? s.pkg.holder : null;
     let scored = null; for (const id in s.scores || {}) if ((s.scores[id] || 0) > ((prev.scores && prev.scores[id]) || 0)) scored = id;
     let caught = null; for (const id in s.out || {}) if (!(prev.out && prev.out[id])) caught = id; // だれかがつかまった(v=20)

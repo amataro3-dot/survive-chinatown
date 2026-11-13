@@ -6,7 +6,7 @@
 <!-- 作りかけなので Google の検索には出さない(完成してトップに載せるときに、この行を消す) -->
 <meta name="robots" content="noindex">
 <title>SURVIVE CHINATOWN</title>
-<link rel="stylesheet" href="style.css?v=25">
+<link rel="stylesheet" href="style.css?v=26">
 </head>
 <body>
 <canvas id="c"></canvas>
@@ -49,7 +49,7 @@
     <h1>SURVIVE CHINATOWN</h1>
     <p class="sub" data-t>チャイナタウンで生き延びろ</p>
     <p class="landNote" data-t>📱 このゲームは<b>横向き</b>で遊びます</p>
-    <button class="btn-big online" id="goOnline" data-t>みんなで配達競争(オンライン)</button>
+    <button class="btn-big online" id="goOnline" data-t>みんなで対戦(オンライン)</button>
     <button class="btn-big hidden" id="goSusp"></button>
     <button class="btn-big hidden" id="goCont"></button>
     <button class="btn-big" id="goSolo" data-t>ひとりで遊ぶ(ミッション)</button>
@@ -58,8 +58,8 @@
     <h2 data-t>ひとりで遊ぶ</h2>
     <p data-t>マフィアのお使いをこなして、お金をかせごう。人をはねたり、車にぶつけたりすると手配度(★)が上がって警察が追ってくる。警察官につかまると逮捕！<br>光るマークの店で、武器(赤)や薬(緑)が買える。<br>家(青い光)に入るとセーブして、体力が全回復する。ミッションをクリアしたときも、自動でセーブする。</p>
     <p data-t>家の「ねる」で、朝・夕方・夜を変えられる(夜だけ・昼だけのミッションがある)。<br>お金をためて、港の船(水色の光)で街を出よう。</p>
-    <h2 data-t>配達競争(2〜4人)</h2>
-    <p data-t>荷物を先に取って、届け先まで運ぶと1点。荷物を持っている人にぶつかると奪える。先に3点取った人の勝ち！</p>
+    <h2 data-t>オンライン対戦(2〜4人)</h2>
+    <p data-t>ルールはホストが待合室でえらぶ。<br>配達競争：荷物を先に取って、届け先まで運ぶと1点。荷物を持っている人にぶつかると奪える。先に3点取った人の勝ち！<br>レース：光るチェックポイントを順番に8つ回って、先にゴールした人の勝ち！<br>鬼ごっこ：鬼にぶつかられると鬼が交代。3分たったときに鬼だった人の負け！</p>
     <p class="links"><a href="https://muddys-games.com/" data-home data-t>Muddy's Games トップ</a>　<a href="https://muddys-games.com/privacy.html" data-t>プライバシーポリシー</a></p>
   </div>
 </section>
@@ -67,7 +67,7 @@
 <!-- ロビー(オンライン対戦の待合室) -->
 <section id="lobby" class="overlay hidden">
   <div class="panel">
-    <h1 data-t>配達競争</h1>
+    <h1 data-t>オンライン対戦</h1>
     <!-- 入り口: 名前を入れて、ルームを作る or 参加 -->
     <div id="lbEntry">
       <label class="field"><span data-t>あなたの名前</span>
@@ -90,6 +90,11 @@
         <div class="players-head"><span data-t>参加者</span><span id="lbCount"></span></div>
         <ol id="lbPlayers"></ol>
       </div>
+      <!-- ルール(ホストだけえらべる。v=26) -->
+      <div class="times rules"><span class="tl" data-t>ルール</span>
+        <button id="lbRdeliver" data-t>配達競争</button><button id="lbRrace" data-t>レース</button><button id="lbRtag" data-t>鬼ごっこ</button>
+      </div>
+      <p class="sub ruleNote" id="lbRuleNote"></p>
       <!-- 時間(ホストだけえらべる。見た目だけ変わる) -->
       <div class="times"><span class="tl" data-t>時間</span>
         <button id="lbTday" data-time="day">☀ <span data-t>昼</span></button><button id="lbTeve" data-time="eve">◐ <span data-t>夕方</span></button><button id="lbTnight" data-time="night">☾ <span data-t>夜</span></button>
@@ -183,9 +188,9 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <!-- 縦に持ったときの警告(スタート・待合室・ゲーム中のどこでも出る。横にすると消える) -->
 <div id="rotate"><div class="rotBox"><div class="phone"></div><p class="rotT" data-t>⚠ 画面が縦になっています</p><p class="rotS" data-t>スマホを横にしてね</p></div></div>
-<script src="i18n.js?v=25"></script>
-<script src="backguard.js?v=25"></script>
-<script src="main.js?v=25"></script>
-<script type="module" src="lobby.js?v=25"></script>
+<script src="i18n.js?v=26"></script>
+<script src="backguard.js?v=26"></script>
+<script src="main.js?v=26"></script>
+<script type="module" src="lobby.js?v=26"></script>
 </body>
 </html>

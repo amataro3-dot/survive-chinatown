@@ -8,8 +8,8 @@
 import {
   db, auth, ref, get, set, update, remove, onValue,
   onDisconnect, serverTimestamp, runTransaction, signInAnonymously
-} from "./firebase.js?v=25";
-import { sync as syncGame, makeGame, roomPath, TIMES } from "./online.js?v=25";
+} from "./firebase.js?v=26";
+import { sync as syncGame, makeGame, roomPath, TIMES, RULES } from "./online.js?v=26";
 
 const MAX_PLAYERS = 4;
 const MIN_PLAYERS = 2;
@@ -218,6 +218,10 @@ function render() {
   // 時間(v=20): ホストだけえらべる。はじめは夜
   const time = TIMES.includes(room.meta && room.meta.time) ? room.meta.time : "night";
   for (const k of TIMES) { const b = $("lbT" + k); b.classList.toggle("on", k === time); b.disabled = !iAmHost || started; }
+  // ルール(v=26): ホストだけえらべる。はじめは配達競争
+  const rule = RULES.includes(room.meta && room.meta.rule) ? room.meta.rule : "deliver";
+  for (const k of RULES) { const b = $("lbR" + k); b.classList.toggle("on", k === rule); b.disabled = !iAmHost || started; }
+  $("lbRuleNote").textContent = tr(RULE_NOTE[rule]);
   $("lbStart").classList.toggle("hidden", !iAmHost || started);
   $("lbStart").disabled = onlineCount < MIN_PLAYERS;
   $("lbReset").classList.toggle("hidden", !iAmHost || !started);
@@ -228,7 +232,7 @@ $("lbStart").addEventListener("click", () => guard(async () => {
   const list = playerList();
   const on = list.filter(isOnline);
   if (on.length < MIN_PLAYERS) return;
-  const changes = { "meta/started": true, "meta/startedAt": serverTimestamp(), game: makeGame(on, room.meta.time), pos: null };
+  const changes = { "meta/started": true, "meta/startedAt": serverTimestamp(), game: makeGame(on, room.meta.time, room.meta.rule), pos: null };
   for (const p of list) if (!isOnline(p)) changes["players/" + p.id] = null; // 切断中の人はこの試合に入れない
   await update(ref(db, roomPath(code)), changes);
 }));
@@ -237,6 +241,17 @@ $("lbStart").addEventListener("click", () => guard(async () => {
 for (const k of TIMES) $("lbT" + k).addEventListener("click", () => {
   if (!room || !room.meta || room.meta.host !== uid || room.meta.started) return;
   update(ref(db, roomPath(code) + "/meta"), { time: k }).catch(console.error);
+});
+
+// ルールをえらぶ(v=26。ホストだけ。試合の前だけ)
+const RULE_NOTE = {
+  deliver: "荷物を届けると1点。持っている人にぶつかると奪える。先に3点取った人の勝ち",
+  race: "光るチェックポイントを順番に8つ回る。先にゴールした人の勝ち",
+  tag: "鬼にぶつかられると、鬼が交代。3分たったときに鬼だった人の負け",
+};
+for (const k of RULES) $("lbR" + k).addEventListener("click", () => {
+  if (!room || !room.meta || room.meta.host !== uid || room.meta.started) return;
+  update(ref(db, roomPath(code) + "/meta"), { rule: k }).catch(console.error);
 });
 
 // ロビーにもどす
