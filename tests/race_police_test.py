@@ -104,7 +104,7 @@ with sync_playwright() as p:
     check(ev(b, "SC.cars.filter(c => c.kind === 'police').length") == 0 and ev(b, "SC.npcs.filter(n => n.kind === 'cop').length") == 0, "つかまったらパトカーと警察官は消える")
     check("観戦" in b.inner_text("#mission") and "を見ている" in b.inner_text("#mission"), "B の画面は「観戦中 ○○ を見ている」")
     x0, z0 = ev(b, "SC.player.x"), ev(b, "SC.player.z")
-    b.keyboard.down("ArrowUp"); wait(b, 600); b.keyboard.up("ArrowUp"); b.keyboard.press("e"); wait(b, 300)
+    b.dispatch_event("#accBtn", "pointerdown"); wait(b, 600); b.dispatch_event("#accBtn", "pointerup"); b.dispatch_event("#enterBtn", "pointerdown"); wait(b, 300)
     check(abs(ev(b, "SC.player.x") - x0) + abs(ev(b, "SC.player.z") - z0) < 0.1 and ev(b, "SC.player.mode") == "foot", "観戦中は動けない・車に乗れない")
     wait(a, 400)
     check(not ev(a, "SC.R.avatars.uid_B.seen") and not ev(a, "SC.R.avatars.uid_B.cop.seen"), "A の画面から B とパトカーが消える")

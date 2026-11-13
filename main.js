@@ -1212,7 +1212,7 @@ function updateAim(dt) {
     aimMat.color.setHex(tg ? 0xff2a2a : 0xffb0a0); // 敵に当たる線は、こい赤
   }
   if (gun && ok && player.atkCd <= 0) {
-    if (WEAPONS[wk].auto && (atk || keys.KeyJ)) { // マシンガン: 押している間
+    if (WEAPONS[wk].auto && atk) { // マシンガン: 押している間
       if (atk && atk.aim) fireGun(wk, aimDir(), AIM.assist, false); else fireGun(wk, player.h, AIM.tapAssist, true);
     } else if (pendShot && (wk === 'pistol' || isThrown(wk))) { const ps = pendShot; pendShot = null; if (ps.dir !== null) player.h = ps.dir; shoot(wk, ps.dir === null ? player.h : ps.dir, ps.assist, ps.turn); }
   }
@@ -1445,7 +1445,7 @@ scene.add(pkgMesh); pkgMesh.visible = false;
 /* ===== ゲームの状態 ===== */
 // お使い(黒マフィア)。say = 始まるときに、画面の下に出るひとこと
 const MISSIONS = [
-  { title: '車に乗ろう', reward: 300, steps: [{ type: 'car', text: '近くの赤い車に近づいて「乗る」(Eキー)で乗ろう' }] },
+  { title: '車に乗ろう', reward: 300, steps: [{ type: 'car', text: '近くの赤い車に近づいて「乗る」で乗ろう' }] },
   { title: 'はじめての配達', reward: 1500, say: { name: '黒の男', text: '中身は聞くな。届けろ。それだけだ' }, steps: [{ type: 'go', pos: P(2, 5), text: '荷物を受け取りに行こう(黄色い光)', done: '荷物ゲット！' }, { type: 'go', pos: P(5, 1), text: '荷物を届けよう' }] },
   { title: '急ぎの配達', reward: 2500, say: { name: '黒の男', text: '遅れた分は、利子につける' }, steps: [{ type: 'go', pos: P(1, 1), text: '急ぎの荷物を受け取ろう', done: '荷物ゲット！' }, { type: 'go', pos: P(5, 5), text: '50秒以内に届けろ！', time: 50 }] },
   { title: 'あやしい荷物', reward: 4000, say: { name: '黒の男', text: '警察に止められても、うちの名前は出すな' }, steps: [{ type: 'go', pos: P(0, 3), text: 'あやしい荷物を受け取れ', done: '荷物ゲット！' }, { type: 'go', pos: { x: 168, z: 60 }, text: '警察をかわして港の船へ運べ！', wanted: 2 }] },
@@ -1992,9 +1992,8 @@ function updateClock(dt) {
 }
 
 /* ===== 操作 ===== */
-const input = { jx: 0, jy: 0, dash: false, brake: false, acc: false, rev: false }; const keys = {};
-addEventListener('keydown', e => { if (e.target && e.target.tagName === 'INPUT') return; keys[e.code] = true; if (e.code === 'KeyE' || e.code === 'KeyF') toggleCar(); if (e.code === 'KeyJ') playerAttack(); if (e.code === 'KeyQ') switchWeapon(); if (e.code === 'Space') e.preventDefault(); });
-addEventListener('keyup', e => { keys[e.code] = false; });
+// スマホだけで遊ぶ(パソコン版は作らない。2026-11-13)。キーボードの操作はない
+const input = { jx: 0, jy: 0, dash: false, brake: false, acc: false, rev: false };
 let joy = null, camTouch = null, dashHeld = false;
 const touchEl = $('touch'), jk = $('joyKnob');
 const JX = 80, JB = 80;
@@ -2030,12 +2029,11 @@ holdBtn('dashBtn', 'dash'); holdBtn('accBtn', 'acc'); holdBtn('brkBtn', 'brk'); 
 function releaseHeld() { for (const k in held) held[k] = false; for (const id of ['dashBtn', 'accBtn', 'brkBtn', 'revBtn']) $(id).classList.remove('on'); }
 function readInput() {
   let jx = 0, jy = 0;
-  if (keys.KeyA || keys.ArrowLeft) jx -= 1; if (keys.KeyD || keys.ArrowRight) jx += 1; if (keys.KeyW || keys.ArrowUp) jy += 1; if (keys.KeyS || keys.ArrowDown) jy -= 1;
   if (joy) { jx += joy.dx / 50; jy -= joy.dy / 50; }
   input.jx = clamp(jx, -1, 1); input.jy = clamp(jy, -1, 1);
-  input.dash = held.dash || keys.ShiftLeft || keys.ShiftRight;
-  // 車: アクセル・ブレーキ・バックのボタン(スティックは左右のハンドルだけ)。パソコンのキーは今のまま(W・S・Space)
-  input.acc = held.acc || keys.KeyW || keys.ArrowUp; input.rev = held.rev || keys.KeyS || keys.ArrowDown; input.brake = held.brk || keys.Space;
+  input.dash = held.dash;
+  // 車: アクセル・ブレーキ・バックのボタン(スティックは左右のハンドルだけ)
+  input.acc = held.acc; input.rev = held.rev; input.brake = held.brk;
   if (G.out) { input.jx = input.jy = 0; input.dash = input.acc = input.rev = false; input.brake = true; } // 配達競争でつかまった人は動けない
 }
 

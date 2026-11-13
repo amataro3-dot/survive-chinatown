@@ -65,7 +65,7 @@ with sync_playwright() as p:
 
     # ---------- 動く・同じ場所に見える ----------
     x0 = ev(b, "SC.player.x"); z0 = ev(b, "SC.player.z")
-    b.keyboard.down("ArrowUp"); wait(b, 900); b.keyboard.up("ArrowUp"); b.keyboard.down("Space"); wait(b, 1500); b.keyboard.up("Space"); wait(b, 500)
+    b.dispatch_event("#accBtn", "pointerdown"); wait(b, 900); b.dispatch_event("#accBtn", "pointerup"); b.dispatch_event("#brkBtn", "pointerdown"); wait(b, 1500); b.dispatch_event("#brkBtn", "pointerup"); wait(b, 500)
     x1 = ev(b, "SC.player.x"); z1 = ev(b, "SC.player.z")
     check(abs(x1 - x0) + abs(z1 - z0) > 3, f"B が運転して動く(({x0:.0f},{z0:.0f})→({x1:.0f},{z1:.0f}))")
     ax = ev(a, "SC.R.avatars.uid_B.x"); az = ev(a, "SC.R.avatars.uid_B.z")
@@ -140,8 +140,8 @@ with sync_playwright() as p:
     s = open_phone("S")
     s.click("#goSolo"); wait(s, 500)
     check(ev(s, "SC.G.mode") == "solo" and "ミッション1" in s.inner_text("#mission"), "ひとりで遊ぶ → ミッション1が始まる")
-    s.keyboard.press("e"); wait(s, 300)
-    check(ev(s, "SC.player.mode") == "car", "E で近くの車に乗れる")
+    s.dispatch_event("#enterBtn", "pointerdown"); wait(s, 300)
+    check(ev(s, "SC.player.mode") == "car", "「乗る」で近くの車に乗れる")
     s.screenshot(path=f"{SHOTS}/o5_solo.png")
 
     check(not errors, "エラーなし" + ("" if not errors else ": " + " / ".join(errors[:5])))

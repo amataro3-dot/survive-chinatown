@@ -16,12 +16,15 @@ eval(fs.readFileSync(require('path').join(__dirname,'..','i18n.js'),'utf8'));
 eval(code);
 el('goSolo')._l.click();
 function step(n,keys){for(let i=0;i<n;i++){now+=16;for(let j=pending.length-1;j>=0;j--)if(pending[j][0]<=now){const f=pending[j][1];pending.splice(j,1);f();}raf(now);}}
-const kd=c=>global._l.keydown({code:c,preventDefault(){}}),ku=c=>global._l.keyup({code:c});
+// 画面のボタンとスティックで操作する(スマホだけ。キーボードはない。v=22)
+const ev=(x,y,id)=>({pointerId:id||1,clientX:x,clientY:y,preventDefault(){},stopPropagation(){}});
+const btn=(id,t)=>el(id)._l[t](ev(0,0,9));
+const stick=(dx,dy)=>{const t=el('touch')._l;if(dx===null){t.pointerup(ev(80,320,1));return;}t.pointerdown(ev(80,320,1));t.pointermove(ev(80+dx,320+dy,1));};
 step(30);
-kd('KeyW');step(20);ku('KeyW');
-kd('KeyE');ku('KeyE');step(5);
+stick(0,-50);step(20);stick(null);
+btn('enterBtn','pointerdown');step(5);
 console.log('mission text',els.mission.innerHTML);
-kd('KeyW');step(200);kd('KeyA');step(100);ku('KeyA');step(300);ku('KeyW');
+btn('accBtn','pointerdown');step(200);stick(-50,0);step(100);stick(null);step(300);btn('accBtn','pointerup');
 console.log('speed',els.speed.textContent,'money',els.money.textContent,'stars',(els.stars.innerHTML.match(/ffd23f/g)||[]).length);
 
 const D={G:SC.G,player:SC.player,cars:SC.cars,MISSIONS:SC.MISSIONS,peds:SC.peds};console.log('hooked',!!D);

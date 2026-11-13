@@ -29,9 +29,9 @@ with sync_playwright() as p:
     def quiet(clock=350): do(f"SC.DAY.speed=0; SC.setClock({clock}); SC.TUNE.gang.turf=0; SC.gangs.forEach(g=>{{ g.per.g.visible=false; g.hp=0; g.dead=-1e9; }})")
     def tp(x, z, w=250): do(f"const c=P.car; if(c){{c.x={x};c.z={z};c.v=0;}} P.x={x}; P.z={z}"); pg.wait_for_timeout(w)
     def foot():
-        if ev("SC.player.mode") == 'car': pg.keyboard.press("KeyE"); pg.wait_for_timeout(150)
+        if ev("SC.player.mode") == 'car': pg.dispatch_event("#enterBtn", "pointerdown"); pg.wait_for_timeout(150)
     def incar(pick="SC.cars.find(c=>c.kind==='parked')"):
-        foot(); do(f"const c={pick}; P.x=c.x+1.8; P.z=c.z"); pg.wait_for_timeout(120); pg.keyboard.press("KeyE"); pg.wait_for_timeout(150)
+        foot(); do(f"const c={pick}; P.x=c.x+1.8; P.z=c.z"); pg.wait_for_timeout(120); pg.dispatch_event("#enterBtn", "pointerdown"); pg.wait_for_timeout(150)
     F = lambda i: ev(f"(()=>{{const f=SC.FREE.find(f=>f.id==='{i}'); return {{x:f.at.x,z:f.at.z,r:f.reward,open:SC.freeOpen(f),vis:f.g.visible,steps:f.steps.map(s=>({{x:(s.pos||{{}}).x,z:(s.pos||{{}}).z}}))}}}})()")
     def take(i, yes=True):  # 紫の光に入って、受ける
         foot(); f = F(i); tp(f['x'] + 8, f['z']); tp(f['x'], f['z'])

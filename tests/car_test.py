@@ -46,7 +46,7 @@ with sync_playwright() as p:
     def drive(t, ms):
         ev("(()=>{ if (SC.player.car) SC.exitCar(); for (let i=SC.cars.length-1;i>=0;i--) SC.removeCar(SC.cars[i]); return 0 })()")
         i = put(t); ev(f"(()=>{{ SC.player.x={X0}; SC.player.z={Z0}; SC.enterCar(SC.cars[{i}]); return 0 }})()")
-        pg.keyboard.down("KeyW"); pg.wait_for_timeout(ms); pg.keyboard.up("KeyW")
+        pg.dispatch_event("#accBtn", "pointerdown"); pg.wait_for_timeout(ms); pg.dispatch_event("#accBtn", "pointerup")
         return ev("SC.player.car.v")
     sp = {t: drive(t, 1500) for t in ["sedan", "sports", "truck", "bus"]}
     print("  1.5秒後の速さ:", {k: round(v, 1) for k, v in sp.items()})
@@ -54,18 +54,21 @@ with sync_playwright() as p:
     # 最高速度: 速すぎる所から、アクセルで最高速度に近づく
     def topv(t):
         drive(t, 50); ev("(()=>{ SC.player.car.v = SC.CAR_TYPES[SC.player.car.type].max + 0.0; return 0 })()")
-        pg.keyboard.down("KeyW"); pg.wait_for_timeout(300); pg.keyboard.up("KeyW")
+        pg.dispatch_event("#accBtn", "pointerdown"); pg.wait_for_timeout(300); pg.dispatch_event("#accBtn", "pointerup")
         return ev("SC.player.car.v")
     tb, ts = topv("bus"), topv("sports")
     check(20 < tb <= 22.05 and 39 < ts <= 42.05, f"最高速度: バス 約79km/h({tb * 3.6:.0f})、スポーツカー 約151km/h({ts * 3.6:.0f})")
     def turn(t):
         drive(t, 50); ev("(()=>{ SC.player.car.v=12; SC.player.car.h=Math.PI/2; return 0 })()")
-        pg.keyboard.down("KeyD"); pg.wait_for_timeout(400); pg.keyboard.up("KeyD")
+        pg.dispatch_event("#touch", "pointerdown", {"pointerId": 7, "clientX": 80, "clientY": 310}); pg.dispatch_event("#touch", "pointermove", {"pointerId": 7, "clientX": 140, "clientY": 310}); pg.wait_for_timeout(400); pg.dispatch_event("#touch", "pointerup", {"pointerId": 7, "clientX": 140, "clientY": 310})  # スティックを右へ
         return abs(ev("SC.player.car.h") - math.pi / 2)
     tu = {t: turn(t) for t in ["sports", "sedan", "bus"]}
     print("  曲がった角度:", {k: round(v, 2) for k, v in tu.items()})
     check(tu["sports"] > tu["sedan"] > tu["bus"] > 0, "曲がりやすさは スポーツカー > セダン > バス")
 
+    # キーボードでは動かない(スマホだけ。2026-11-13)
+    drive("sedan", 50); ev("(()=>{ SC.player.car.v=0; return 0 })()"); pg.keyboard.down("KeyW"); pg.wait_for_timeout(400); pg.keyboard.up("KeyW"); pg.keyboard.press("KeyE"); pg.wait_for_timeout(200)
+    check(abs(ev("SC.player.car.v")) < 0.5 and ev("SC.player.mode") == "car", "キーボード(W・E)では動かない・降りない")
     # ---------- 長い車のぶつかり ----------
     ev("(()=>{ if (SC.player.car) SC.exitCar(); for (let i=SC.cars.length-1;i>=0;i--) SC.removeCar(SC.cars[i]); return 0 })()")
     bi = put("bus", x=X0 + 20, z=Z0, h=math.pi / 2)

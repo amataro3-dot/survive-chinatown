@@ -49,7 +49,7 @@ with sync_playwright() as p:
 
     # ---------- クリアで自動セーブ ----------
     tp(H['sx'], H['sz']); ev("(()=>{ const c=SC.cars.find(c=>c.kind==='parked'); SC.player.x=c.x+1.6; SC.player.z=c.z; return 0 })()"); pg.wait_for_timeout(200)
-    pg.keyboard.press("KeyE"); pg.wait_for_timeout(500)
+    pg.dispatch_event("#enterBtn", "pointerdown"); pg.wait_for_timeout(500)
     check(ev("SC.G.mi") == 1 and saved()['mi'] == 1 and saved()['money'] == 1534, "ミッションをクリアすると自動でセーブ")
 
     # ---------- つづきから ----------

@@ -28,9 +28,9 @@ with sync_playwright() as p:
     def quiet(clock=500): do(f"SC.DAY.speed=0; SC.setClock({clock}); SC.TUNE.gang.turf=0; SC.gangs.forEach(g=>{{ g.per.g.visible=false; g.hp=0; g.dead=-1e9; }})")
     def tp(x, z, w=250): do(f"const c=P.car; if(c){{c.x={x};c.z={z};c.v=0;}} P.x={x}; P.z={z}"); pg.wait_for_timeout(w)
     def foot():
-        if ev("SC.player.mode") == 'car': pg.keyboard.press("KeyE"); pg.wait_for_timeout(150)
+        if ev("SC.player.mode") == 'car': pg.dispatch_event("#enterBtn", "pointerdown"); pg.wait_for_timeout(150)
     def incar(pick="SC.cars.find(c=>c.kind==='parked')"):
-        foot(); do(f"const c={pick}; P.x=c.x+1.8; P.z=c.z"); pg.wait_for_timeout(120); pg.keyboard.press("KeyE"); pg.wait_for_timeout(150)
+        foot(); do(f"const c={pick}; P.x=c.x+1.8; P.z=c.z"); pg.wait_for_timeout(120); pg.dispatch_event("#enterBtn", "pointerdown"); pg.wait_for_timeout(150)
     F = lambda i: ev(f"(()=>{{const f=SC.FREE.find(f=>f.id==='{i}'); return {{x:f.at.x,z:f.at.z,open:SC.freeOpen(f),vis:f.g.visible,steps:f.steps.map(s=>({{x:(s.pos||{{}}).x,z:(s.pos||{{}}).z}}))}}}})()")
     def take(i, yes=True):
         foot(); f = F(i); tp(f['x'] + 8, f['z']); tp(f['x'], f['z'])
@@ -108,7 +108,7 @@ with sync_playwright() as p:
     L = ev("({fx:SC.LURE.from.x,fz:SC.LURE.from.z,tx:SC.LURE.to.x,tz:SC.LURE.to.z})")
     tp(L['fx'] + 2, L['fz'] + 1, 600)
     check(ev("SC.G.si") == 1 and ev("SC.MX.foes.filter(g=>g.lure).every(g=>g.state==='chase')") and "ついてきている 3人" in txt("#mission"), "近づくと気づかれて、3人とも追ってくる")
-    do("const c=SC.cars.find(c=>c.kind==='parked'&&c!==SC.MX.mcar); c.x=P.x+3; c.z=P.z; c.v=0"); pg.wait_for_timeout(100); pg.keyboard.press("KeyE"); pg.wait_for_timeout(300)
+    do("const c=SC.cars.find(c=>c.kind==='parked'&&c!==SC.MX.mcar); c.x=P.x+3; c.z=P.z; c.v=0"); pg.wait_for_timeout(100); pg.dispatch_event("#enterBtn", "pointerdown"); pg.wait_for_timeout(300)
     check(ev("SC.G.free") is None and "車に乗った" in txt("#toast") and F('info2')['open'], "車に乗ると、手下があきらめて失敗。光がもどる")
     foot(); f = take('info2'); tp(L['fx'] + 2, L['fz'] + 1, 500); do("SC.MX.foes.filter(g=>g.lure).slice(0,2).forEach(g=>{ g.hp=0 })"); pg.wait_for_timeout(300)
     check(ev("SC.G.free") is None and "たおしすぎた" in txt("#toast"), "手下をたおして1人になると失敗")
