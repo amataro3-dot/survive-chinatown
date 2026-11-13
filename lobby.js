@@ -8,8 +8,8 @@
 import {
   db, auth, ref, get, set, update, remove, onValue,
   onDisconnect, serverTimestamp, runTransaction, signInAnonymously
-} from "./firebase.js?v=27";
-import { sync as syncGame, makeGame, roomPath, TIMES, RULES } from "./online.js?v=27";
+} from "./firebase.js?v=28";
+import { sync as syncGame, makeGame, roomPath, TIMES, RULES } from "./online.js?v=28";
 
 const MAX_PLAYERS = 4;
 const MIN_PLAYERS = 2;
@@ -249,6 +249,7 @@ const RULE_NOTE = {
   race: "光るチェックポイントを順番に8つ回る。先にゴールした人の勝ち",
   tag: "鬼にぶつかられると、鬼が交代。3分たったときに鬼だった人の負け",
   cops: "警察1人がパトカーで追いかける。つかまると警察の仲間に。4分逃げ切った人の勝ち",
+  shoot: "素手で始まって、道に落ちている武器を拾って戦う。3分でたおした数がいちばん多い人の勝ち",
 };
 for (const k of RULES) $("lbR" + k).addEventListener("click", () => {
   if (!room || !room.meta || room.meta.host !== uid || room.meta.started) return;

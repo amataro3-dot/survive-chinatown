@@ -16,9 +16,11 @@
                  left: のこり秒(ホストが1秒ごとに書く), oniT: { 人のID: 鬼だった秒 }, loser: 最後に鬼だった人,
        ケイドロ(v=27): cop: { 人のID: true }(警察。つかまった人も入る), first: 最初の警察, startAt: 始まった時刻, endAt, left,
                  copAt: { 人のID: つかまえられるようになる時刻 }, caughtT: { 人のID: つかまった秒(始まってから) },
-                 how: 'cops'(みんなつかまった) | 'escape'(逃げ切った人がいる) }
+                 how: 'cops'(みんなつかまった) | 'escape'(逃げ切った人がいる),
+       撃ち合い(v=28): endAt, left, kills: { 人のID: たおした数 }, deaths: { 人のID: やられた数 },
+                 items: [{ k: アイテムの種類, x, z, on: 出ているか, g: 何回目か, at: また出る時刻(ホストの時計) }], got: { 人のID: [拾った種類, …] }(順に足していく) }
    pos(sc-rooms/1234/pos/人のID): { x, z, h, c, v, t(車の種類), cc(車の色), w(手配中), out(つかまった), p(パトカー), k(警察官) } … main.js の getMe。g = 試合の番号 */
-import { db, ref, set, update, onValue, onDisconnect } from "./firebase.js?v=27";
+import { db, ref, set, update, onValue, onDisconnect } from "./firebase.js?v=28";
 
 /* ===== 調整用の数字 ===== */
 export const RACE = {
@@ -35,7 +37,10 @@ export const RUN = { cps: 8, cpDist: 7, nextMin: 70, nextMax: 150, apart: 45 };
 export const TAG = { time: 180, tagDist: 4.8, tagGuard: 3000, startGuard: 5000 };
 // ケイドロ(v=27): time = 試合の秒、catchDist = つかまえられる距離、freeze = 最初の警察が動けないミリ秒、guard = つかまって警察になった人が、つかまえられるようになるまでのミリ秒
 export const KD = { time: 240, catchDist: 4.8, freeze: 10000, guard: 3000 };
-export const RULES = ["deliver", "race", "tag", "cops"]; // ホストがえらべるルール(はじめは配達競争)
+// 撃ち合い(v=28): time = 試合の秒、respawn = 拾ったアイテムがまた出る秒、pickDist = 拾える距離、apart = アイテムどうしをはなす距離、items = 街に置く数
+export const SHOOT = { time: 180, respawn: 30, pickDist: 3.2, apart: 25,
+  items: { pistol: 4, mg: 2, knife: 2, katana: 1, pig: 2, snake: 2, ammo: 3, vest: 2, heal: 2, speed: 2 } };
+export const RULES = ["deliver", "race", "tag", "cops", "shoot"]; // ホストがえらべるルール(はじめは配達競争)
 const COLORS = [0xff4a4a, 0x3c8cff, 0x3fd06a, 0xffb020];
 export const TIMES = ["day", "eve", "night"]; // ホストがえらべる時間(はじめは夜)
 
@@ -71,6 +76,8 @@ function makeCps() {
   }
   return out;
 }
+// 撃ち合いのアイテムの場所: ほかのアイテム・まん中のスタートから少しはなす
+function itemSpot(items, avoid) { return pickSpot(p => dist(p, SC.P(3, 3)) > 15 && items.every(q => q === avoid || dist(p, q) > SHOOT.apart) && (!avoid || dist(p, avoid) > 40)); }
 // 新しい試合(ロビーのスタートと「もう一度」で使う)。list は入った順の参加者。rule = ルール(v=26)
 export function makeGame(list, time, rule) {
   const players = {}, ru = RULES.includes(rule) ? rule : "deliver";
@@ -79,6 +86,7 @@ export function makeGame(list, time, rule) {
   if (ru === "race") { g.cps = makeCps(); g.prog = {}; }
   else if (ru === "tag") { const ids = Object.keys(players), now = Date.now(); g.oni = ids[Math.floor(Math.random() * ids.length)]; g.since = now + TAG.startGuard - TAG.tagGuard; g.endAt = now + TAG.time * 1000; g.left = TAG.time; g.oniT = {}; }
   else if (ru === "cops") { const ids = Object.keys(players), now = Date.now(), f = ids[Math.floor(Math.random() * ids.length)]; Object.assign(g, { cop: { [f]: true }, first: f, startAt: now, endAt: now + KD.time * 1000, left: KD.time, copAt: { [f]: now + KD.freeze }, caughtT: {} }); }
+  else if (ru === "shoot") { const now = Date.now(), items = []; for (const k in SHOOT.items) for (let i = 0; i < SHOOT.items[k]; i++) { const p = itemSpot(items); items.push({ k, x: p.x, z: p.z, on: true, g: 0, at: 0 }); } Object.assign(g, { endAt: now + SHOOT.time * 1000, left: SHOOT.time, kills: {}, deaths: {}, items, got: {} }); }
   else Object.assign(g, { target: RACE.target, scores: {}, pkg: newPkg(SC.P(3, 3)), dest: null });
   return g;
 }
@@ -160,6 +168,7 @@ function hostTick() {
   if (ruleOf(hs) === "race") return hostRace(pl);
   if (ruleOf(hs) === "tag") return hostTag(pl, now);
   if (ruleOf(hs) === "cops") return hostCops(pl, now);
+  if (ruleOf(hs) === "shoot") return hostShoot(now);
   if (lastOne()) return write(); // つかまった人がいて、のこり1人以下なら終わり(ぬけた人がいても)
   const pkg = hs.pkg || newPkg();
   if (pkg.state !== "held") {
@@ -187,6 +196,7 @@ function write() {
   const r = ruleOf(hs), w = { phase: hs.phase, winner: hs.winner || null, rev: hs.rev };
   if (r === "race") w.prog = hs.prog || null;
   else if (r === "tag") Object.assign(w, { oni: hs.oni || null, since: hs.since || 0, left: hs.left, oniT: hs.oniT || null, loser: hs.loser || null });
+  else if (r === "shoot") Object.assign(w, { kills: hs.kills || null, deaths: hs.deaths || null, items: hs.items || null, got: hs.got || null, left: hs.left });
   else if (r === "cops") Object.assign(w, { cop: hs.cop || null, copAt: hs.copAt || null, caughtT: hs.caughtT || null, left: hs.left, how: hs.how || null });
   else Object.assign(w, { pkg: hs.pkg, dest: hs.dest || null, scores: hs.scores || null, out: hs.out && Object.keys(hs.out).length ? hs.out : null, how: hs.how || null });
   update(ref(db, roomPath(cur.code) + "/game"), w).catch(console.error);
@@ -233,6 +243,26 @@ function hostCops(pl, now) {
   else if (hs.phase === "play" && left <= 0) { hs.phase = "end"; hs.how = "escape"; hs.winner = null; changed = true; }
   if (changed) write();
 }
+// 撃ち合い(v=28): やられた数(各スマホが送る dn と、たおした人 by)を数える。アイテムを拾う(各スマホが送る pk = [番号, 何回目か])。時間切れで、たおした数がいちばん多い人の勝ち
+//   当たったかどうかは、撃った人のスマホが決めて、撃たれた人のスマホが体力をへらす(main.js)
+const lastPk = {};
+function hostShoot(now) {
+  let changed = false; const ids = Object.keys(hs.players);
+  const kills = { ...(hs.kills || {}) }, deaths = { ...(hs.deaths || {}) }, items = (hs.items || []).map(it => ({ ...it })), got = { ...(hs.got || {}) };
+  for (const id of ids) {
+    const p = id === cur.uid ? { ...SC.getMe(), g: hs.id } : positions[id] && isOn(id) ? positions[id] : null;
+    if (!p || p.g !== hs.id) continue;
+    if ((p.dn || 0) > (deaths[id] || 0)) { const n = p.dn - (deaths[id] || 0); deaths[id] = p.dn; if (p.by && p.by !== id && hs.players[p.by]) kills[p.by] = (kills[p.by] || 0) + n; changed = true; }
+    if (p.pk && hs.phase === "play") { const [i, gen] = p.pk, it = items[i], key = id + ":" + i + ":" + gen;
+      if (it && it.on && it.g === gen && lastPk[key] !== true && dist(p, it) < SHOOT.pickDist + 2) { lastPk[key] = true; it.on = false; it.at = now + SHOOT.respawn * 1000; got[id] = [...(got[id] || []), it.k]; changed = true; } }
+  }
+  for (const it of items) if (!it.on && now >= (it.at || 0)) { const s = itemSpot(items, it); it.x = s.x; it.z = s.z; it.on = true; it.g = (it.g || 0) + 1; changed = true; } // 30秒たったら、別の場所にまた出る
+  if (changed) { hs.kills = kills; hs.deaths = deaths; hs.items = items; hs.got = got; }
+  const left = Math.max(0, Math.ceil(((hs.endAt || now) - now) / 1000));
+  if (left !== hs.left) { hs.left = left; changed = true; }
+  if (hs.phase === "play" && left <= 0) { hs.phase = "end"; const k = id => kills[id] || 0, top = Math.max(0, ...ids.map(k)), best = ids.filter(id => k(id) === top); hs.winner = best.length === 1 && top > 0 ? best[0] : null; changed = true; }
+  if (changed) write();
+}
 // みんなつかまって、のこり1人なら勝ち。同時にのこり0人になったら、点の多い人の勝ち(同じ点なら引き分け)
 //   試合 g を見て、終わりなら { winner, how } を返す(まだなら null)。テストからも使う
 export function judge(g) {
@@ -261,16 +291,18 @@ function showResult(g) {
   else if (rule === "tag") $("resTitle").textContent = g.loser === cur.uid ? tr("あなたの負け…") : g.loser ? tr("{name} の負け！", { name: name(g.loser) }) : tr("おわり！");
   else $("resTitle").textContent = !g.winner ? tr("引き分け！") : g.winner === cur.uid ? tr("あなたの勝ち！") : tr("{name} の勝ち！", { name: name(g.winner) });
   $("resNote").textContent = rule === "race" ? tr("チェックポイント{n}つのレース", { n: (g.cps || []).length }) : rule === "tag" ? tr("{n}分の鬼ごっこ。最後に鬼だった人の負け", { n: Math.round(TAG.time / 60) })
+    : rule === "shoot" ? tr("{n}分の撃ち合い。たおした数がいちばん多い人の勝ち", { n: Math.round(SHOOT.time / 60) })
     : rule === "cops" ? (g.how === "cops" || !run.length ? tr("みんな警察につかまった") : tr("{n}分のケイドロ。逃げ切った人の勝ち", { n: Math.round(KD.time / 60) }))
     : g.how === "last" ? tr("ほかの人がみんな警察につかまった") : g.how === "draw" ? tr("みんな警察につかまった(同じ点)") : g.how === "caught" ? tr("みんな警察につかまった(点の多い人の勝ち)") : tr("{n}点先取の配達競争", { n: g.target || RACE.target });
   const ol = $("resList"); ol.textContent = "";
   const kdT = id => run.includes(id) ? KD.time : g.caughtT && typeof g.caughtT[id] === "number" ? g.caughtT[id] : 0; // ケイドロ: 逃げた秒(逃げ切った人は試合の秒、最初の警察は0)
-  const val = id => rule === "cops" ? kdT(id) : rule === "race" ? (g.prog && g.prog[id]) || 0 : rule === "tag" ? -((g.oniT && g.oniT[id]) || 0) : (g.scores && g.scores[id]) || 0; // 上から、よかった順(鬼ごっこは、鬼だった時間が短い順)
+  const stK = id => (g.kills && g.kills[id]) || 0, stD = id => (g.deaths && g.deaths[id]) || 0;
+  const val = id => rule === "shoot" ? stK(id) * 1000 - stD(id) : rule === "cops" ? kdT(id) : rule === "race" ? (g.prog && g.prog[id]) || 0 : rule === "tag" ? -((g.oniT && g.oniT[id]) || 0) : (g.scores && g.scores[id]) || 0; // 上から、よかった順(鬼ごっこは、鬼だった時間が短い順)
   const ids = Object.keys(g.players).sort((a, b) => val(b) - val(a));
   for (const id of ids) {
     const li = document.createElement("li");
     const dot = document.createElement("span"); dot.className = "dot"; dot.style.background = "#" + g.players[id].color.toString(16).padStart(6, "0");
-    const t = document.createElement("span"); t.textContent = name(id) + "　" + (rule === "cops" ? (id === g.first ? tr("最初の警察") : tr("逃げ {n}秒", { n: Math.round(val(id)) })) : rule === "race" ? tr("{a}/{b}", { a: val(id), b: (g.cps || []).length }) : rule === "tag" ? tr("鬼 {n}秒", { n: Math.round(-val(id)) }) : tr("{n}点", { n: val(id) }));
+    const t = document.createElement("span"); t.textContent = name(id) + "　" + (rule === "shoot" ? tr("たおした {a}・やられた {b}", { a: stK(id), b: stD(id) }) : rule === "cops" ? (id === g.first ? tr("最初の警察") : tr("逃げ {n}秒", { n: Math.round(val(id)) })) : rule === "race" ? tr("{a}/{b}", { a: val(id), b: (g.cps || []).length }) : rule === "tag" ? tr("鬼 {n}秒", { n: Math.round(-val(id)) }) : tr("{n}点", { n: val(id) }));
     li.append(dot, t);
     const tags = []; if (id === cur.uid) tags.push(tr("あなた")); if (g.out && g.out[id]) tags.push(tr("つかまった")); if (rule === "tag" && g.loser === id) tags.push(tr("最後の鬼")); if (rule === "cops" && run.includes(id)) tags.push(tr("逃げ切った"));
     if (tags.length) { const s = document.createElement("small"); s.textContent = " " + tags.join("・"); li.append(s); }

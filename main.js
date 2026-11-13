@@ -1073,10 +1073,10 @@ function updateNpcs(dt) {
 }
 
 // こうげきの相手(ギャング・運転手・警察官)
-function foes() { const a = []; for (const g of gangs) if (g.hp > 0 && g.per.g.visible) a.push(g); for (const n of npcs) if (n.hp > 0) a.push(n); return a; }
-function hitFoe(f, dmg, kx, kz) { if (f.npc) damageNpc(f, dmg, kx, kz); else damageGang(f, dmg, kx, kz); }
+function foes() { if (shootOn()) return shootFoes(); const a = []; for (const g of gangs) if (g.hp > 0 && g.per.g.visible) a.push(g); for (const n of npcs) if (n.hp > 0) a.push(n); return a; }
+function hitFoe(f, dmg, kx, kz) { if (f.remote) { shootHit(f.remote, dmg); return; } if (f.npc) damageNpc(f, dmg, kx, kz); else damageGang(f, dmg, kx, kz); }
 // こうげきできるか(歩いていて、たおれていない)
-function canAttack() { return G.started && G.mode === 'solo' && player.mode === 'foot' && player.hp > 0 && G.downT <= 0 && G.stunT <= 0 && !paused(); }
+function canAttack() { return G.started && (G.mode === 'solo' || (shootOn() && G.shDown <= 0)) && player.mode === 'foot' && player.hp > 0 && G.downT <= 0 && G.stunT <= 0 && !paused(); }
 const curWeapon = () => player.inv[player.wi];
 const isGun = wk => !WEAPONS[wk].melee; // ねらって使う武器(銃・投げる物)
 const isThrown = wk => !!WEAPONS[wk].thrown;
@@ -1114,9 +1114,122 @@ function fireGun(wk, dir, assist, turn) {
   player.atkCd = W.cd; player.swing = 0.22;
   if (W.spread) dir += (Math.random() - 0.5) * W.spread;
   const best = gunTarget(W, dir, assist), push = wk === 'mg' ? 0.8 : 2;
-  if (best) { const a = Math.atan2(best.x - player.x, best.z - player.z); if (turn) player.h = a; tracer(player.x, player.z, best.x, best.z); hitFoe(best, W.dmg, Math.sin(a) * push, Math.cos(a) * push); }
-  else { const [ex, ez] = rayEnd(dir, W.range); tracer(player.x, player.z, ex, ez); }
+  if (best) { const a = Math.atan2(best.x - player.x, best.z - player.z); if (turn) player.h = a; tracer(player.x, player.z, best.x, best.z); shootFx('r', best.x, best.z); hitFoe(best, W.dmg, Math.sin(a) * push, Math.cos(a) * push); }
+  else { const [ex, ez] = rayEnd(dir, W.range); tracer(player.x, player.z, ex, ez); shootFx('r', ex, ez); }
   return true;
+}
+
+/* ===== 撃ち合い(v=28) =====
+   当たったかは撃った人のスマホで決めて、送る位置の ev に入れる([番号, 'h', 相手, ダメージ, かぶる/巻きつく])。撃たれた人のスマホが体力をへらす
+   見た目だけのもの(弾のすじ 'r'・投げた豚の頭 'p'・ヘビ 's')も ev で送る。やられたら dn(やられた数)と by(たおした人)を送る → ホストが数える
+   アイテムは online.js のホストが置く(R.state.items)。近づくと pk = [番号, 何回目か] を送って、ホストが got に書いたら効く */
+const SHOOT_T = { respawn: 3, inv: 2, runDmg: 50, runSpeed: 5, speed: 1.4, speedT: 10, heal: 40, vest: 50, ammo: { pistol: 12, mg: 30 }, pick: 3.2, evKeep: 1.2 };
+const shootOn = () => G.mode === 'race' && G.rule === 'shoot';
+const ITEM_NAME = { ammo: '弾の箱', vest: '防弾チョッキ', heal: '回復薬', speed: 'スピードアップ' };
+const itemName = k => tr(WEAPONS[k] ? WEAPONS[k].name : ITEM_NAME[k]);
+function shootFoes() { const a = []; for (const id in R.avatars) { const av = R.avatars[id], r = R.remotes[id]; if (av.seen && r && !r.dd && !r.iv) { av.remote = id; a.push(av); } } return a; }
+function shootEv(e) { R.evSeq++; R.ev.push([R.evSeq, T, ...e]); }
+function shootHit(id, dmg, st) { shootEv(['h', id, dmg, st || 0]); }
+function shootFx(type, x1, z1, hit) { if (shootOn()) shootEv([type, Math.round(player.x * 10) / 10, Math.round(player.z * 10) / 10, Math.round(x1 * 10) / 10, Math.round(z1 * 10) / 10, hit || 0]); }
+// ほかの人の ev を見る(まだ見ていない番号だけ)
+function shootRecv() {
+  for (const id in R.remotes) {
+    const r = R.remotes[id]; if (!Array.isArray(r.ev)) continue; let last = R.evSeen[id] || 0;
+    for (const e of r.ev) {
+      if (!Array.isArray(e) || e[0] <= last) continue; last = e[0];
+      const [, type, a, b, c, d, f] = e;
+      if (type === 'h' && a === R.me) shootHurt(b, id, c);
+      else if (type === 'r') tracer(a, b, c, d);
+      else if (type === 'p' || type === 's') { const kind = type === 'p' ? 'pig' : 'snake', m = marketItem(kind), L = Math.max(0.5, Math.hypot(c - a, d - b)); m.position.set(a, 1.7, b); scene.add(m); shots.push({ kind, m, x0: a, z0: b, x1: c, z1: d, L, y1: f ? 1.6 : 0.5, t: 0, dur: Math.max(0.2, L / MKT.speed), vis: true }); }
+    }
+    R.evSeen[id] = last;
+  }
+}
+function shootHurt(d, by, st) {
+  if (!shootOn() || G.shDown > 0 || T < G.shInv || player.hp <= 0 || R.state && R.state.phase !== 'play') return;
+  if (st === 'b') setStatus(player, 'blind'); else if (st === 'f') { setStatus(player, 'frozen'); if (player.mode === 'car') player.car.v *= 0.3; }
+  if (player.armor > 0) { const a = Math.min(player.armor, d); player.armor -= a; d -= a; }
+  if (d <= 0 && !st) return;
+  player.hp = Math.max(0, player.hp - d); hurtT = 0.35;
+  if (player.hp <= 0) shootDie(by);
+}
+function shootReset() { // 持ち物を全部なくして、素手・体力100
+  player.inv = ['fist']; player.wi = 0; player.ammo = 0; player.mg = 0; player.pigs = 0; player.snakes = 0; player.armor = 0; player.heals = 0; player.hp = TUNE.hp; player.atkCd = 0;
+  setHand(player.per, player, null); clearStatus(player); pendShot = null; endAim(); G.spdT = 0;
+}
+function shootDie(by) {
+  G.shDown = SHOOT_T.respawn; G.dn++; G.by = by || null; G.pk = null; if (player.mode === 'car') exitCar();
+  player.per.g.rotation.x = -Math.PI / 2; clearStatus(player); endAim();
+  toast(by ? tr('{name}にやられた…', { name: raceName(by) }) : tr('やられた…'), 2.4);
+}
+// 復活: ほかの人から60m以上はなれた道の上(なければ、いちばん遠い所)
+function shootRespawn() {
+  const others = Object.values(R.avatars).filter(a => a.seen), far = p => Math.min(1e9, ...others.map(a => Math.hypot(a.x - p.x, a.z - p.z)));
+  const list = []; for (let k = 0; k <= N; k++) for (let a = 0; a < N; a++) { const p = P(a, k), q = P(k, a); if (!inMerged(p.x + 26, p.z)) list.push({ x: p.x + 26, z: p.z, h: Math.PI / 2 }); if (!inMerged(q.x, q.z + 26)) list.push({ x: q.x, z: q.z + 26, h: 0 }); }
+  const ok = list.filter(p => far(p) > 60), pick = ok.length ? ok[Math.floor(Math.random() * ok.length)] : list.reduce((b, p) => far(p) > far(b) ? p : b, list[0]);
+  shootReset(); player.per.g.rotation.x = 0; resetPlayerToFoot(pick.x + 5, pick.z + 5.5, pick.h); G.shInv = T + SHOOT_T.inv; toast(tr('復活！ 2秒は無敵'), 1.6);
+}
+// 拾えるか(持てないものは拾わない)
+function canTake(k) {
+  if (k === 'pistol' || k === 'mg' || k === 'speed') return true;
+  if (k === 'knife' || k === 'katana') return !player.inv.includes(k);
+  if (k === 'pig' || k === 'snake') return ammoOf(k) < MKT.max;
+  if (k === 'ammo') return player.inv.includes('pistol') || player.inv.includes('mg');
+  if (k === 'vest') return player.armor < TUNE.armor;
+  if (k === 'heal') return player.hp < TUNE.hp;
+  return false;
+}
+function applyItem(k) {
+  let note = '';
+  if (k === 'pistol' || k === 'mg') { addWeapon(k, SHOOT_T.ammo[k]); note = tr(' (弾+{n})', { n: SHOOT_T.ammo[k] }); }
+  else if (WEAPONS[k]) addWeapon(k);
+  else if (k === 'ammo') { if (player.inv.includes('pistol')) player.ammo += SHOOT_T.ammo.pistol; if (player.inv.includes('mg')) player.mg += SHOOT_T.ammo.mg; }
+  else if (k === 'vest') player.armor = Math.min(TUNE.armor, player.armor + SHOOT_T.vest);
+  else if (k === 'heal') player.hp = Math.min(TUNE.hp, player.hp + SHOOT_T.heal);
+  else if (k === 'speed') G.spdT = T + SHOOT_T.speedT;
+  toast(tr('{w}をひろった！', { w: itemName(k) }) + note, 1.4);
+}
+// アイテムの見た目(武器は手に持つ形、補助アイテムは箱。下に輪: 武器は赤、補助は水色)
+function itemMesh(k) {
+  const g = new THREE.Group(), add = (w, h, d, col, x, y, z) => { const m = new THREE.Mesh(BG(w, h, d), M(col)); m.position.set(x, y, z); g.add(m); return m; };
+  if (k === 'pig' || k === 'snake') { const it = marketItem(k); it.scale.set(1.2, 1.2, 1.2); g.add(it); }
+  else if (WEAPONS[k]) { const it = handItem(k); it.position.y = 0; it.rotation.x = Math.PI / 2; it.scale.set(1.4, 1.4, 1.4); g.add(it); }
+  else if (k === 'ammo') { add(0.8, 0.5, 0.55, 0x6b5a2a, 0, 0, 0); add(0.82, 0.1, 0.57, 0xd8b440, 0, 0.12, 0); }
+  else if (k === 'vest') { add(0.8, 0.9, 0.3, 0x2c56b8, 0, 0, 0); add(0.3, 0.3, 0.32, 0x1a2a55, 0, 0.45, 0); }
+  else if (k === 'heal') { add(0.7, 0.55, 0.45, 0xf4f4f4, 0, 0, 0); add(0.42, 0.12, 0.47, 0xe8303a, 0, 0, 0); add(0.12, 0.42, 0.47, 0xe8303a, 0, 0, 0); }
+  else if (k === 'speed') { const b = add(0.25, 0.7, 0.25, 0xffd23f, 0.08, 0.15, 0); b.rotation.z = -0.5; const c = add(0.25, 0.7, 0.25, 0xffd23f, -0.08, -0.2, 0); c.rotation.z = -0.5; }
+  const ring = new THREE.Mesh(new THREE.TorusGeometry(0.85, 0.08, 6, 20), MB(WEAPONS[k] ? 0xff5a4a : 0x5ae8ff)); ring.rotation.x = Math.PI / 2; ring.position.y = -0.8; g.add(ring);
+  scene.add(g); return g;
+}
+function updateItems(t) {
+  const its = (R.state && R.state.items) || [];
+  for (let i = 0; i < Math.max(its.length, R.itemM.length); i++) {
+    const it = its[i]; let m = R.itemM[i];
+    if (!it) { if (m) { scene.remove(m.g); R.itemM[i] = null; } continue; }
+    if (!m || m.k !== it.k) { if (m) scene.remove(m.g); m = R.itemM[i] = { g: itemMesh(it.k), k: it.k }; }
+    m.g.visible = !!it.on && G.rule === 'shoot'; m.g.position.set(it.x, 1.3 + Math.sin(t * 3 + i) * 0.12, it.z); m.g.rotation.y = t * 1.5;
+  }
+}
+function clearItems() { for (const m of R.itemM) if (m) scene.remove(m.g); R.itemM = []; }
+// 車でひく(1人1秒に1回。歩いている人だけ)
+function shootRun(id) {
+  if (player.mode !== 'car' || Math.abs(player.car.v) <= SHOOT_T.runSpeed || G.shDown > 0 || !R.state || R.state.phase !== 'play') return;
+  const a = R.avatars[id], r = R.remotes[id]; if (!a || !a.seen || !r || r.c || r.dd || r.iv || (R.runCd[id] || 0) > T) return;
+  if (carDist(player.car, a.x, a.z) < 2.6) { R.runCd[id] = T + 1; shootHit(id, SHOOT_T.runDmg); spark(a.x, 1, a.z); }
+}
+// 毎フレーム(撃ち合いのとき)
+function updateShoot(dt) {
+  player.atkCd -= dt; updateAim(dt); shootRecv(); updateItems(T);
+  if (hurtT > 0) hurtT -= dt;
+  $('hurt').style.opacity = Math.max(0, hurtT / 0.35) * 0.9 + (player.hp > 0 && player.hp < 30 ? 0.25 : 0);
+  statusTick(player, dt); $('blindFx').style.opacity = player.blind > 0 ? Math.min(1, player.blind) * 0.92 : 0; // 豚の頭をかぶると、前が見えない
+  if (G.shDown > 0) { G.shDown -= dt; player.per.g.position.set(player.x, 0.4, player.z); if (G.shDown <= 0 && R.state && R.state.phase === 'play') shootRespawn(); }
+  player.per.g.visible = player.mode !== 'car' && (T >= G.shInv || Math.floor(T * 10) % 2 === 0); // 無敵の間は、ちかちかする
+  const s = R.state; if (!s || s.phase !== 'play' || G.shDown > 0) { G.pk = null; return; }
+  for (const id in R.avatars) shootRun(id); // 車でひく
+  // アイテムを拾う(ホストに知らせる)
+  if (G.pk) { const it = s.items && s.items[G.pk[0]]; if (!it || !it.on || it.g !== G.pk[1] || Math.hypot(it.x - player.x, it.z - player.z) > SHOOT_T.pick + 1) G.pk = null; }
+  if (!G.pk) (s.items || []).some((it, i) => { if (it.on && Math.hypot(it.x - player.x, it.z - player.z) < SHOOT_T.pick && canTake(it.k)) { G.pk = [i, it.g]; return true; } return false; });
 }
 
 /* ===== 市場の武器(豚の頭・ヘビを投げる) ===== */
@@ -1132,7 +1245,7 @@ function throwItem(wk, dir, assist, turn) {
   player.atkCd = W.cd; player.swing = 0.22;
   const m = marketItem(wk), L = Math.max(0.5, Math.hypot(ex - player.x, ez - player.z));
   m.position.set(player.x, 1.7, player.z); m.rotation.y = Math.atan2(ex - player.x, ez - player.z); scene.add(m);
-  shots.push({ kind: wk, m, x0: player.x, z0: player.z, x1: ex, z1: ez, L, y1: tg ? 1.6 : 0.5, t: 0, dur: Math.max(0.2, L / MKT.speed) });
+  shots.push({ kind: wk, m, x0: player.x, z0: player.z, x1: ex, z1: ez, L, y1: tg ? 1.6 : 0.5, t: 0, dur: Math.max(0.2, L / MKT.speed) }); shootFx(wk === 'pig' ? 'p' : 's', ex, ez, tg ? 1 : 0);
   if (ammoOf(wk) <= 0) { player.inv.splice(player.inv.indexOf(wk), 1); player.wi = Math.max(0, player.wi - 1); setHand(player.per, player, curWeapon()); } // なくなったら、前の武器にもどる
   return true;
 }
@@ -1140,10 +1253,11 @@ function updateShots(dt) {
   for (let i = shots.length - 1; i >= 0; i--) {
     const s = shots[i]; s.t += dt / s.dur; const t = Math.min(1, s.t), x = s.x0 + (s.x1 - s.x0) * t, z = s.z0 + (s.z1 - s.z0) * t;
     s.m.position.set(x, arcY(t, s.L, s.y1), z); s.m.rotation.x += dt * 9;
-    let hit = null; if (G.mode === 'solo') for (const f of foes()) if (Math.hypot(f.x - x, f.z - z) < MKT.hitR) { hit = f; break; }
+    let hit = null; if ((G.mode === 'solo' || shootOn()) && !s.vis) for (const f of foes()) if (Math.hypot(f.x - x, f.z - z) < MKT.hitR) { hit = f; break; }
     if (hit) {
       const a = Math.atan2(s.x1 - s.x0, s.z1 - s.z0);
-      if (s.kind === 'pig') { hitFoe(hit, WEAPONS.pig.dmg, Math.sin(a) * 3, Math.cos(a) * 3); if (hit.hp > 0) setStatus(hit, 'blind'); }
+      if (hit.remote) shootHit(hit.remote, s.kind === 'pig' ? WEAPONS.pig.dmg : 0, s.kind === 'pig' ? 'b' : 'f'); // 撃ち合い(v=28): 撃たれた人のスマホで、かぶる・巻きつく
+      else if (s.kind === 'pig') { hitFoe(hit, WEAPONS.pig.dmg, Math.sin(a) * 3, Math.cos(a) * 3); if (hit.hp > 0) setStatus(hit, 'blind'); }
       else { hitFoe(hit, 0, 0, 0); setStatus(hit, 'frozen'); }
     } else if (s.t >= 1) spark(x, 0.5, z);
     if (hit || s.t >= 1) { scene.remove(s.m); shots.splice(i, 1); }
@@ -1245,7 +1359,7 @@ function updateAim(dt) {
   }
   if (pendShot) { pendShot.t -= dt; if (pendShot.t <= 0 || !gun) pendShot = null; }
 }
-function switchWeapon() { if (!G.started || G.mode !== 'solo' || player.hp <= 0) return; player.wi = (player.wi + 1) % player.inv.length; setHand(player.per, player, player.inv[player.wi]); pendShot = null; }
+function switchWeapon() { if (!G.started || (G.mode !== 'solo' && !shootOn()) || player.hp <= 0) return; player.wi = (player.wi + 1) % player.inv.length; setHand(player.per, player, player.inv[player.wi]); pendShot = null; }
 // 持っておく回復を使う(体力+50)
 function useHeal() {
   if (!G.started || G.mode !== 'solo' || player.hp <= 0 || G.downT > 0 || player.heals <= 0) return;
@@ -1604,7 +1718,7 @@ const sailorPer = makePerson(0x1f3a6e, 0x1a1a2a, 0xc89870); part(sailorPer, 0.62
 //   lent = 情報屋に 0: まだ会っていない、1: 貸した、2: 貸さなかった。tru = トゥルーエンドの順番で貸した。sis = 倉庫で妹を見た
 const G = { twrDown: false, askId: 1, askI: 0, huntT: 0, mode: 'menu', started: false, over: false, money: 0, wanted: 0, mi: 0, si: 0, timeLeft: -1, play: 0, evade: 0, bust: 0, downT: 0, stunT: 0, shop: null, shopLock: null, hitCd: 0, spawnCd: 0, failWait: 0, waitMsg: '', free: null, done: {}, offer: null, markLock: null, freeT: 0, bosses: [], lent: 0, tru: 0, sis: 0, left: 0, bumps: 0, bumpCd: 0, ramCd: 0, busy: false, tp: null, story: null, sleep: false, camYaw: Math.PI, camDrag: 0, clock: DAY.race, phase: 'night', out: false, watchYaw: 0, rule: 'deliver', tagUntil: 0 };
 // 配達競争の状態(online.js から setRace でもらう)
-const R = { me: null, state: null, remotes: {}, avatars: {}, sendT: 0 };
+const R = { me: null, state: null, remotes: {}, avatars: {}, sendT: 0, ev: [], evSeq: 0, evSeen: {}, gotN: 0, runCd: {}, itemM: [], soloKeep: null }; // ev〜soloKeep は撃ち合い(v=28)
 let toastT = 0;
 function toast(s, t) { const e = $('toast'); e.textContent = s; e.style.opacity = 1; toastT = t || 2.2; }
 function addWanted(n) { if (G.mode !== 'solo') return; const before = G.wanted; G.wanted = Math.min(5, G.wanted + n); G.evade = 0; if (G.wanted > before && before === 0) toast(tr('警察に追われている！')); }
@@ -2112,13 +2226,13 @@ function readInput() {
   input.dash = held.dash;
   // 車: アクセル・ブレーキ・バックのボタン(スティックは左右のハンドルだけ)
   input.acc = held.acc; input.rev = held.rev; input.brake = held.brk;
-  if (G.out || kdFrozen()) { input.jx = input.jy = 0; input.dash = input.acc = input.rev = false; input.brake = true; } // 配達競争でつかまった人・ケイドロの始まりの警察は動けない
+  if (G.out || kdFrozen() || (shootOn() && (G.shDown > 0 || player.frozen > 0))) { input.jx = input.jy = 0; input.dash = input.acc = input.rev = false; input.brake = true; } // 配達競争でつかまった人・ケイドロの始まりの警察は動けない
 }
 
 /* ===== 車の乗り降り ===== */
 function nearestEnterable() { let best = null, bd = TUNE.enterDist; for (const c of cars) { if ((c.kind === 'police' && G.mode !== 'solo') || c.flee || c.kind === 'hunter') continue; const d = carDist(c, player.x, player.z) - (c.type === 'truck' || c.type === 'bus' ? 0.4 : 0); if (d < bd) { bd = d; best = c; } } return best; }
 function toggleCar() {
-  if (!G.started || G.stunT > 0 || G.downT > 0 || G.out || kdFrozen() || paused()) return; if (player.mode === 'car') { exitCar(); return; }
+  if (!G.started || G.stunT > 0 || G.downT > 0 || G.out || kdFrozen() || (shootOn() && G.shDown > 0) || paused()) return; if (player.mode === 'car') { exitCar(); return; }
   const c = nearestEnterable(); if (!c) return;
   if (c.kind === 'traffic') { ejectDriver(c); if (Math.abs(c.v) > 1) { addWanted(1); if (G.mode === 'solo') toast(tr('車を奪った！'), 1.4); } }
   else if (c.kind === 'police') stealPolice(c);
@@ -2144,7 +2258,7 @@ function exitCar() {
 let shownCar = null;
 function updatePlayer(dt) {
   const inCar = player.mode === 'car'; if (inCar !== shownCar) { shownCar = inCar; document.body.classList.toggle('incar', inCar); } // 車のボタンに切りかえ
-  if (G.downT > 0) { player.per.g.position.set(player.x, 0.4, player.z); return; } // やられて倒れている
+  if (G.downT > 0 || (shootOn() && G.shDown > 0)) { player.per.g.position.set(player.x, 0.4, player.z); return; } // やられて倒れている
   if (G.stunT > 0) { // 車から引きずり出されて、たおれている
     G.stunT -= dt; player.per.g.position.set(player.x, 0.4, player.z); player.v = 0;
     if (G.stunT <= 0) player.per.g.rotation.x = 0;
@@ -2153,7 +2267,7 @@ function updatePlayer(dt) {
   if (player.mode === 'foot') {
     const a = G.camYaw; const fx = Math.sin(a), fz = Math.cos(a), rx = -Math.cos(a), rz = Math.sin(a);
     let mx = fx * input.jy + rx * input.jx, mz = fz * input.jy + rz * input.jx; const l = Math.hypot(mx, mz); let sp = 0;
-    if (l > 0.08) { mx /= l; mz /= l; sp = (input.dash ? TUNE.dash : TUNE.walk) * Math.min(1, l); player.x += mx * sp * dt; player.z += mz * sp * dt; player.h += angDiff(player.h, Math.atan2(mx, mz)) * Math.min(1, 12 * dt); }
+    if (l > 0.08) { mx /= l; mz /= l; sp = (input.dash ? TUNE.dash : TUNE.walk) * Math.min(1, l) * (shootOn() && G.spdT > T ? SHOOT_T.speed : 1); player.x += mx * sp * dt; player.z += mz * sp * dt; player.h += angDiff(player.h, Math.atan2(mx, mz)) * Math.min(1, 12 * dt); }
     resolve(player, 0.5);
     for (const c of cars) { const q = carNear(c, player.x, player.z), dx = player.x - q.x, dz = player.z - q.z, d = Math.hypot(dx, dz), r = c.type === 'truck' || c.type === 'bus' ? 1.95 : 2.1; if (d < r && d > 0.001) { player.x = q.x + dx / d * r; player.z = q.z + dz / d * r; } }
     player.v = sp;
@@ -2272,6 +2386,7 @@ function carPairs() {
     const av = R.avatars[id]; if (!av.seen) continue; const r = (av.car ? 2 : 0.6) + (player.mode === 'car' ? 2 : 0.6);
     const o = player.mode === 'car' ? player.car : player, oa = av.car ? { x: av.x, z: av.z, h: av.h, type: av.type } : { x: av.x, z: av.z }; // 長い車は、まん中の線で見る(v=21)
     const [po, pv] = segPair(player.mode === 'car' ? o : { x: o.x, z: o.z }, oa), dx = po.x - pv.x, dz = po.z - pv.z, d = Math.hypot(dx, dz); if (d > r || d < 0.001) continue;
+    if (shootOn()) shootRun(id); // 撃ち合い(v=28): 押し返す前に、ひいたかを見る
     o.x += dx / d * (r - d); o.z += dz / d * (r - d); player.x = o.x; player.z = o.z;
     if (player.mode === 'car' && Math.abs(player.car.v) > 4) player.car.v *= -0.3;
   }
@@ -2408,6 +2523,12 @@ function updateAvatars(dt) {
     if (a.car && a.pol) copLights(a.carM, T); // ケイドロの警察のパトカーは、屋根のライトが光る
     const isCop = kdCop(id); if (isCop !== !!a.copPer) { const vis = a.per.g.visible; scene.remove(a.per.g); a.per = isCop ? makeCop(SKINS[0]) : makePerson(a.col, 0x23324f, 0xf0c9a0); a.per.g.visible = vis; a.copPer = isCop; } // ケイドロの警察は、歩くと警察官の服
     a.carM.g.visible = a.car; a.per.g.visible = !a.car;
+    if (G.rule === 'shoot') { // 撃ち合い(v=28): 持っている武器・たおれている・かぶる/巻きつく・無敵でちかちか
+      if ((r.wk || null) !== (a.wk || null)) { setHand(a.per, a, r.wk && WEAPONS[r.wk] ? r.wk : null); a.wk = r.wk || null; }
+      a.per.g.rotation.x = r.dd ? -Math.PI / 2 : 0;
+      const st = r.st || 0; if (st !== (a.st || 0)) { clearStatus(a); if (st === 1) setStatus(a, 'blind'); else if (st === 2) setStatus(a, 'frozen'); a.st = st; }
+      if (r.iv && Math.floor(T * 10) % 2) { a.per.g.visible = false; a.carM.g.visible = false; }
+    }
     if (a.car) { a.carM.g.position.set(a.x, 0, a.z); a.carM.g.rotation.y = a.h; }
     else { a.per.g.position.set(a.x, onWalk(a.x, a.z) ? 0.3 : 0, a.z); a.per.g.rotation.y = a.h; animPerson(a.per, Math.abs(r.v || 0), dt); }
   }
@@ -2418,7 +2539,7 @@ function updateRaceMarks(t) {
     pkgMesh.visible = false; oniMesh.visible = false; const cp = s.phase === 'play' && s.cps ? s.cps[(s.prog && s.prog[R.me]) || 0] : null;
     R.cp = cp; marker.visible = !!cp; if (cp) { markerColor(0x4cff6a); marker.position.set(cp.x, 0, cp.z); } return;
   }
-  if (G.rule === 'cops') { marker.visible = false; pkgMesh.visible = false; oniMesh.visible = false; return; } // ケイドロ(v=27): 警察はパトカーと服でわかる
+  if (G.rule === 'cops' || G.rule === 'shoot') { marker.visible = false; pkgMesh.visible = false; oniMesh.visible = false; return; } // ケイドロ(v=27): 警察はパトカーと服でわかる
   if (G.rule === 'tag') { // 鬼ごっこ(v=26): 鬼の頭の上に赤いしるし。ほかの人には、鬼の所に赤い光
     pkgMesh.visible = false; const o = s.oni; let x, z, car;
     if (o === R.me) { x = player.x; z = player.z; car = player.mode === 'car'; }
@@ -2487,6 +2608,7 @@ function drawMinimap() {
   for (const c of cars) if (c.kind === 'police') dot(c.x, c.z, (Math.floor(performance.now() / 250) % 2) ? '#ff3030' : '#3060ff', 6, false);
   for (const id in R.avatars) { const av = R.avatars[id]; if (av.seen) dot(av.x, av.z, raceColor(id), 7, true); if (av.cop && av.cop.seen) dot(av.cop.x, av.cop.z, (Math.floor(performance.now() / 250) % 2) ? '#ff3030' : '#3060ff', 5, false); } // ほかの人を追うパトカーも
   for (const c of MX.hunters) dot(c.x, c.z, '#ffffff', 6, false); // 追っ手の車(白)
+  if (shootOn() && R.state && R.state.items) for (const it of R.state.items) if (it.on) dot(it.x, it.z, WEAPONS[it.k] ? '#ff5a4a' : '#5ae8ff', 4, false); // 撃ち合いのアイテム(武器は赤・補助は水色)
   if (G.mode === 'solo') { for (const f of FREE) if (freeOpen(f)) dot(f.at.x, f.at.z, f.info ? '#ffa53a' : f.col ? '#ffe9a0' : '#b06bff', 8, true); if (boatOpen()) dot(BOAT.at.x, BOAT.at.z, '#7fe8ff', 7, true); } // 受けられるミッション(紫)・船(水色)
   if (marker.visible) dot(marker.position.x, marker.position.z, '#' + ringMat.color.getHexString(), 9, true);
 }
@@ -2509,7 +2631,7 @@ function updateHUD() {
   $('timer').textContent = G.timeLeft > 0 ? tr('残り {n} 秒', { n: Math.ceil(G.timeLeft) }) : ''; $('speed').textContent = player.mode === 'car' ? Math.round(Math.abs(player.car.v) * 3.6) + ' km/h' : '';
 }
 function updateRaceHUD() {
-  if (G.rule === 'race' || G.rule === 'tag' || G.rule === 'cops') { updateRuleHUD(); return; }
+  if (G.rule === 'race' || G.rule === 'tag' || G.rule === 'cops' || G.rule === 'shoot') { updateRuleHUD(); return; }
   const s = R.state; let html = '<div class="t">' + tr('配達競争：{n}点先取', { n: (s && s.target) || 3 }) + '</div>';
   const w = watchTarget();
   if (!s) html += tr('準備中…');
@@ -2532,10 +2654,15 @@ function updateRaceHUD() {
 // レース・鬼ごっこの画面の文字(v=26)
 function updateRuleHUD() {
   const s = R.state, race = G.rule === 'race', n = race && s && s.cps ? s.cps.length : 0, who = id => '<b style="color:' + raceColor(id) + '">' + esc(raceName(id)) + '</b>';
-  const kd = G.rule === 'cops', left = s && typeof s.left === 'number' ? s.left : kd ? 240 : 180;
-  let html = '<div class="t">' + (race ? tr('レース：チェックポイント{n}つ', { n: n || 8 }) : kd ? tr('ケイドロ：のこり {n}秒', { n: left }) : tr('鬼ごっこ：のこり {n}秒', { n: left })) + '</div>';
+  const kd = G.rule === 'cops', sh = G.rule === 'shoot', left = s && typeof s.left === 'number' ? s.left : kd ? 240 : 180;
+  let html = '<div class="t">' + (race ? tr('レース：チェックポイント{n}つ', { n: n || 8 }) : sh ? tr('撃ち合い：のこり {n}秒', { n: left }) : kd ? tr('ケイドロ：のこり {n}秒', { n: left }) : tr('鬼ごっこ：のこり {n}秒', { n: left })) + '</div>';
   if (!s) html += tr('準備中…');
   else if (s.phase === 'end') html += tr('おわり！');
+  else if (sh) { // 撃ち合い(v=28)
+    const k = (s.kills && s.kills[R.me]) || 0, d = (s.deaths && s.deaths[R.me]) || 0;
+    if (G.shDown > 0) html += (G.by ? tr('{name}にやられた…', { name: who(G.by) }) : tr('やられた…')) + '<div class="d">' + tr('{n}秒後に復活', { n: Math.ceil(G.shDown) }) + '</div>';
+    else html += tr('武器を拾って、たおせ！') + '<div class="d">' + tr('たおした {a}・やられた {b}', { a: k, b: d }) + (G.spdT > T ? '　' + tr('スピードアップ {n}秒', { n: Math.ceil(G.spdT - T) }) : '') + '</div>';
+  }
   else if (kd) { // ケイドロ(v=27)
     const free = G.kdFree - T, run = Object.keys(s.players || {}).filter(id => !kdCop(id)).length;
     if (kdCop()) html += tr('あなたが警察！ 逃げる人にぶつかってつかまえよう') + '<div class="d">' + (free > 0 ? tr('{n}秒後に動ける', { n: Math.ceil(free) }) : G.kdCatch > T ? tr('{n}秒後につかまえられる', { n: Math.ceil(G.kdCatch - T) }) : tr('逃げている人 のこり{n}人', { n: run })) + '</div>';
@@ -2550,10 +2677,15 @@ function updateRuleHUD() {
   $('mission').innerHTML = html;
   let sc = '';
   if (s && s.players) for (const id of Object.keys(s.players).sort((a, b) => (s.players[a].slot || 0) - (s.players[b].slot || 0))) {
-    const v = race ? tr('{a}/{b}', { a: (s.prog && s.prog[id]) || 0, b: n }) : kd ? (kdCop(id) ? tr('警察') : tr('逃げている')) : tr('鬼 {n}秒', { n: Math.round((s.oniT && s.oniT[id]) || 0) });
+    const v = race ? tr('{a}/{b}', { a: (s.prog && s.prog[id]) || 0, b: n }) : sh ? tr('たおした {n}', { n: (s.kills && s.kills[id]) || 0 }) : kd ? (kdCop(id) ? tr('警察') : tr('逃げている')) : tr('鬼 {n}秒', { n: Math.round((s.oniT && s.oniT[id]) || 0) });
     sc += '<div' + (id === R.me ? ' class="me"' : '') + '><span class="dot" style="background:' + raceColor(id) + '"></span>' + esc(s.players[id].name) + '　' + v + (G.rule === 'tag' && s.oni === id ? ' <small>' + tr('鬼') + '</small>' : '') + '</div>';
   }
   $('scores').innerHTML = sc; $('money').textContent = ''; $('clock').textContent = ''; $('timer').textContent = ''; $('stars').innerHTML = '';
+  if (sh) { // 撃ち合い: 体力・チョッキ・武器のボタン(ひとり用と同じ)
+    const hp = Math.max(0, player.hp); $('hpFill').style.width = hp + '%'; $('hpFill').style.background = hp < 30 ? '#e8463c' : ''; $('hpText').textContent = tr('体力 {n}', { n: Math.ceil(hp) });
+    $('armorBar').style.display = player.armor > 0 ? 'block' : 'none'; $('armorFill').style.width = (player.armor / TUNE.armor * 100) + '%';
+    const wk = player.inv[player.wi] || 'fist'; $('wpnBtn').textContent = tr(WEAPONS[wk].name) + (isGun(wk) ? ' ' + ammoOf(wk) : '') + (player.inv.length > 1 ? ' ⇄' : ''); $('healBtn').style.display = 'none';
+  }
   $('speed').textContent = player.mode === 'car' ? Math.round(Math.abs(player.car.v) * 3.6) + ' km/h' : '';
 }
 
@@ -2651,7 +2783,7 @@ function frame(now) {
     carPairs(); updatePeds(dt); updateVendors(dt); updateGangs(dt); updateNpcs(dt); updatePickups(dt, T); updateMkw(dt, T); updateShots(dt); updateFx(dt);
     if (G.mode === 'solo') updateCombat(dt);
     if (G.mode === 'solo') { managePolice(dt); updateMission(dt); updateSub(dt); }
-    else { managePolice(dt); updateRaceMarks(T); R.sendT -= dt; if (R.sendT <= 0 && SC.onSend) { R.sendT = TUNE.posRate; SC.onSend(SC.getMe()); } }
+    else { if (shootOn()) updateShoot(dt); managePolice(dt); updateRaceMarks(T); R.sendT -= dt; if (R.sendT <= 0 && SC.onSend) { R.sendT = TUNE.posRate; SC.onSend(SC.getMe()); } }
     checkShops(T); checkMarks(T); G.hitCd -= dt; G.play += dt;
     for (const c of cars) { c.mesh.position.set(c.x, 0, c.z); c.mesh.rotation.y = c.h; }
     updateCamera(dt); updateTalk(dt); marker.rotation.y += dt; ring.position.y = 0.4 + Math.sin(T * 3) * 0.2;
@@ -2720,6 +2852,7 @@ const SC = window.SC = {
   CAR_TYPES, newCar, removeCar, enterCar, exitCar, carDist, segPair, carSeg, // 車の種類(v=21)
   G, R, player, cars, peds, TUNE, MISSIONS, FREE, HOME, save, readSave, applySave, curM, pointBlocked, P, gangs, pickups, npcs, SHOPS, HOSPITAL, SHOP_ITEMS, closeShop, WEAPONS, MKT, MKW, shots, newNpc, confiscate, DAY, setClock, vendors, TALK, LINES, QAS, makeVip, startTalk, answerTalk, pickLine, getTalk: () => talk, camera, BOAT, PORT, MX, STORY, SNEAK, freeOpen, story, say, finish, openSleep, sleepTo, bump, CLUB, NEON_MATS, STALL_POS, APT, INTRO, INFO, LURE, BOSSCAR, RUMORS, infoPer, setTeam, applyTeams, inCT, newGang, damageGang, GANG_W, PGD, TOWER, INFO2, BOSS_AT, MK_DEEP, WAREHOUSE, twrInfo, twrOyaji, isCalm, CALM_LINES, endScene, END, ENDS, closeOffer, hurtPlayer, callMinions,
   raceMarker: () => marker, oniMark: () => oniMesh, // テスト用(v=26)
+  applyItem, canTake, itemMeshes: () => R.itemM, // テスト用(v=28)
   onSend: null, onQuit: null,
   startSolo,
   showOnly, setPlaying,
@@ -2727,7 +2860,7 @@ const SC = window.SC = {
   extraSpots: EXTRA_SPOTS,
   // 配達競争を始める。slot は 0〜3(並ぶ場所)
   startRace(meId, slot, color, time, rule) {
-    G.rule = ['race', 'tag', 'cops'].includes(rule) ? rule : 'deliver'; G.tagUntil = T + 5; G.kdFree = T + 10; G.kdCatch = 0; // ケイドロ(v=27): 最初の警察は10秒動けない // ルール(v=26)。鬼ごっこは、始まって5秒はタッチできない
+    G.rule = ['race', 'tag', 'cops', 'shoot'].includes(rule) ? rule : 'deliver'; G.tagUntil = T + 5; G.kdFree = T + 10; G.kdCatch = 0; // ケイドロ(v=27): 最初の警察は10秒動けない // ルール(v=26)。鬼ごっこは、始まって5秒はタッチできない
     document.body.classList.remove('solo'); G.mode = 'race'; G.wanted = 0; G.bust = 0; G.evade = 0; G.out = false; G.stunT = 0; player.per.g.rotation.x = 0; removeAllPolice(); R.me = meId; R.state = null; R.remotes = {};
     setClock(TUNE.raceAt[time] || DAY.race); // 配達競争の時間は、ホストがえらぶ(時間は流れない。見た目だけ変わる)
     const sp = RACE_SPAWN[slot % 4], c0 = P(3, 3); const x = c0.x + sp[0] * sp[2] + sp[1] * 3.2, z = c0.z + sp[1] * sp[2] - sp[0] * 3.2, h = Math.atan2(sp[0], sp[1]);
@@ -2735,13 +2868,20 @@ const SC = window.SC = {
     if (R.myCar) removeCar(R.myCar);
     const car = R.myCar = newCar('parked', x, z, h, color || 0xffffff);
     enterCar(car);
-    showOnly(null); setPlaying(true); toast(tr(G.rule === 'race' ? 'レーススタート！' : G.rule === 'tag' ? '鬼ごっこスタート！' : G.rule === 'cops' ? 'ケイドロスタート！' : '配達競争スタート！'), 2.2);
+    showOnly(null); setPlaying(true); toast(tr(G.rule === 'race' ? 'レーススタート！' : G.rule === 'tag' ? '鬼ごっこスタート！' : G.rule === 'cops' ? 'ケイドロスタート！' : G.rule === 'shoot' ? '撃ち合いスタート！ 武器を拾え' : '配達競争スタート！'), 2.2);
+    // 撃ち合い(v=28): ひとり用の持ち物はとっておいて、素手・体力100で始める
+    R.ev = []; R.evSeq = 0; R.evSeen = {}; R.gotN = 0; R.runCd = {}; clearItems(); G.shDown = 0; G.shInv = 0; G.dn = 0; G.by = null; G.pk = null; G.spdT = 0;
+    if (G.rule === 'shoot') { if (!R.soloKeep) R.soloKeep = { hp: player.hp, inv: player.inv.slice(), wi: player.wi, ammo: player.ammo, mg: player.mg, pigs: player.pigs, snakes: player.snakes, armor: player.armor, heals: player.heals }; shootReset(); }
+    else if (R.soloKeep) { Object.assign(player, R.soloKeep); R.soloKeep = null; setHand(player.per, player, player.inv[player.wi]); }
+    document.body.classList.toggle('shoot', G.rule === 'shoot');
   },
   stopRace() {
     if (G.mode !== 'race') return;
     for (const id in R.avatars) dropAvatar(R.avatars[id]);
     R.avatars = {}; R.remotes = {}; R.state = null; marker.visible = false; pkgMesh.visible = false; oniMesh.visible = false;
     G.wanted = 0; G.bust = 0; G.out = false; G.rule = 'deliver'; removeAllPolice(); $('warn').textContent = '';
+    clearItems(); G.shDown = 0; G.shInv = 0; player.per.g.rotation.x = 0; player.per.g.visible = true; clearStatus(player); endAim(); document.body.classList.remove('shoot'); $('blindFx').style.opacity = 0; $('hurt').style.opacity = 0;
+    if (R.soloKeep) { Object.assign(player, R.soloKeep); R.soloKeep = null; setHand(player.per, player, player.inv[player.wi]); } // ひとり用の持ち物にもどす
     $('scores').innerHTML = ''; setPlaying(false); G.mode = 'menu'; resetPlayerToFoot(startX, startZ, startH); setClock(DAY.race);
   },
   // ほかの人の位置 { id: { x, z, h, c(車なら1), v } }
@@ -2760,6 +2900,11 @@ const SC = window.SC = {
       const nm = raceName(s.oni);
       if (!prev) toast(tr(s.oni === R.me ? 'あなたが鬼！ 5秒後にタッチできる' : '{name}が鬼！ 逃げろ！', { name: nm }), 2.6);
       else { G.tagUntil = T + 3; toast(s.oni === R.me ? tr('タッチされた！ あなたが鬼') : prev.oni === R.me ? tr('タッチ！ {name}が鬼になった', { name: nm }) : tr('{name}が鬼になった', { name: nm }), 2.2); }
+      return;
+    }
+    if (s && G.rule === 'shoot') { // 撃ち合い(v=28): ホストが「拾った」と書いたアイテムを使う
+      const got = (s.got && s.got[R.me]) || []; while (R.gotN < got.length) applyItem(got[R.gotN++]);
+      if (prev && prev.phase === 'play' && s.phase === 'end') { endAim(); pendShot = null; }
       return;
     }
     if (s && G.rule === 'cops') { // ケイドロ(v=27): 警察になった(始まり・つかまった)。乗っている車がパトカーに変わる
@@ -2791,6 +2936,12 @@ const SC = window.SC = {
     const r1 = n => Math.round(n * 10) / 10, r2 = n => Math.round(n * 100) / 100;
     const me = { x: r1(player.x), z: r1(player.z), h: r2(player.h), c: player.mode === 'car' ? 1 : 0, v: r1(player.v || 0) };
     if (player.mode === 'car') { const t = CAR_KEYS.indexOf(player.car.type); if (t > 0) me.t = t; if (player.car.color !== undefined) me.cc = player.car.color >>> 0; if (player.car.cop) me.pc = 1; } // 乗っている車の種類(0 = セダンは送らない)と色(v=21)
+    if (shootOn()) { // 撃ち合い(v=28)
+      R.ev = R.ev.filter(e => T - e[1] < SHOOT_T.evKeep); if (R.ev.length) me.ev = R.ev.map(e => [e[0], ...e.slice(2)]);
+      if (G.dn) { me.dn = G.dn; if (G.by) me.by = G.by; } if (G.pk) me.pk = G.pk;
+      const wk = player.inv[player.wi]; if (wk && wk !== 'fist' && player.mode === 'foot') me.wk = wk;
+      const st = player.frozen > 0 ? 2 : player.blind > 0 ? 1 : 0; if (st) me.st = st; if (G.shDown > 0) me.dd = 1; if (T < G.shInv) me.iv = 1;
+    }
     if (G.mode === 'race') {
       if (G.out) me.out = 1; else if (G.wanted) me.w = 1;
       const pc = cars.find(c => c.kind === 'police'); if (pc) me.p = [r1(pc.x), r1(pc.z), r2(pc.h)];

@@ -189,7 +189,7 @@
     /* ---------- レース・鬼ごっこ(v=26) ---------- */
     'みんなで対戦(オンライン)': ['Battle with Friends (Online)', '다 함께 대전(온라인)'],
     'オンライン対戦(2〜4人)': ['Online Battle (2–4 players)', '온라인 대전(2~4명)'],
-    'ルールはホストが待合室でえらぶ。<br>配達競争：荷物を先に取って、届け先まで運ぶと1点。荷物を持っている人にぶつかると奪える。先に3点取った人の勝ち！<br>レース：光るチェックポイントを順番に8つ回って、先にゴールした人の勝ち！<br>鬼ごっこ：鬼にぶつかられると鬼が交代。3分たったときに鬼だった人の負け！<br>ケイドロ：警察1人がパトカーで追いかける。つかまると警察の仲間に。4分逃げ切った人の勝ち！': ['The host picks the rules in the waiting room.<br>Delivery Race: Grab the package and bring it to the drop-off for 1 point. Ram whoever has it to steal it. First to 3 points wins!<br>Checkpoint Race: Hit the 8 glowing checkpoints in order. First to the finish wins!<br>Tag: If "it" rams you, you become "it". Whoever is "it" when 3 minutes are up loses!<br>Cops & Robbers: One cop chases everyone in a squad car. Get caught and you join the cops. Survive 4 minutes to win!', '규칙은 호스트가 대기실에서 고른다.<br>배달 경쟁: 짐을 먼저 잡아서 배달처까지 옮기면 1점. 짐을 가진 사람에게 부딪히면 빼앗을 수 있다. 먼저 3점을 딴 사람이 승리!<br>레이스: 빛나는 체크포인트 8개를 순서대로 돌아서 먼저 골인한 사람이 승리!<br>술래잡기: 술래가 부딪히면 술래가 바뀐다. 3분이 지났을 때 술래였던 사람이 패배!<br>경찰과 도둑: 경찰 1명이 순찰차로 쫓는다. 잡히면 경찰 편이 된다. 4분 동안 도망친 사람이 승리!'],
+    'ルールはホストが待合室でえらぶ。<br>配達競争：荷物を先に取って、届け先まで運ぶと1点。荷物を持っている人にぶつかると奪える。先に3点取った人の勝ち！<br>レース：光るチェックポイントを順番に8つ回って、先にゴールした人の勝ち！<br>鬼ごっこ：鬼にぶつかられると鬼が交代。3分たったときに鬼だった人の負け！<br>ケイドロ：警察1人がパトカーで追いかける。つかまると警察の仲間に。4分逃げ切った人の勝ち！<br>撃ち合い：素手で始まって、道に落ちている武器を拾って戦う。3分でたおした数がいちばん多い人の勝ち！': ['The host picks the rules in the waiting room.<br>Delivery Race: Grab the package and bring it to the drop-off for 1 point. Ram whoever has it to steal it. First to 3 points wins!<br>Checkpoint Race: Hit the 8 glowing checkpoints in order. First to the finish wins!<br>Tag: If "it" rams you, you become "it". Whoever is "it" when 3 minutes are up loses!<br>Cops & Robbers: One cop chases everyone in a squad car. Get caught and you join the cops. Survive 4 minutes to win!<br>Shootout: Start bare-handed and grab weapons lying in the streets. Whoever takes down the most in 3 minutes wins!', '규칙은 호스트가 대기실에서 고른다.<br>배달 경쟁: 짐을 먼저 잡아서 배달처까지 옮기면 1점. 짐을 가진 사람에게 부딪히면 빼앗을 수 있다. 먼저 3점을 딴 사람이 승리!<br>레이스: 빛나는 체크포인트 8개를 순서대로 돌아서 먼저 골인한 사람이 승리!<br>술래잡기: 술래가 부딪히면 술래가 바뀐다. 3분이 지났을 때 술래였던 사람이 패배!<br>경찰과 도둑: 경찰 1명이 순찰차로 쫓는다. 잡히면 경찰 편이 된다. 4분 동안 도망친 사람이 승리!<br>총격전: 맨손으로 시작해서 길에 떨어진 무기를 주워 싸운다. 3분 동안 가장 많이 쓰러뜨린 사람이 승리!'],
     'オンライン対戦': ['Online Battle', '온라인 대전'],
     'ルール': ['Rules', '규칙'],
     'レース': ['Checkpoint Race', '레이스'],
@@ -253,6 +253,24 @@
     '最初の警察': ['first cop', '첫 경찰'],
     '逃げ {n}秒': ['Ran {n}s', '도망 {n}초'],
     '逃げ切った': ['got away', '도망 성공'],
+
+    /* ---------- 撃ち合い(v=28) ---------- */
+    '撃ち合い': ['Shootout', '총격전'],
+    '素手で始まって、道に落ちている武器を拾って戦う。3分でたおした数がいちばん多い人の勝ち': ['Start bare-handed and grab weapons lying in the streets. Whoever takes down the most in 3 minutes wins', '맨손으로 시작해서 길에 떨어진 무기를 주워 싸운다. 3분 동안 가장 많이 쓰러뜨린 사람이 승리'],
+    '撃ち合いスタート！ 武器を拾え': ['Shootout begins! Grab a weapon', '총격전 시작! 무기를 주워라'],
+    '撃ち合い：のこり {n}秒': ['Shootout: {n} sec left', '총격전: 남은 시간 {n}초'],
+    '{name}にやられた…': ['Taken down by {name}…', '{name}에게 당했다…'],
+    '復活！ 2秒は無敵': ['Back in! Invincible for 2 sec', '부활! 2초 동안 무적'],
+    '{n}秒後に復活': ['Back in {n} sec', '{n}초 후에 부활'],
+    '武器を拾って、たおせ！': ['Grab a weapon and take them down!', '무기를 주워서 쓰러뜨려라!'],
+    'たおした {a}・やられた {b}': ['Takedowns {a} · Downed {b}', '쓰러뜨림 {a} · 당함 {b}'],
+    'スピードアップ {n}秒': ['Speed up {n}s', '스피드 업 {n}초'],
+    'たおした {n}': ['Takedowns {n}', '쓰러뜨림 {n}'],
+    '{n}分の撃ち合い。たおした数がいちばん多い人の勝ち': ['{n}-minute shootout. Most takedowns wins', '{n}분 총격전. 가장 많이 쓰러뜨린 사람이 승리'],
+    '弾の箱': ['Ammo Box', '탄약 상자'],
+    '防弾チョッキ': ['Body Armor', '방탄조끼'],
+    '回復薬': ['Medkit', '회복약'],
+    'スピードアップ': ['Speed Up', '스피드 업'],
 
     /* ---------- 街の人との会話(v=13) ---------- */
     '話す': ['Talk', '말 걸기'],
