@@ -976,6 +976,10 @@ function updateGangs(dt) {
     if (G.mode === 'race' || g.off) { g.per.g.visible = false; continue; }
     if (g.hp <= 0) { g.dead += dt; g.x += g.kx * dt; g.z += g.kz * dt; g.kx *= 1 - 3 * dt; g.kz *= 1 - 3 * dt; resolve(g, 0.45); g.per.g.position.set(g.x, 0.4, g.z); if (g.dead > 6) g.per.g.visible = false; if (g.brawl && (g.dead > 6 || Math.hypot(player.x - g.x, player.z - g.z) > DAY.far)) { dropGang(g); continue; } if (g.dead > F.respawn && !g.temp) respawnGang(g); continue; }
     if (g.brawl) { g.brawlT -= dt; if (g.brawlT <= 0 && Math.hypot(player.x - g.x, player.z - g.z) > DAY.far) { dropGang(g); continue; } } // 「火をつけろ」のあとに残った人は、しばらくして、見えない所で消える
+    if (g.ctl) { // 狙撃ミッションの相手(v=30): 動きはミッションの方で決める。ここでは見せるだけ
+      g.per.g.visible = true; statusTick(g, dt); if (g.swing > 0) g.swing -= dt;
+      g.per.g.position.set(g.x, onWalk(g.x, g.z) ? 0.3 : 0, g.z); g.per.g.rotation.y = g.h; animPerson(g.per, g.ctlSp || 0, dt); if (g.swing > 0) g.per.armR.rotation.x = -1.5; continue;
+    }
     g.per.g.visible = true; g.cd -= dt; g.hitCd -= dt; if (g.swing > 0) g.swing -= dt;
     const px = player.x, pz = player.z, dP = Math.hypot(px - g.x, pz - g.z), dHome = Math.hypot(px - g.home.x, pz - g.home.z);
     // 黒と白のケンカ(v=18): 近くで出会うと、たがいにおそう。先に主人公を見つけていたら主人公を、先に相手を見つけていたら相手をねらう
@@ -1447,7 +1451,7 @@ function startScope(e) {
 }
 function moveScope(e) {
   const sc = G.scope, dx = e.clientX - sc.lx, dy = e.clientY - sc.ly; sc.lx = e.clientX; sc.ly = e.clientY;
-  sc.yaw -= dx * TUNE.rifle.sens; sc.pitch = clamp(sc.pitch - dy * TUNE.rifle.sens, -1.45, 0.5); // 右へドラッグ = 右を向く、下へ = 下を向く
+  sc.yaw -= dx * TUNE.rifle.sens; sc.pitch = clamp(sc.pitch - dy * TUNE.rifle.sens, -1.55, 0.5); // 右へドラッグ = 右を向く、下へ = 下を向く
 }
 function upScope(e) {
   const sc = G.scope; endScope();
@@ -1462,8 +1466,8 @@ function scopeEye(yaw) {
   const rf = player.roof, o = { x: player.x, y: lvY(rf) + 1.75, z: player.z }; if (!rf) return o;
   if (yaw === undefined) yaw = G.scope ? G.scope.yaw : player.h;
   const dx = Math.sin(yaw), dz = Math.cos(yaw), ex = rf.x + (dx > 0 ? 1 : -1) * rf.w / 2, ez = rf.z + (dz > 0 ? 1 : -1) * rf.d / 2;
-  const t = Math.min(Math.abs(dx) > 1e-6 ? (ex - o.x) / dx : 1e9, Math.abs(dz) > 1e-6 ? (ez - o.z) / dz : 1e9);
-  if (t < 2.4) { o.x += dx * (t + 0.6); o.z += dz * (t + 0.6); }
+  if (Math.abs(dx) > 0.01 && Math.abs(ex - o.x) < 2.4) o.x = ex + Math.sign(dx) * 0.6; // ねらう方のふち(東西)の外へ
+  if (Math.abs(dz) > 0.01 && Math.abs(ez - o.z) < 2.4) o.z = ez + Math.sign(dz) * 0.6; // ねらう方のふち(南北)の外へ
   return o;
 }
 const scopeDir = (yaw, pitch) => ({ x: Math.sin(yaw) * Math.cos(pitch), y: Math.sin(pitch), z: Math.cos(yaw) * Math.cos(pitch) });
@@ -1800,6 +1804,10 @@ const TOWER = { x: PGD.x, z: PGD.z + 13, info: { x: PGD.x, z: PGD.z + 9.2 }, bos
 const INFO2 = { x: INFO.x, z: INFO.z + 6.5 };
 const BOSS_AT = { B: () => ({ x: MK_DEEP.x, z: MK_DEEP.z, h: 0 }), W: () => ({ x: TWR.x0 + 44, z: TWR.z1 - 1.4, h: 0 }), O: () => ({ x: TOWER.boss.x, z: TOWER.boss.z, h: 0 }) };
 const INFO_GO = { name: 'ミーチャン', text: '場所はもう教えたわよん。ここから先はユーちゃんのお仕事。ボクチンは応援する係やねん。フレー、フレー！' };
+// 狙撃ミッション(v=30): walk = 車をねらうマフィアの歩く速さ、dmg = 車にとりついたマフィア1人が1秒にへらす車の体力、wave2 = 2台目が来るまでの秒(1台目を全部たおすと、すぐ来る)、reach = 車にとりつく距離
+const SNIPE = { walk: 2.2, dmg: 8, wave2: 20, reach: 2.6, carHp: 100 };
+const hasRifle = () => player.inv.includes('rifle') && player.rf > 0;
+const roofNear = (x, z) => ROOFS.reduce((b, r) => Math.hypot(r.x - x, r.z - z) < Math.hypot(b.x - x, b.z - z) ? r : b, ROOFS[0]);
 const FREE = [
   { id: 'market', title: '市場のおつかい', desc: '市場の奥で品物を受け取って、店に届ける。市場には歩いてしか入れない。', reward: 2000, at: { x: roadC(2), z: MK.z0 + 3.2 }, steps: [{ type: 'go', pos: MK_DEEP, text: '市場の奥で品物を受け取ろう(歩いて入る)', done: '品物ゲット！' }, { type: 'go', pos: { x: roadC(4) - 7.5, z: roadC(2) + 26 }, text: '品物を店に届けよう' }] },
   { id: 'guard', title: '用心棒', desc: '店をおそいに来るマフィアを、5人たおす。', reward: 3000, at: { x: -90, z: 57.3 }, steps: [{ type: 'kill', pos: { x: -76, z: 52 }, n: 5, text: '店をおそうマフィアをたおせ(のこり {n}人)' }] },
@@ -1817,6 +1825,15 @@ const FREE = [
       { type: 'go', car: 1, pos: { x: roadC(5), z: roadC(0) + 26 }, fragile: 2, fail: '車の中が大変なことに… ミッション失敗', ouch: [{ name: '酔っぱらい', text: 'うっ… ゆ、ゆらすな…' }, { name: '酔っぱらい', text: 'も、もうだめだ… 次は、出る…' }], text: 'ゆらさないように、家まで送ろう(3回ぶつけると失敗)' }] },
   { id: 'ramen', when: 'night', title: '夜中の出前', desc: '夜しか開いていない店のラーメンを、のびる前に車で港へ届ける。ぶつけるとスープがこぼれて、時間がへる。', reward: 3000, at: { x: roadC(2) + 26, z: roadC(2) + 5.3 }, say: { name: 'ラーメン屋', text: '港の夜勤に、ラーメン1ぱいだ。のびる前にたのむ。スープはこぼすなよ' }, endSay: { name: '港の人', text: 'お、まだのびてない。夜中のラーメンは、しみるなあ' },
     steps: [{ type: 'go', car: 1, pos: { x: roadC(6), z: roadC(5) + 20 }, time: 60, spill: 5, text: '車で、のびる前にラーメンを港へ届けろ！(ぶつけると時間がへる)' }] },
+  // 狙撃ミッション(v=30。ライフルと弾がいる): roof = 屋上に上がる(roofAt のビル)、snipe = 屋上から狙撃(deal = 取引の手下、escort = 車を守る)
+  { id: 'snipe1', when: 'day', title: '屋上の目', desc: '大きなビルの屋上から、下で取引をする白虎幇の手下4人を、1分以内に狙撃する。ライフルがいる。', reward: 4000, at: { x: 66, z: -108.7 }, req: hasRifle, reqNote: 'ライフルと弾がいる(武器屋で買える)',
+    say: { name: '黒龍幇の男', text: '白虎幇が、大きなビルの下で取引をする。上から全部つぶせ。1分で終わらせろ' }, endSay: { name: '黒龍幇の男', text: '見事だ。白虎幇は、しばらく静かになる' },
+    steps: [{ type: 'roof', roofAt: { x: 52, z: -130 }, text: '大きなビルの屋上に上がろう(入口の緑の光)', done: '屋上に着いた！ 下の取引を探せ' },
+      { type: 'snipe', time: 60, late: '取引が終わって、逃げられた… ミッション失敗', deal: { car: [90, -108.3, Math.PI / 2], men: [[86, -111.4, Math.PI / 2], [88.5, -111.4, -Math.PI / 2], [91, -111.4, Math.PI / 2], [93.5, -111.4, -Math.PI / 2]] }, text: '取引に来た白虎幇の手下を狙撃しろ(のこり {n}人)' }] },
+  { id: 'snipe2', when: 'night', title: '見えない護衛', desc: '東のビルの屋上から、ボースンの車をねらうマフィア6人を狙撃して守る。ライフルがいる。', reward: 4000, at: { x: 90, z: -56.7 }, req: hasRifle, reqNote: 'ライフルと弾がいる(武器屋で買える)',
+    say: { name: 'ボースン', text: '荷物を積んだ車が、東のビルの前で動けなくなった。上から見はって、近づくやつを撃て' }, endSay: { name: 'ボースン', text: '助かった。…お前、いい目をしてるな' },
+    steps: [{ type: 'roof', roofAt: { x: 78, z: -78 }, text: '東のビルの屋上に上がろう(入口の緑の光)', done: '屋上に着いた！ 車を守れ' },
+      { type: 'snipe', escort: { car: [70, -48.8, Math.PI / 2], from: [[26, -55.2, Math.PI / 2], [118, -48.8, -Math.PI / 2]] }, fail: 'ボースンの車がこわされた… ミッション失敗', text: 'ボースンの車をねらうマフィアを狙撃しろ(のこり {n}人・車の体力 {hp})' }] },
   { id: 'sailor1', title: '船員のたのみ 1', desc: '箱を受け取って、港の倉庫まで運ぶ。', reward: 3000, at: PORT.sailor, say: { name: 'ボースン', text: '運び屋か。口がかたいなら、仕事がある。この箱を倉庫まで。中は見るな' }, endSay: { name: 'ボースン', text: '…見なかったな。また来い' }, steps: [{ type: 'go', pos: { x: roadC(1), z: roadC(1) + 20 }, text: '箱を受け取りに行こう', done: '箱ゲット！' }, { type: 'go', pos: { x: 162.5, z: 151 }, text: '箱を港の倉庫へ運ぼう' }] },
   { id: 'sailor2', after: 'sailor1', title: '船員のたのみ 2', desc: '市場の奥で箱を受け取って、港まで運ぶ。警察に追われる。', reward: 4000, at: PORT.sailor, say: { name: 'ボースン', text: '次は市場の奥から、港までだ。追われても、箱は落とすな' }, endSay: { name: 'ボースン', text: 'この港には、表に出せない荷物もある。知りたきゃ、もっと深い所まで来い' }, steps: [{ type: 'go', pos: MK_DEEP, text: '市場の奥で箱を受け取ろう(歩いて入る)', done: '箱ゲット！' }, { type: 'go', pos: PORT.sailor, wanted: 2, text: '警察をかわして、箱を港の船員に届けろ' }] },
   { id: 'sailor3', after: 'sailor2', need: () => !G.tru, title: '船員のたのみ 3', desc: '最後の荷物を、時間内に港の船まで運ぶ。警察に追われる。', reward: 5000, at: PORT.sailor, say: { name: 'ボースン', text: '最後だ。これを船まで運べ。済んだら、荷物にまぎれて乗せてやる' }, endSay: { name: 'ボースン', text: '約束だ。夜、コンテナの間を抜けてこい。見つかるなよ' }, steps: [{ type: 'go', pos: { x: roadC(0) + 20, z: roadC(6) }, text: '最後の荷物を受け取りに行こう', done: '荷物ゲット！' }, { type: 'go', pos: { x: 168, z: -60 }, time: 150, wanted: 3, text: '時間内に港の船へ運べ！' }] },
@@ -2030,6 +2047,14 @@ function beginStep() {
     ['pistol', 'knife', 'fist'].forEach((w, k) => { const g = newGang(BOSSCAR.x + [-4, 0, 4][k], TWR.z1 - 1.3); g.temp = true; g.tier = 0; setTeam(g, true, w); MX.foes.push(g); }); // 見はりは歩道に立つ
   }
   else if (st.type === 'getin') { const r = mergeRect(MERGES[3]), c = MX.mcar = newCar('parked', r.x0 + 14, (r.z0 + r.z1) / 2, 0, 0xffd23f); aim(c.x, c.z); } // 運ぶ車(駐車場の、車のならびの間)
+  if (st.type === 'roof') { const rf = roofNear(st.roofAt.x, st.roofAt.z); aim(rf.ent.x, rf.ent.z); }
+  if (st.type === 'snipe' && st.deal) { // 屋上の目: 白い車と、取引をする白の手下4人(立っているだけ)
+    const d = st.deal, c = newCar('parked', d.car[0], d.car[1], d.car[2], 0xf4f4f4); c.flee = true; MX.hunters.push(c); markerColor(0xff4a4a);
+    d.men.forEach((q, k) => { const g = newGang(q[0], q[1]); g.temp = true; g.tier = 0; g.ctl = true; g.nofeud = true; setTeam(g, true, k % 2 ? 'pistol' : 'fist'); g.h = q[2]; MX.foes.push(g); });
+  }
+  if (st.type === 'snipe' && st.escort) { // 見えない護衛: ボースンの車。マフィアの車が西から(あとで東からも)来て、3人ずつ降りてくる
+    const e = st.escort, c = MX.mcar = newCar('parked', e.car[0], e.car[1], e.car[2], 0x1f3a6e); c.flee = true; G.escHp = SNIPE.carHp; G.wave = 0; G.waveT = 0; spawnWave(e, 0); markerColor(0xff4a4a);
+  }
   if (st.type === 'ask') { G.askId++; G.askI = Math.floor(Math.random() * RUMORS.length); }
   if (st.type === 'bait') { // 「火をつけろ」: 北の門の中に黒の手下3人(lure)、門の外に白の手下3人
     markerColor(0xff4a4a);
@@ -2043,6 +2068,31 @@ function beginStep() {
     const cone = new THREE.Mesh(cg, new THREE.MeshBasicMaterial({ color: 0xffe14a, transparent: true, opacity: 0.5, depthWrite: false, side: THREE.DoubleSide })); cone.position.y = 0.3; per.g.add(cone);
     MX.guards.push({ per, x: SNEAK.x, z: s > 0 ? SNEAK.z1 : SNEAK.z0, dir: -s, h: 0 });
   }
+}
+// マフィアの車が止まって、3人降りてくる(ボースンの車へ歩いていく)
+function spawnWave(e, i) {
+  const q = e.from[i], c = newCar('parked', q[0], q[1], q[2], 0x111111); c.flee = true; MX.hunters.push(c); G.wave = i + 1;
+  for (let k = 0; k < 3; k++) { const g = newGang(q[0] - Math.sin(q[2]) * (2 + k * 1.6) + (k - 1) * 0.3, q[1] + (k - 1) * 1.2); g.temp = true; g.tier = 0; g.ctl = true; g.nofeud = true; g.weapon = k ? 'knife' : 'pistol'; setHand(g.per, g, g.weapon); MX.foes.push(g); }
+  if (i) toast(tr('東からも来たぞ！'), 2);
+}
+// 狙撃ミッションの毎フレーム
+function updateSnipe(st, dt) {
+  const live = MX.foes.filter(g => g.hp > 0), e = st.escort;
+  if (e) {
+    const car = MX.mcar; G.waveT += dt;
+    if (G.wave < e.from.length && (G.waveT > SNIPE.wave2 || !live.length)) { spawnWave(e, G.wave); return; }
+    for (const g of live) { // 車へ歩いて、とりつくと車の体力をへらす
+      const dx = car.x - g.x, dz = car.z - g.z, d = Math.hypot(dx, dz); g.h = Math.atan2(dx, dz);
+      if (g.frozen > 0) { g.ctlSp = 0; continue; }
+      if (d > SNIPE.reach) { const sp = g.blind > 0 ? 0.8 : SNIPE.walk; g.x += dx / d * sp * dt; g.z += dz / d * sp * dt; g.ctlSp = sp; }
+      else { g.ctlSp = 0; G.escHp -= SNIPE.dmg * dt; if (g.swing <= 0) g.swing = 0.25; }
+    }
+    if (G.escHp <= 0) { G.escHp = 0; failMission(tr(st.fail)); return; }
+  }
+  G.left = live.length + (e ? (e.from.length - G.wave) * 3 : 0);
+  let best = null, bd = 1e9; for (const g of live) { const d = Math.hypot(g.x - player.x, g.z - player.z); if (d < bd) { bd = d; best = g; } }
+  if (best) aim(best.x, best.z);
+  if (!G.left) stepDone();
 }
 function beginMission() { G.si = 0; G.timeLeft = -1; G.busy = false; const m = curM(); toast(G.free ? tr('ミッション：{title}', { title: tr(m.title) }) : tr('ミッション{n}：{title}', { n: G.mi + 1, title: tr(m.title) }), 2.6); if (m.say) say(m.say, true); beginStep(); }
 // 段が終わった。hook があれば、それ(お話など)が終わってから次へ
@@ -2583,7 +2633,7 @@ function updateMission(dt) {
   const m = curM(); if (G.over || !m || G.busy) return;
   if (!G.free && G.failWait > 0) { G.failWait -= dt; if (G.failWait <= 0) beginMission(); return; }
   const st = m.steps[G.si], foot = player.mode === 'foot';
-  if (G.timeLeft > 0) { G.timeLeft -= dt; if (G.timeLeft <= 0) { if (st.type === 'survive') stepDone(); else failMission(tr('時間切れ… ミッション失敗')); return; } }
+  if (G.timeLeft > 0) { G.timeLeft -= dt; if (G.timeLeft <= 0) { if (st.type === 'survive') stepDone(); else failMission(tr(st.late || '時間切れ… ミッション失敗')); return; } }
   if (st.type === 'car') { if (!foot) stepDone(); }
   else if (st.type === 'go' || st.type === 'sneak') {
     if (st.type === 'sneak') { // 見はりの警察官: 行ったり来たりする。ライトの中に入ると見つかる
@@ -2626,6 +2676,8 @@ function updateMission(dt) {
     if (bl.length < LURE.need) { failMission(tr(dead > LURE.n - LURE.need ? '手下をたおしすぎた… ミッション失敗' : '手下があきらめて帰った… ミッション失敗')); return; }
     if (Math.hypot(st.pos.x - player.x, st.pos.z - player.z) < 6 && bl.filter(g => Math.hypot(g.x - player.x, g.z - player.z) < LURE.near).length >= LURE.need) stepDone();
   }
+  else if (st.type === 'roof') { if (player.roof === roofNear(st.roofAt.x, st.roofAt.z)) stepDone(); } // v=30
+  else if (st.type === 'snipe') updateSnipe(st, dt);
   else if (st.type === 'leave') { if (foot) { MX.mcar = null; stepDone(); } } // 降りた車は、そのまま駐車場に置いておく(消さない)
   else if (st.type === 'survive') { G.wanted = Math.max(G.wanted, st.wanted); G.evade = 0; } // ★は下がらない
   if (st.hunt && !G.busy && curM() === m) { G.huntT -= dt; if (MX.hunters.length < TUNE.hunt.cars && G.huntT <= 0) { G.huntT = TUNE.hunt.wait; spawnHunter(); } } // 追っ手の車をそろえる
@@ -2721,6 +2773,7 @@ function updateCamera(dt) {
     camPos.lerp(new THREE.Vector3(w.x - Math.sin(yaw) * dist, hgt, w.z - Math.cos(yaw) * dist), 1 - Math.exp(-4 * dt)); camera.position.copy(camPos);
     lookT.set(w.x + Math.sin(yaw) * 3, 1.6, w.z + Math.cos(yaw) * 3); camera.lookAt(lookT); return;
   }
+  beam.visible = !G.scope; // スコープの間は、目印の光の柱を消す(地面の輪だけ)(v=30)
   if (G.scope) { // ライフルのスコープ(v=29): 主人公の目から、ねらっている方を拡大して見る
     const o = scopeEye(), d = scopeDir(G.scope.yaw, G.scope.pitch); camPos.set(o.x, o.y, o.z); camera.position.copy(camPos); lookT.set(o.x + d.x * 10, o.y + d.y * 10, o.z + d.z * 10); camera.lookAt(lookT);
     if (Math.abs(camera.fov - TUNE.rifle.fov) > 0.1) { camera.fov = TUNE.rifle.fov; camera.updateProjectionMatrix(); } return;
@@ -2776,7 +2829,7 @@ function updateHUD() {
   const m = curM(); let html = '';
   if (G.over || !m) html = '<div class="t">' + tr('フリー走行') + '</div>' + tr(G.done.tower ? '港の奥の倉庫へ行って、とびらを開けよう' : FREE.some(freeOpen) ? '紫の光で、好きなミッションを受けよう' : '街を自由に走り回ろう');
   else if (!G.free && G.failWait > 0) html = '<div class="t">' + tr('ミッション{n}', { n: G.mi + 1 }) + '</div>' + G.waitMsg;
-  else { const st = m.steps[G.si]; html = '<div class="t">' + (G.free ? tr('ミッション：{title}', { title: tr(m.title) }) : tr('ミッション{n}/{total}：{title}', { n: G.mi + 1, total: MISSIONS.length, title: tr(m.title) })) + '</div>' + tr(st.text, { n: G.left }); if (G.tp) { const d = Math.hypot(G.tp.x - player.x, G.tp.z - player.z); html += '<div class="d">' + tr('あと {d} m', { d: Math.round(d) }) + '</div>'; } }
+  else { const st = m.steps[G.si]; html = '<div class="t">' + (G.free ? tr('ミッション：{title}', { title: tr(m.title) }) : tr('ミッション{n}/{total}：{title}', { n: G.mi + 1, total: MISSIONS.length, title: tr(m.title) })) + '</div>' + tr(st.text, { n: G.left, hp: Math.ceil(G.escHp || 0) }); if (G.tp) { const d = Math.hypot(G.tp.x - player.x, G.tp.z - player.z); html += '<div class="d">' + tr('あと {d} m', { d: Math.round(d) }) + '</div>'; } }
   $('mission').innerHTML = html; $('money').textContent = '$' + G.money.toLocaleString();
   let s = ''; for (let i = 0; i < 5; i++) s += '<span style="color:' + (i < G.wanted ? '#ffd23f' : 'rgba(255,255,255,.35)') + '">★</span>'; $('stars').innerHTML = s;
   $('clock').textContent = G.phase === 'day' ? '☀ ' + tr('昼') : G.phase === 'eve' ? '◐ ' + tr('夕方') : '☾ ' + tr('夜');
@@ -2899,7 +2952,7 @@ function openOffer(o) {
   G.offer = o; stopInput();
   $('offerKind').textContent = o.steps && o.steps.length ? tr('ミッション') : ''; $('offerName').textContent = tr(o.title); $('offerDesc').textContent = tr(o.desc);
   $('offerReward').textContent = o.reward ? tr('ほうび ${r}', { r: o.reward.toLocaleString() }) : o.pay ? tr('船代 ${r}', { r: o.pay.toLocaleString() }) + '　' + tr('所持金 ${m}', { m: G.money.toLocaleString() }) : '';
-  const note = o.when && o.when !== G.phase ? tr(o.when === 'night' ? '夜だけ受けられる(家でねると、夜にできる)' : '昼だけ受けられる(家でねると、朝にできる)') : o.pay && G.money < o.pay ? tr('お金がたりない') : '';
+  const note = o.req && !o.req() ? tr(o.reqNote) : o.when && o.when !== G.phase ? tr(o.when === 'night' ? '夜だけ受けられる(家でねると、夜にできる)' : '昼だけ受けられる(家でねると、朝にできる)') : o.pay && G.money < o.pay ? tr('お金がたりない') : '';
   $('offerNote').textContent = note; $('offerYes').disabled = !!note;
   $('offerYes').textContent = tr(o.yes || '受ける'); $('offerNo').textContent = tr(o.no || 'やめる');
   $('offer').classList.remove('hidden');
@@ -3012,6 +3065,7 @@ const SC = window.SC = {
   raceMarker: () => marker, oniMark: () => oniMesh, // テスト用(v=26)
   applyItem, canTake, itemMeshes: () => R.itemM, // テスト用(v=28)
   ROOFS, goRoof, leaveRoof, fireRifle, rifleRay, scopeEye, scopeDir, buildings, // テスト用(v=29)
+  SNIPE, roofNear, openOffer, // テスト用(v=30)
   onSend: null, onQuit: null,
   startSolo,
   showOnly, setPlaying,

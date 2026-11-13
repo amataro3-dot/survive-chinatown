@@ -75,7 +75,7 @@ with sync_playwright() as p:
 
     # ---------- つづきから(お使いが終わったあと) ----------
     cont(BASE)
-    check(opened() == "market,guard,taxi,debt,bao,snake,valet,decoy,stall,drunk,ramen,sailor1" and ev("SC.BOAT.g.visible"), "お使いのあと: 12この紫の光と、船の光が出る(" + opened() + ")")
+    check(opened() == "market,guard,taxi,debt,bao,snake,valet,decoy,stall,drunk,ramen,snipe1,snipe2,sailor1" and ev("SC.BOAT.g.visible"), "お使いのあと: 14この紫の光と、船の光が出る(" + opened() + ")")
     # 用心棒
     f = take('guard'); n0 = ev("SC.gangs.length")
     check(ev("SC.MX.foes.length") == 5 and "のこり 5人" in txt("#mission") and ev("SC.MX.foes.every(g=>g.state==='chase'&&g.temp)"), "用心棒: マフィアが5人出て、おそってくる")
@@ -201,7 +201,7 @@ with sync_playwright() as p:
     check(opened().endswith("sailor3"), "貸す前は、ふつうの3つ目が出ている")
     take('debt'); do("G.left=0"); pg.wait_for_timeout(300); pg.click("#storySkip"); pg.wait_for_timeout(200); pg.click("#offerYes"); pg.wait_for_timeout(200); pg.click("#storySkip"); pg.wait_for_timeout(300)
     d = saved(); check(d['lent'] == 1 and d['tru'] == 1 and "sailor3t" in opened() and "sailor3," not in opened() + ",", "2つクリアしてから貸すと、3つ目が「倉庫への届け物」に変わる(" + opened() + ")")
-    pg.reload(); pg.wait_for_timeout(1200); check("8/20" in txt("#goCont"), "スタート画面の数(" + txt("#goCont").replace("\n", " / ") + ")"); pg.click("#goCont"); pg.wait_for_timeout(800); quiet()
+    pg.reload(); pg.wait_for_timeout(1200); check("8/22" in txt("#goCont"), "スタート画面の数(" + txt("#goCont").replace("\n", " / ") + ")"); pg.click("#goCont"); pg.wait_for_timeout(800); quiet()
     check(ev("SC.G.tru") == 1 and "sailor3t" in opened(), "つづきからでも覚えている")
     m0 = ev("SC.G.money"); f = take('sailor3t'); check("情報屋と組んだのか" in txt("#subText"), "変わった3つ目: 船員のひとこと")
     tp(f['steps'][0]['x'], f['steps'][0]['z'])

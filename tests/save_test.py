@@ -93,7 +93,7 @@ with sync_playwright() as p:
     tp(F[0]['x'], F[0]['z']); check(not shown("#offer") and not ev("SC.FREE[0].g.visible"), "クリアしたミッションのマークは、もう出ない")
 
     # ---------- つづきから(クリアしたミッションも覚えている)・こわれたセーブ ----------
-    pg.reload(); pg.wait_for_timeout(1200); check("6/20" in pg.inner_text("#goCont"), "スタート画面にクリアした数が出る(" + pg.inner_text("#goCont").replace("\n", " / ") + ")")
+    pg.reload(); pg.wait_for_timeout(1200); check("6/22" in pg.inner_text("#goCont"), "スタート画面にクリアした数が出る(" + pg.inner_text("#goCont").replace("\n", " / ") + ")")
     pg.click("#goCont"); pg.wait_for_timeout(800)
     check(ev("SC.G.mi") == 5 and ev("!!SC.G.done.market") and not ev("SC.FREE[0].g.visible") and "フリー走行" in pg.inner_text("#mission"), "つづきから: クリアしたミッションを覚えている")
     pg.evaluate("localStorage.setItem('sc-save', JSON.stringify({v:1,money:'x',mi:99,done:'a',inv:['fist','nuke','pig','mg'],ammo:-5,mg:1e12,heals:99,armor:-1,play:null}))")
