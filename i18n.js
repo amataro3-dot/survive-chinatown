@@ -257,6 +257,18 @@
     '30年つぎ足してる秘伝のタレだ。味見するか？': ['My secret sauce. Thirty years of topping up the same pot. Want a taste?', '30년째 이어 부은 비법 소스야. 맛볼래?'],
     'いただきます': ['I\'d love some', '잘 먹겠습니다'],
     '30年洗ってないってこと？': ['So it hasn\'t been washed in thirty years?', '30년 동안 안 씻었다는 거야?'],
+    '黒龍幇と白虎幇、どっちが強いと思う？': ['Black Dragons or White Tigers. Who\'s stronger?', '흑룡방이랑 백호방, 어느 쪽이 세다고 생각해?'],
+    '黒龍幇': ['Black Dragons', '흑룡방'],
+    '白虎幇': ['White Tigers', '백호방'],
+    'わかってるじゃねぇか': ['You get it.', '뭘 좀 아는군.'],
+    'このサングラス、夜でもよく見えるんだぜ？': ['These shades? I can see just fine at night, y\'know.', '이 선글라스, 밤에도 잘 보인다고?'],
+    '見えてそう': ['Looks like it', '잘 보일 것 같아'],
+    'さっき電柱にぶつかってた': ['You just walked into a pole', '아까 전봇대에 부딪혔잖아'],
+    'だろ？ 夜でもバッチリだ': ['Right? Crystal clear, even at night.', '그렇지? 밤에도 완벽해.'],
+    'このスーツ、白くてかっこいいだろ？': ['Sharp white suit, huh?', '이 양복, 하얗고 멋지지?'],
+    'かっこいい': ['Very sharp', '멋있어'],
+    'コックさんみたい': ['You look like a chef', '요리사 같아'],
+    'だろ？ 毎朝アイロンかけてんだ': ['Right? I iron it every morning.', '그렇지? 매일 아침 다림질한다고.'],
 
     /* ---------- ロビー・配達競争(lobby.js・online.js) ---------- */
     'ネットにつながりませんでした。電波を確認して、ページを開き直してね': ['Could not connect. Check your signal and reload the page.', '인터넷에 연결하지 못했어요. 신호를 확인하고 페이지를 다시 열어 주세요.'],

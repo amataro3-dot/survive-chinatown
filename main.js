@@ -1303,7 +1303,8 @@ function makeVip(kind, o) {
 // 話せる距離・ふきだしが出ている秒・Q&A になる割合(街の人)・おやじが2回目からQ&Aになる割合・ヒントがまざる割合・こたえを待つ秒・はなれると終わる距離・屋台の人の数
 //   later = 幹部・白いスーツ・ボス・黒と白のケンカ・「あの屋台だけは…」の話もするか(v=18 から true。白が出る「大きな仕事のあと」から言う)
 //   rumor = 「聞きこみ」のうわさが出ている秒(文が長いので、ふつうより長い)
-const TALK = { dist: 2.8, show: 3.2, qa: 0.3, oyajiQa: 0.5, hint: 0.3, wait: 12, leave: 7, vendors: 6, later: true, rumor: 5.5 };
+//   mobHit = マフィアの Q&A でまちがえたときに、なぐられる体力(v=25。これでやられることはない)、mobWait = なぐられたあと、その人と話せない秒
+const TALK = { dist: 2.8, show: 3.2, qa: 0.3, oyajiQa: 0.5, hint: 0.3, wait: 12, leave: 7, vendors: 6, later: true, rumor: 5.5, mobHit: 10, mobWait: 30 };
 // ひとこと。hint = ヒント・うわさ、self = 屋台のおやじの話(おやじ本人は言わない)
 const LINES = [
   { text: 'この街の家賃、ギャングよりこわいよ' },
@@ -1345,6 +1346,7 @@ const CALM_LINES = [
   { text: 'なぐらないでください。もう充分です' },
 ];
 // Q&A。ok = ふつうのこたえ、ng = 相手がおこるこたえ(おそってくる)。who: 'shop' = 屋台の人がよく聞く、'oyaji' = 屋台のおやじだけ
+//   v=25: 'mobB' = 黒のマフィアだけ、'mobW' = 白のマフィアだけ(おとなしくなったマフィア。まちがえると1発なぐって去る)。reply = いいこたえのときのひとこと
 const QAS = [
   { text: 'うちの小籠包、街でいちばんだろ？', ok: 'いちばんだ', ng: 'となりの店のほうがうまい', who: 'shop' },
   { text: 'この新しい帽子、似合ってる？', ok: '似合ってる', ng: '前が見えなくなる豚の頭のほうがまし' },
@@ -1357,6 +1359,10 @@ const QAS = [
   { text: 'この街、いい街だろ？', ok: 'いい街だ', ng: '早く出たい' },
   { text: 'うちの息子、天才なんだ。そう思うだろ？', ok: '天才だ', ng: '会ったことないけど、ちがうと思う' },
   { text: '30年つぎ足してる秘伝のタレだ。味見するか？', ok: 'いただきます', ng: '30年洗ってないってこと？', who: 'oyaji' },
+  { text: '黒龍幇と白虎幇、どっちが強いと思う？', ok: '黒龍幇', ng: '白虎幇', who: 'mobB', reply: 'わかってるじゃねぇか' },
+  { text: '黒龍幇と白虎幇、どっちが強いと思う？', ok: '白虎幇', ng: '黒龍幇', who: 'mobW', reply: 'わかってるじゃねぇか' },
+  { text: 'このサングラス、夜でもよく見えるんだぜ？', ok: '見えてそう', ng: 'さっき電柱にぶつかってた', who: 'mobB', reply: 'だろ？ 夜でもバッチリだ' },
+  { text: 'このスーツ、白くてかっこいいだろ？', ok: 'かっこいい', ng: 'コックさんみたい', who: 'mobW', reply: 'だろ？ 毎朝アイロンかけてんだ' },
 ];
 // 屋台の人(市場の屋台の前に立っている。話せる)。1人は屋台のおやじ(コック帽)で、夜市の入口にいちばん近い屋台にいる
 const vendors = [];
@@ -1396,7 +1402,7 @@ function talkTarget() {
   let best = null, bd = TALK.dist;
   const see = e => { if (e.off || e.down > 0 || e.angry || (talk && talk.who === e)) return; const d = Math.hypot(e.x - player.x, e.z - player.z); if (d < bd) { bd = d; best = e; } };
   peds.forEach(see); vendors.forEach(see);
-  for (const g of gangs) if (g.hp > 0 && g.state === 'idle' && !g.foe && g.per.g.visible && isCalm(g)) see(g); // おとなしくなったマフィアにも話せる
+  for (const g of gangs) if (g.hp > 0 && g.state === 'idle' && !g.foe && g.per.g.visible && isCalm(g) && G.play >= (g.mad || 0)) see(g); // おとなしくなったマフィアにも話せる
   return best;
 }
 function setBubble(s) { const e = $('bubble'); e.textContent = s; e.style.display = 'block'; }
@@ -1410,11 +1416,12 @@ function pickLine(who) {
 // 「話す」ボタン: 近くの人が立ち止まって、ひとこと言う。ときどき質問(Q&A)される
 function startTalk() {
   const who = talkTarget(); if (!who) return;
-  if (who.mob) { endTalk(); const pool = CALM_LINES.filter(l => l !== who.lastLine), l = pool[Math.floor(Math.random() * pool.length)]; who.lastLine = l; who.talkT = TALK.show; talk = { who, t: TALK.show }; setBubble(tr(l.text)); return; }
+  if (who.mob && Math.random() >= TALK.qa) { endTalk(); const pool = CALM_LINES.filter(l => l !== who.lastLine), l = pool[Math.floor(Math.random() * pool.length)]; who.lastLine = l; who.talkT = TALK.show; talk = { who, t: TALK.show }; setBubble(tr(l.text)); return; }
   const ask = !!asking() && who.asked !== G.askId; // 聞きこみ中で、まだ聞いていない人
   endTalk(); who.talkT = TALK.show; let qa = null;
-  if (who.oyaji) { if (!who.met || Math.random() < TALK.oyajiQa) qa = QAS.find(q => q.who === 'oyaji'); who.met = true; }
-  else if (Math.random() < TALK.qa) { const pool = QAS.filter(q => q.who !== 'oyaji' && q !== lastQA); qa = who.vendor && Math.random() < 0.5 ? QAS[0] : pool[Math.floor(Math.random() * pool.length)]; }
+  if (who.mob) { const pool = QAS.filter(q => q.who === (who.white ? 'mobW' : 'mobB') && q !== lastQA); qa = pool[Math.floor(Math.random() * pool.length)]; } // おとなしくなったマフィアの Q&A(v=25)
+  else if (who.oyaji) { if (!who.met || Math.random() < TALK.oyajiQa) qa = QAS.find(q => q.who === 'oyaji'); who.met = true; }
+  else if (Math.random() < TALK.qa) { const pool = QAS.filter(q => (!q.who || q.who === 'shop') && q !== lastQA); qa = who.vendor && Math.random() < 0.5 ? QAS[0] : pool[Math.floor(Math.random() * pool.length)]; }
   if (qa) {
     lastQA = qa; const opts = [{ text: qa.ok, ng: false }, { text: qa.ng, ng: true }]; if (Math.random() < 0.5) opts.reverse();
     talk = { who, qa, opts, t: TALK.wait, ask }; setBubble(tr(qa.text));
@@ -1436,8 +1443,12 @@ function answerTalk(i) {
   if (!talk || !talk.qa || !talk.opts[i]) return;
   const who = talk.who, bad = talk.opts[i].ng; $('qa').classList.add('hidden'); talk.qa = null; talk.t = who.talkT = 1.8;
   const st = asking();
-  if (!bad) { if (st && talk.ask) tellRumor(who); else setBubble('😊'); } // いいこたえ(ごほうびは、なし。聞きこみ中なら、うわさを教えてくれる)
-  else if (who.oyaji) { setBubble('…'); talk.t = who.talkT = 2.6; } // 屋台のおやじは、おこらない(だまって見るだけ)
+  if (!bad) { if (st && talk.ask) tellRumor(who); else if (who.mob) { setBubble(tr(lastQA.reply)); talk.t = who.talkT = 2.6; } else setBubble('😊'); } // いいこたえ(ごほうびは、なし。聞きこみ中なら、うわさを教えてくれる)
+  else if (who.oyaji) { setBubble('…'); talk.t = who.talkT = 2.6; }
+  else if (who.mob) { // おとなしくなったマフィア(v=25): 1発なぐって、去っていく。追ってこない・★は上がらない。しばらく話せない
+    const d = Math.min(TALK.mobHit, player.hp + player.armor - 1); if (d > 0) hurtPlayer(d);
+    who.swing = 0.3; who.state = 'flee'; who.fleeT = 3; who.talkT = 0; who.mad = G.play + TALK.mobWait; talk.hit = true; talk.t = 1.6; setBubble('💢');
+  } // 屋台のおやじは、おこらない(だまって見るだけ)
   else {
     talk.who = makeAngry(who); setBubble('💢'); talk.t = 2.4; // おこって、おそってくる
     if (st) { G.left = st.n; G.askId++; toast(tr('おこらせた！ 聞きこみは最初からやり直し'), 2.4); } // 聞きこみ中: 集めた数が0にもどる
@@ -1448,7 +1459,7 @@ function updateTalk(dt) {
   const tg = talkTarget(); if (!!tg !== talkShown) { talkShown = !!tg; $('talkBtn').style.display = tg ? 'flex' : 'none'; }
   if (!talk) return;
   const w = talk.who, d = Math.hypot(w.x - player.x, w.z - player.z); talk.t -= dt;
-  const gone = w.npc ? (w.hp <= 0 || npcs.indexOf(w) < 0) : (w.off || w.down > 0 || !!w.angry || G.wanted > 0 || (w.mob && (w.hp <= 0 || w.state !== 'idle'))); // 手配されたら、こわがって話をやめる
+  const gone = w.npc ? (w.hp <= 0 || npcs.indexOf(w) < 0) : (w.off || w.down > 0 || !!w.angry || G.wanted > 0 || (w.mob && (w.hp <= 0 || (w.state !== 'idle' && !(talk.hit && w.state === 'flee'))))); // 手配されたら、こわがって話をやめる
   if (talk.t <= 0 || gone || G.mode !== 'solo' || player.hp <= 0 || d > (talk.qa ? TALK.leave : 16) || (talk.qa && player.mode !== 'foot')) { endTalk(); return; }
   if (!w.npc) { if (talk.qa) w.talkT = Math.max(w.talkT, 0.3); w.h += angDiff(w.h, Math.atan2(player.x - w.x, player.z - w.z)) * Math.min(1, 8 * dt); } // こっちを向く
   const e = $('bubble'); bubV.set(w.x, 3.25 + (w.oyaji ? 0.55 : 0), w.z); bubV.project(camera);
