@@ -1,4 +1,4 @@
-"""撃ち合いのテスト(v=28): にせ Firebase と、にせ Three.js で、スマホ2〜3台ぶんを同時に動かす
+"""サバイバル(v=28 撃ち合い。v=29 で名前を変えた)のテスト: にせ Firebase と、にせ Three.js で、スマホ2〜3台ぶんを同時に動かす
 使い方(Claude 用): python3 tests/shoot_test.py . <スクリーンショットを置くフォルダ>"""
 import sys, os, time, math
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -40,25 +40,25 @@ with sync_playwright() as p:
     a.click("#goOnline"); a.fill("#lbName", "みつる"); a.click("#lbCreate"); wait(a, 600)
     code = a.inner_text("#lbRoomCode"); rp = f"sc-rooms/{code}"
     b.click("#goOnline"); b.fill("#lbName", "たろう"); b.fill("#lbCode", code); b.click("#lbJoin"); wait(b, 600)
-    check(a.is_visible("#lbRshoot") and b.is_disabled("#lbRshoot"), "待合室に「撃ち合い」のボタン")
+    check(a.is_visible("#lbRshoot") and b.is_disabled("#lbRshoot"), "待合室に「サバイバル」のボタン")
     a.click("#lbRshoot"); wait(a, 500)
-    check(get_at(rp + "/meta/rule") == "shoot" and "3分" in b.inner_text("#lbRuleNote"), "撃ち合いをえらぶと、説明が出る")
+    check(get_at(rp + "/meta/rule") == "shoot" and "3分" in b.inner_text("#lbRuleNote"), "サバイバルをえらぶと、説明が出る")
     a.screenshot(path=f"{SHOTS}/s1_lobby.png")
 
     # ---------- 始まり ----------
     a.click("#lbStart"); wait(a, 1000)
     g = get_at(rp + "/game"); items = g.get("items") or []
-    check(g["rule"] == "shoot" and len(items) == 22 and abs(g["left"] - 180) <= 2, "撃ち合いの試合ができる(アイテム22こ・のこり180秒)")
+    check(g["rule"] == "shoot" and len(items) == 24 and abs(g["left"] - 180) <= 2, "サバイバルの試合ができる(アイテム24こ・のこり180秒)")
     kinds = {}
     for it in items: kinds[it["k"]] = kinds.get(it["k"], 0) + 1
-    check(kinds == {"pistol": 4, "mg": 2, "knife": 2, "katana": 1, "pig": 2, "snake": 2, "ammo": 3, "vest": 2, "heal": 2, "speed": 2}, "アイテムの数(ピストル4・マシンガン2・刀2・日本刀1・豚の頭2・ヘビ2・弾の箱3・チョッキ2・回復薬2・スピード2)")
+    check(kinds == {"pistol": 4, "mg": 2, "rifle": 2, "knife": 2, "katana": 1, "pig": 2, "snake": 2, "ammo": 3, "vest": 2, "heal": 2, "speed": 2}, "アイテムの数(ピストル4・マシンガン2・ライフル2・刀2・日本刀1・豚の頭2・ヘビ2・弾の箱3・チョッキ2・回復薬2・スピード2)")
     apart = min(math.hypot(p_["x"] - q["x"], p_["z"] - q["z"]) for i, p_ in enumerate(items) for q in items[i + 1:])
     check(apart > 20, f"アイテムどうしは、はなれている(いちばん近くて {apart:.0f}m)")
     check(ev(a, "SC.player.inv.join()") == "fist" and ev(a, "SC.player.hp") == 100 and a.is_visible("#hpBar"), "素手・体力100で始まる。体力バーが出る")
     ev(a, "(SC.exitCar(), 0)"); wait(a, 300)
     check(a.is_visible("#atkBtn") and a.is_visible("#wpnBtn") and "素手" in a.inner_text("#wpnBtn"), "車を降りると、こうげきボタンが出る(素手)")
-    check(ev(b, "SC.itemMeshes().filter(m => m && m.g.visible).length") == 22, "アイテムが街に見える")
-    check("撃ち合い" in a.inner_text("#mission") and "武器を拾って" in a.inner_text("#mission"), "画面に「撃ち合い」「武器を拾って、たおせ！」")
+    check(ev(b, "SC.itemMeshes().filter(m => m && m.g.visible).length") == 24, "アイテムが街に見える")
+    check("サバイバル" in a.inner_text("#mission") and "武器を拾って" in a.inner_text("#mission"), "画面に「サバイバル」「武器を拾って、たおせ！」")
     check(not ev(a, "SC.cars.some(c => c.kind === 'police')"), "街のパトカーは出ない")
 
     # ---------- 拾う ----------
@@ -127,7 +127,7 @@ with sync_playwright() as p:
     g = get_at(rp + "/game")
     check(g["phase"] == "end" and g["winner"] == "uid_A", "時間切れで、たおした数がいちばん多い人の勝ち")
     wait(a, 400)
-    check(a.is_visible("#result") and "あなたの勝ち" in a.inner_text("#resTitle") and "たおした 1・やられた 0" in a.inner_text("#resList") and "撃ち合い" in a.inner_text("#resNote"), "結果画面: たおした数・やられた数")
+    check(a.is_visible("#result") and "あなたの勝ち" in a.inner_text("#resTitle") and "たおした 1・やられた 0" in a.inner_text("#resList") and "サバイバル" in a.inner_text("#resNote"), "結果画面: たおした数・やられた数")
     check("みつる の勝ち" in b.inner_text("#resTitle"), "負けた人の画面に「みつる の勝ち！」")
     a.screenshot(path=f"{SHOTS}/s4_result.png")
 
@@ -140,7 +140,7 @@ with sync_playwright() as p:
 
     # ---------- 配達競争にもどすと、ひとり用の持ち物ももどる ----------
     a.click("#resLobby"); wait(a, 900)
-    check(ev(a, "SC.player.ammo") == 7 and ev(a, "SC.player.inv.join()") == "fist,pistol" and not ev(a, "document.body.classList.contains('shoot')"), "撃ち合いが終わると、ひとり用の持ち物にもどる")
+    check(ev(a, "SC.player.ammo") == 7 and ev(a, "SC.player.inv.join()") == "fist,pistol" and not ev(a, "document.body.classList.contains('shoot')"), "サバイバルが終わると、ひとり用の持ち物にもどる")
     a.click("#lbRdeliver"); wait(a, 400); a.click("#lbStart"); wait(a, 900)
     check(get_at(rp + "/game/rule") == "deliver" and not a.is_visible("#atkBtn") and not ev(a, "SC.itemMeshes().some(m => m && m.g.visible)"), "配達競争では、こうげきボタンもアイテムも出ない")
 

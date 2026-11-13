@@ -20,7 +20,7 @@
        撃ち合い(v=28): endAt, left, kills: { 人のID: たおした数 }, deaths: { 人のID: やられた数 },
                  items: [{ k: アイテムの種類, x, z, on: 出ているか, g: 何回目か, at: また出る時刻(ホストの時計) }], got: { 人のID: [拾った種類, …] }(順に足していく) }
    pos(sc-rooms/1234/pos/人のID): { x, z, h, c, v, t(車の種類), cc(車の色), w(手配中), out(つかまった), p(パトカー), k(警察官) } … main.js の getMe。g = 試合の番号 */
-import { db, ref, set, update, onValue, onDisconnect } from "./firebase.js?v=28";
+import { db, ref, set, update, onValue, onDisconnect } from "./firebase.js?v=29";
 
 /* ===== 調整用の数字 ===== */
 export const RACE = {
@@ -37,9 +37,9 @@ export const RUN = { cps: 8, cpDist: 7, nextMin: 70, nextMax: 150, apart: 45 };
 export const TAG = { time: 180, tagDist: 4.8, tagGuard: 3000, startGuard: 5000 };
 // ケイドロ(v=27): time = 試合の秒、catchDist = つかまえられる距離、freeze = 最初の警察が動けないミリ秒、guard = つかまって警察になった人が、つかまえられるようになるまでのミリ秒
 export const KD = { time: 240, catchDist: 4.8, freeze: 10000, guard: 3000 };
-// 撃ち合い(v=28): time = 試合の秒、respawn = 拾ったアイテムがまた出る秒、pickDist = 拾える距離、apart = アイテムどうしをはなす距離、items = 街に置く数
+// サバイバル(v=28 撃ち合い。v=29 で名前を変えた): time = 試合の秒、respawn = 拾ったアイテムがまた出る秒、pickDist = 拾える距離、apart = アイテムどうしをはなす距離、items = 街に置く数
 export const SHOOT = { time: 180, respawn: 30, pickDist: 3.2, apart: 25,
-  items: { pistol: 4, mg: 2, knife: 2, katana: 1, pig: 2, snake: 2, ammo: 3, vest: 2, heal: 2, speed: 2 } };
+  items: { pistol: 4, mg: 2, rifle: 2, knife: 2, katana: 1, pig: 2, snake: 2, ammo: 3, vest: 2, heal: 2, speed: 2 } }; // rifle は v=29
 export const RULES = ["deliver", "race", "tag", "cops", "shoot"]; // ホストがえらべるルール(はじめは配達競争)
 const COLORS = [0xff4a4a, 0x3c8cff, 0x3fd06a, 0xffb020];
 export const TIMES = ["day", "eve", "night"]; // ホストがえらべる時間(はじめは夜)
@@ -291,7 +291,7 @@ function showResult(g) {
   else if (rule === "tag") $("resTitle").textContent = g.loser === cur.uid ? tr("あなたの負け…") : g.loser ? tr("{name} の負け！", { name: name(g.loser) }) : tr("おわり！");
   else $("resTitle").textContent = !g.winner ? tr("引き分け！") : g.winner === cur.uid ? tr("あなたの勝ち！") : tr("{name} の勝ち！", { name: name(g.winner) });
   $("resNote").textContent = rule === "race" ? tr("チェックポイント{n}つのレース", { n: (g.cps || []).length }) : rule === "tag" ? tr("{n}分の鬼ごっこ。最後に鬼だった人の負け", { n: Math.round(TAG.time / 60) })
-    : rule === "shoot" ? tr("{n}分の撃ち合い。たおした数がいちばん多い人の勝ち", { n: Math.round(SHOOT.time / 60) })
+    : rule === "shoot" ? tr("{n}分のサバイバル。たおした数がいちばん多い人の勝ち", { n: Math.round(SHOOT.time / 60) })
     : rule === "cops" ? (g.how === "cops" || !run.length ? tr("みんな警察につかまった") : tr("{n}分のケイドロ。逃げ切った人の勝ち", { n: Math.round(KD.time / 60) }))
     : g.how === "last" ? tr("ほかの人がみんな警察につかまった") : g.how === "draw" ? tr("みんな警察につかまった(同じ点)") : g.how === "caught" ? tr("みんな警察につかまった(点の多い人の勝ち)") : tr("{n}点先取の配達競争", { n: g.target || RACE.target });
   const ol = $("resList"); ol.textContent = "";

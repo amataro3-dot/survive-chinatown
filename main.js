@@ -41,6 +41,11 @@ const TUNE = {
   day: { len: 720, eve: 300, night: 420, start: 40, race: 560, speed: 1, far: 60, gangNight: 1.5, pedEve: 1.5, dayEvade: 1.5 },
   // 配達競争の時間(v=20。ホストが待合室でえらぶ。時間は流れない): 昼・夕方(夕やけ)・夜の秒
   raceAt: { day: 150, eve: 350, night: 560 },
+  // ライフル(v=29): 値段・弾の値段・弾の数(買うと・弾だけ)・撃ったあと次を撃てない秒・スコープの見える広さ(度)・ドラッグの速さ・当たる太さ
+  //   boss = 幹部・大ボスへのダメージ(手下・警察官は1発)、pvp = サバイバルでのダメージ(2発)、tap = これより短く押しただけなら撃たない(秒)
+  rifle: { price: 3000, ammoPrice: 300, ammo: 5, cd: 1.5, fov: 14, sens: 0.0011, hitR: 0.6, boss: 100, pvp: 50, tap: 0.3 },
+  // 屋上(v=29): 上がれるビルの数(高い順)・下からマフィアが撃ってくる距離と当たる割合・警察官が上がってくる★・何秒ごと・何人まで
+  roof: { count: 4, gangRange: 40, gangHit: 0.35, copWanted: 3, copEvery: 8, copMax: 2 },
 };
 const DAY = TUNE.day;
 
@@ -121,12 +126,16 @@ function winTex(cols, rows, base) {
 const palette = ['#c98a5b', '#b0b8c4', '#6f84a3', '#d9b26a', '#9c7a6b', '#8aa39b', '#c4b49a', '#7d6f8f', '#a35d5d'];
 const roofMat = M(0x55585e);
 const buildings = [];
-function makeBuilding(x, z, w, d, h) {
+// realH(v=29) = 見た目の高さ。乱数は h のときと同じだけ使う(あとの街の作りを変えないため)。窓の絵は乱数を元にもどして作る
+function makeBuilding(x, z, w, d, h, realH) {
   const base = palette[Math.floor(rnd() * palette.length)];
   const rows = Math.max(2, Math.round(h / 4)), cw = Math.max(2, Math.round(w / 4)), cd = Math.max(2, Math.round(d / 4));
-  const mz = nightMat(cw, rows, base, 0.28, false), mx = nightMat(cd, rows, base, 0.28, false);
+  nightWin(cw, rows, base, 0.28, false); nightWin(cd, rows, base, 0.28, false); // h のときと同じだけ乱数を使う
+  let mz, mx;
+  if (realH) { const sv = seed, had = new Set(Object.keys(texCache)), rr = Math.max(2, Math.round(realH / 4)); mz = nightMat(cw, rr, base, 0.28, false); mx = nightMat(cd, rr, base, 0.28, false); for (const k of Object.keys(texCache)) if (!had.has(k)) delete texCache[k]; seed = sv; h = realH; }
+  else { mz = nightMat(cw, rows, base, 0.28, false); mx = nightMat(cd, rows, base, 0.28, false); }
   const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), [mx, mx, roofMat, roofMat, mz, mz]); m.position.set(x, h / 2 + 0.3, z); scene.add(m);
-  addCol(x - w / 2, x + w / 2, z - d / 2, z + d / 2); buildings.push({ x, z, w, d });
+  addCol(x - w / 2, x + w / 2, z - d / 2, z + d / 2); buildings.push({ x, z, w, d, h });
 }
 /* チャイナタウン: 西寄りの 3×3 区画。その中の2区画(横につなげる)が、歩いてしか入れない市場 */
 const CT = { i0: 1, i1: 3, j0: 2, j1: 4 };
@@ -364,7 +373,7 @@ function buildMerged(m) {
     for (const [lx, lz] of [[-4, -20], [4, 20], [-4, 30], [4, -30], [12, -3], [-12, 3]]) { addBox(0.2, 4, 0.2, cx + lx, 2.3, cz + lz, M(0x333333)); addBox(0.6, 0.3, 0.6, cx + lx, 4.3, cz + lz, MB(0xfff0c8)); GLOWS.push([cx + lx, cz + lz, 6, 2]); }
   } else if (m.kind === 'tower') {
     addBox(W, 0.3, D, cx, 0.15, cz, M(0xb8b8b8));
-    makeBuilding(cx, cz, W - 6, D - 6, 14); EXTRA_SPOTS.push({ x: cx - 25, z: r.z1 - 1.3 }, { x: cx + 25, z: r.z1 - 1.3 }); // ビルの前 makeBuilding(cx + 10, cz, 34, 24, 78);
+    makeBuilding(cx, cz, W - 6, D - 6, 14, 78); EXTRA_SPOTS.push({ x: cx - 25, z: r.z1 - 1.3 }, { x: cx + 25, z: r.z1 - 1.3 }); // ビルの前。v=29: 見た目は78m(乱数は14mのときと同じだけ使う)
   } else if (m.kind === 'parking') {
     addBox(W, 0.3, D, cx, 0.15, cz, M(0x34343a));
     const pos = []; for (const row of [0, 1, 2]) for (let k = 0; k <= 14; k++) pos.push([r.x0 + 8 + row * 12, r.z0 + 3 + k * 6]);
@@ -765,6 +774,7 @@ const WEAPONS = {
   dao: { name: '青龍刀', dmg: 55, range: 3.0, cd: 0.8, melee: true },
   pig: { name: '豚の頭', dmg: 40, range: 15, cd: 0.6, melee: false, thrown: true }, // 当たると頭にかぶさって、前が見えなくなる
   snake: { name: 'ヘビ', dmg: 0, range: 15, cd: 0.6, melee: false, thrown: true }, // 当たると、その場で止まる
+  rifle: { name: 'ライフル', dmg: 100, range: 170, cd: TUNE.rifle.cd, melee: false, scope: true }, // v=29: 押すとスコープ。ドラッグでねらって、離すと撃つ
 };
 // 市場の武器: 持てる数・また出てくるまでの秒・豚の頭で前が見えない秒・ヘビで止まる秒・投げる速さ・当たる近さ
 const MKT = { max: 3, respawn: 60, blind: 4, freeze: 5, speed: 18, hitR: 1.0 };
@@ -786,7 +796,55 @@ function glowMark(col, x, z) {
   g.position.set(x, 0, z); g.visible = false; scene.add(g); return { g, ring: rg };
 }
 Object.assign(HOME, glowMark(0x4aa8ff, HOME.x, HOME.z));
-Object.assign(player, { hp: TUNE.hp, inv: ['fist'], wi: 0, ammo: 0, mg: 0, pigs: 0, snakes: 0, atkCd: 0, swing: 0, item: null, armor: 0, heals: 0 }); // ammo = ピストルの弾、mg = マシンガンの弾、pigs = 豚の頭の数、snakes = ヘビの数
+
+/* ===== 屋上(v=29) =====
+   高いビル(高い順に TUNE.roof.count こ。「大きなビル」は78m)の入口に緑の光。入ると屋上へ、屋上の緑の光で下へ
+   屋上にいる間は player.roof にそのビル。屋上の上は、ふち(低いかべ)の内がわだけ歩ける(かべの判定 colGrid は使わない)
+   ent = 入口の光、back = 下におりたときに立つ所、down = 屋上の光、up = 屋上に着いたときに立つ所、door = 警察官が出てくる所 */
+const ROOF_COL = 0x5cff8a;
+function roofMark(x, y, z, up) { const m = glowMark(ROOF_COL, x, z); m.g.position.y = y; const a = new THREE.Mesh(new THREE.ConeGeometry(0.7, 1.1, 4), MB(ROOF_COL)); a.position.y = 6.4; if (!up) a.rotation.x = Math.PI; m.g.add(a); return m; }
+const ROOFS = buildings.filter(b => b.h).sort((a, b) => b.h - a.h).slice(0, TUNE.roof.count).map(b => {
+  const top = b.h + 0.3, s = b.z < 0 ? 1 : -1, f = b.z + s * b.d / 2; // 入口は街のまん中がわ(南か北)
+  const rf = { x: b.x, z: b.z, w: b.w, d: b.d, h: b.h, top, s, x0: b.x - b.w / 2 + 0.8, x1: b.x + b.w / 2 - 0.8, z0: b.z - b.d / 2 + 0.8, z1: b.z + b.d / 2 - 0.8, cols: [] };
+  rf.ent = { x: b.x, z: f + s * 2.2 }; rf.back = { x: b.x + 2.6, z: f + s * 2.2 };
+  const hx = b.x - Math.min(8, b.w / 4), hz = b.z - s * 2; // 階段の小屋
+  rf.door = { x: hx, z: hz + s * 2.6 }; rf.down = { x: hx, z: hz + s * 4.8 }; rf.up = { x: hx + 2.8, z: hz + s * 4.8 };
+  const par = M(0x6b6e75), add = (w, h, d, x, z, mat, col) => { addBox(w, h, d, x, top + h / 2, z, mat); if (col) rf.cols.push({ x0: x - w / 2, x1: x + w / 2, z0: z - d / 2, z1: z + d / 2 }); };
+  add(b.w, 1.1, 0.4, b.x, b.z - b.d / 2 + 0.2, par); add(b.w, 1.1, 0.4, b.x, b.z + b.d / 2 - 0.2, par); add(0.4, 1.1, b.d, b.x - b.w / 2 + 0.2, b.z, par); add(0.4, 1.1, b.d, b.x + b.w / 2 - 0.2, b.z, par); // ふち
+  add(5, 3.4, 4, hx, hz, M(0x8a8d94), true); addBox(1.4, 2.4, 0.1, hx, top + 1.2, hz + s * 2.05, M(0x3a2a20)); // 小屋ととびら
+  for (const ax of [4, 8.5]) add(3, 2, 3, b.x + b.w / 2 - ax, b.z - s * 4, M(0x9aa0a8), true); // エアコンの外の機械
+  rf.inM = roofMark(rf.ent.x, 0, rf.ent.z, true); rf.outM = roofMark(rf.down.x, top, rf.down.z, false);
+  return rf;
+});
+const lvY = rf => rf ? rf.top : 0; // その高さ(地面は0)
+const lvOf = f => f.remote ? ((R.remotes[f.remote] && ROOFS[(R.remotes[f.remote].rf || 0) - 1]) || null) : (f.roof || null); // 相手がいる屋上(地面は null)
+const roofOn = () => G.mode === 'solo' || shootOn(); // 屋上に上がれるのは、ひとり用とサバイバル
+// 屋上の上の動き: ふちの内がわだけ。小屋と機械は押し返す
+function roofClamp(o, rf, r) {
+  for (const c of rf.cols) { if (o.x + r < c.x0 || o.x - r > c.x1 || o.z + r < c.z0 || o.z - r > c.z1) continue; const px = clamp(o.x, c.x0, c.x1), pz = clamp(o.z, c.z0, c.z1), dx = o.x - px, dz = o.z - pz, d = Math.hypot(dx, dz); if (d < r && d > 0.0001) { o.x = px + dx / d * r; o.z = pz + dz / d * r; } else if (d <= 0.0001) { o.z = rf.s > 0 ? c.z1 + r : c.z0 - r; } }
+  o.x = clamp(o.x, rf.x0 + r, rf.x1 - r); o.z = clamp(o.z, rf.z0 + r, rf.z1 - r);
+}
+function dropRoofCops() { for (let i = npcs.length - 1; i >= 0; i--) if (npcs[i].roof) removeNpc(npcs[i]); }
+function goRoof(rf) {
+  endScope(); if (talk) endTalk();
+  player.roof = rf; player.x = rf.up.x; player.z = rf.up.z; player.h = rf.s > 0 ? 0 : Math.PI; G.camYaw = player.h; G.roofCopT = TUNE.roof.copEvery / 2;
+  camPos.set(player.x - Math.sin(player.h) * 7.5, rf.top + 3.8, player.z - Math.cos(player.h) * 7.5); toast(tr('屋上に上がった'), 1.6);
+}
+function leaveRoof() {
+  const rf = player.roof; if (!rf) return; endScope(); player.roof = null; dropRoofCops();
+  player.x = rf.back.x; player.z = rf.back.z; player.h = rf.s > 0 ? 0 : Math.PI; G.camYaw = player.h;
+  camPos.set(player.x - Math.sin(player.h) * 7.5, 3.8, player.z - Math.cos(player.h) * 7.5); toast(tr('下におりた'), 1.4);
+}
+// 毎フレーム: 光を出して、入ったら上がる・おりる(着く所は光から2.6m以上はなれているので、すぐにはもどらない)
+function checkRoofs(t) {
+  const on = roofOn(), y = 0.5 + Math.sin(t * 3) * 0.15;
+  for (const rf of ROOFS) { rf.inM.g.visible = on; rf.outM.g.visible = on && player.roof === rf; rf.inM.ring.position.y = y; rf.outM.ring.position.y = y; }
+  if (!on) return;
+  if (player.mode !== 'foot' || player.hp <= 0 || G.downT > 0 || G.stunT > 0 || paused() || G.out || (shootOn() && G.shDown > 0)) return;
+  if (player.roof) { if (Math.hypot(player.roof.down.x - player.x, player.roof.down.z - player.z) < 1.8) leaveRoof(); return; }
+  for (const rf of ROOFS) if (Math.hypot(rf.ent.x - player.x, rf.ent.z - player.z) < 1.8) { goRoof(rf); return; }
+}
+Object.assign(player, { roof: null, rf: 0, hp: TUNE.hp, inv: ['fist'], wi: 0, ammo: 0, mg: 0, pigs: 0, snakes: 0, atkCd: 0, swing: 0, item: null, armor: 0, heals: 0 }); // ammo = ピストルの弾、mg = マシンガンの弾、pigs = 豚の頭の数、snakes = ヘビの数
 
 // 豚の頭・ヘビ(まん中が原点)
 function marketItem(type) {
@@ -802,6 +860,7 @@ function handItem(type) {
   else if (type === 'pistol') { const b = new THREE.Mesh(BG(0.12, 0.14, 0.45), M(0x111111)); b.position.z = 0.15; g.add(b); const h = new THREE.Mesh(BG(0.1, 0.25, 0.12), M(0x222222)); h.position.set(0, -0.15, -0.02); g.add(h); }
   else if (type === 'mg') { const b = new THREE.Mesh(BG(0.14, 0.18, 0.95), M(0x1c2024)); b.position.z = 0.35; g.add(b); const h = new THREE.Mesh(BG(0.1, 0.28, 0.12), M(0x2a2e33)); h.position.set(0, -0.18, 0.02); g.add(h); const mag = new THREE.Mesh(BG(0.08, 0.3, 0.14), M(0x3a3e44)); mag.position.set(0, -0.2, 0.32); g.add(mag); }
   else if (type === 'dao') { const b = new THREE.Mesh(BG(0.06, 0.26, 1.2), M(0xdfe4ea)); b.position.z = 0.85; g.add(b); const tip = new THREE.Mesh(BG(0.06, 0.36, 0.5), M(0xdfe4ea)); tip.position.set(0, 0.05, 1.25); g.add(tip); const gd = new THREE.Mesh(BG(0.3, 0.08, 0.08), M(0xc8a040)); gd.position.z = 0.22; g.add(gd); const h = new THREE.Mesh(BG(0.09, 0.09, 0.5), M(0x7a1a1a)); h.position.z = -0.05; g.add(h); const ts = new THREE.Mesh(BG(0.08, 0.3, 0.08), M(0xe23a3a)); ts.position.set(0, -0.2, -0.32); g.add(ts); }
+  else if (type === 'rifle') { const add = (w, h, d, col, x, y, z) => { const m = new THREE.Mesh(BG(w, h, d), M(col)); m.position.set(x, y, z); g.add(m); }; add(0.12, 0.2, 0.5, 0x6a3e22, 0, -0.02, -0.4); add(0.1, 0.13, 0.7, 0x1c1f24, 0, 0, 0.2); add(0.05, 0.05, 0.8, 0x101214, 0, 0.02, 0.95); add(0.08, 0.2, 0.08, 0x1c1f24, 0, -0.15, 0.2); const sc = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.055, 0.42, 10), M(0x0a0a0c)); sc.rotation.x = Math.PI / 2; sc.position.set(0, 0.14, 0.22); g.add(sc); const ln = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.02, 10), MB(0x4aa8ff)); ln.rotation.x = Math.PI / 2; ln.position.set(0, 0.14, 0.44); g.add(ln); } // v=29 ライフル(青く光るスコープ)
   else if (type === 'pig' || type === 'snake') { const it = marketItem(type); if (type === 'pig') it.position.set(0, -0.15, 0.2); else { it.position.z = 0.3; it.scale.set(0.7, 0.7, 0.7); } g.add(it); }
   g.position.y = -0.85; return g;
 }
@@ -814,7 +873,7 @@ function lineClear(x0, z0, x1, z1) { const d = Math.hypot(x1 - x0, z1 - z0), n =
 // 見た目だけのもの(弾のすじ・火花)
 const fx = [];
 const tracerMat = new THREE.LineBasicMaterial({ color: 0xffe08a });
-function tracer(x0, z0, x1, z1) { const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute([x0, 1.6, z0, x1, 1.5, z1], 3)); const l = new THREE.Line(g, tracerMat); scene.add(l); fx.push({ m: l, t: 0.08, geo: g }); }
+function tracer(x0, z0, x1, z1, y0, y1) { const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute([x0, y0 === undefined ? 1.6 : y0, z0, x1, y1 === undefined ? 1.5 : y1, z1], 3)); const l = new THREE.Line(g, tracerMat); scene.add(l); fx.push({ m: l, t: 0.08, geo: g }); }
 function spark(x, y, z) { const m = new THREE.Mesh(BG(0.35, 0.35, 0.35), MB(0xffd23f)); m.position.set(x, y, z); scene.add(m); fx.push({ m, t: 0.12 }); }
 function updateFx(dt) { for (let i = fx.length - 1; i >= 0; i--) { const f = fx[i]; f.t -= dt; if (f.t <= 0) { scene.remove(f.m); if (f.geo) f.geo.dispose(); fx.splice(i, 1); } } }
 
@@ -830,6 +889,7 @@ function addWeapon(k, ammo) {
   if (!player.inv.includes(k)) player.inv.push(k);
   if (k === 'pistol') player.ammo += ammo || 0;
   if (k === 'mg') player.mg += ammo || 0;
+  if (k === 'rifle') player.rf += ammo || 0;
   if (k === 'pig') player.pigs = Math.min(MKT.max, player.pigs + 1);
   if (k === 'snake') player.snakes = Math.min(MKT.max, player.snakes + 1);
   player.wi = player.inv.indexOf(k); setHand(player.per, player, k);
@@ -937,8 +997,10 @@ function updateGangs(dt) {
     else if (g.state === 'flee') { tx = g.x * 2 - px; tz = g.z * 2 - pz; sp = F.speed * 1.2; }
     else if (foe || g.state === 'chase') {
       const W = GANG_W[g.weapon], ranged = g.weapon === 'pistol' || g.weapon === 'mg', dT = foe ? Math.hypot(foe.x - g.x, foe.z - g.z) : dP; tx = foe ? foe.x : px; tz = foe ? foe.z : pz;
-      if (dT > (ranged ? 9 : W.range * 0.8)) sp = g.boss ? TUNE.boss.speed : F.speed;
-      if (dT < W.range && g.cd <= 0) {
+      const up = !foe && !!player.roof; // 主人公が屋上(v=29): 銃を持っていたら下から撃つ。持っていなければ、見上げているだけ
+      if (up) { if (ranged && dT > TUNE.roof.gangRange * 0.8) sp = F.speed; if (ranged && dT < TUNE.roof.gangRange && g.cd <= 0) { g.cd = W.cd; g.swing = 0.25; if (W.burst) { g.burst = (g.burst || W.burst) - 1; if (g.burst <= 0) { g.burst = W.burst; g.cd = W.rest; } } tracer(g.x, g.z, px + (Math.random() - 0.5) * 2, pz + (Math.random() - 0.5) * 2, 1.6, player.roof.top + 1.4); if (Math.random() < TUNE.roof.gangHit) hurtPlayer(W.dmg * (g.dmgX || 1)); } }
+      else if (dT > (ranged ? 9 : W.range * 0.8)) sp = g.boss ? TUNE.boss.speed : F.speed;
+      if (!up && dT < W.range && g.cd <= 0) {
         g.cd = W.cd; g.swing = 0.25; const dmg = W.dmg * (g.dmgX || 1);
         if (W.burst) { g.burst = (g.burst || W.burst) - 1; if (g.burst <= 0) { g.burst = W.burst; g.cd = W.rest; } } // マシンガン: 何発かうって、少し休む
         if (ranged) {
@@ -984,7 +1046,7 @@ function wakeAtHospital() {
 }
 
 // 武器を没収(やられたとき・逮捕されたとき)。防弾チョッキもなくなる。持っておく回復は残る。豚の頭とヘビも残る
-function confiscate() { player.inv = ['fist']; if (player.pigs > 0) player.inv.push('pig'); if (player.snakes > 0) player.inv.push('snake'); player.wi = 0; player.ammo = 0; player.mg = 0; player.armor = 0; setHand(player.per, player, null); }
+function confiscate() { player.inv = ['fist']; if (player.pigs > 0) player.inv.push('pig'); if (player.snakes > 0) player.inv.push('snake'); player.wi = 0; player.ammo = 0; player.mg = 0; player.rf = 0; player.armor = 0; setHand(player.per, player, null); }
 
 /* ===== 車を奪われた運転手・パトカーから降りた警察官 ===== */
 const npcs = [];
@@ -1017,10 +1079,10 @@ function pullOut() {
 }
 function damageNpc(n, dmg, kx, kz) {
   if (n.hp <= 0) return;
-  n.hp -= dmg; n.kx = kx || 0; n.kz = kz || 0; n.stagger = 0.4; spark(n.x, 1.6, n.z);
+  n.hp -= dmg; n.kx = kx || 0; n.kz = kz || 0; n.stagger = 0.4; spark(n.x, lvY(n.roof) + 1.6, n.z);
   if (n.kind === 'cop' && n.state !== 'chase') n.state = 'chase';
   if (n.hp <= 0) {
-    n.dead = 0; n.per.g.rotation.x = -Math.PI / 2; n.per.g.position.y = 0.4; n.per.armR.rotation.x = 0;
+    n.dead = 0; n.per.g.rotation.x = -Math.PI / 2; n.per.g.position.y = lvY(n.roof) + 0.4; n.per.armR.rotation.x = 0;
     if (n.kind === 'driver') dropPickup('money', n.x + 0.5, n.z, 10 + Math.floor(Math.random() * 3) * 10);
     addWanted(1); // 運転手でも警察官でも、たおすと★+1
   }
@@ -1030,7 +1092,7 @@ function updateNpcs(dt) {
   for (let i = npcs.length - 1; i >= 0; i--) {
     const n = npcs[i];
     if (n.kind === 'cop' && G.mode !== 'solo' && G.mode !== 'race') { removeNpc(n); continue; }
-    if (n.hp <= 0) { n.dead += dt; n.x += n.kx * dt; n.z += n.kz * dt; n.kx *= 1 - 3 * dt; n.kz *= 1 - 3 * dt; resolve(n, 0.45); n.per.g.position.set(n.x, 0.4, n.z); if (n.dead > 6) removeNpc(n); continue; }
+    if (n.hp <= 0) { n.dead += dt; n.x += n.kx * dt; n.z += n.kz * dt; n.kx *= 1 - 3 * dt; n.kz *= 1 - 3 * dt; if (n.roof) roofClamp(n, n.roof, 0.45); else resolve(n, 0.45); n.per.g.position.set(n.x, lvY(n.roof) + 0.4, n.z); if (n.dead > 6) removeNpc(n); continue; }
     n.cd -= dt; n.hitCd -= dt; n.life += dt; if (n.swing > 0) n.swing -= dt;
     if (n.down > 0) { // 車から転がり出ている
       n.down -= dt; n.x += n.kx * dt; n.z += n.kz * dt; n.kx *= 1 - 3 * dt; n.kz *= 1 - 3 * dt; resolve(n, 0.45);
@@ -1041,7 +1103,7 @@ function updateNpcs(dt) {
     const dis = statusTick(n, dt); // 1 = 豚の頭で前が見えない、2 = ヘビで動けない
     if (dis) { n.pull = 0; if (dis === 1) { const q = blindWalk(n, dt); tx = q[0]; tz = q[1]; sp = 1.5; } }
     else if (n.kind === 'driver') {
-      if (n.state === 'angry' && (!alive || dP > 30)) n.state = 'flee';
+      if (n.state === 'angry' && (!alive || dP > 30 || player.roof)) n.state = 'flee';
       if (n.state === 'angry') {
         faceP = true; if (dP > 1.5) sp = TUNE.driver.speed;
         if (dP < 1.8 && n.cd <= 0 && player.mode === 'foot') { n.cd = 1.0; n.swing = 0.25; hurtPlayer(TUNE.driver.dmg); }
@@ -1053,7 +1115,10 @@ function updateNpcs(dt) {
       const car = n.car, carOk = car && cars.indexOf(car) >= 0 && car.kind === 'police';
       if (n.state === 'chase' && (!alive || dP > 45)) n.state = 'back';
       if (n.state === 'back' && alive && dP < 25) n.state = 'chase';
-      if (n.state === 'chase') {
+      const same = (n.roof || null) === player.roof; // 同じ高さか(v=29: 屋上)
+      if (n.roof && !same) { removeNpc(n); continue; } // 主人公が下におりたら、屋上の警察官は消える
+      if (n.state === 'chase' && !same) faceP = true; // 主人公が屋上: 下の警察官は見上げて待つ
+      else if (n.state === 'chase') {
         faceP = true; if (dP > (player.mode === 'car' ? 2.6 : 1.2)) sp = TUNE.police.copSpeed;
         if (player.mode === 'car' && dP < 3.4 && Math.abs(player.car.v) < 4 && G.stunT <= 0) { n.pull += dt; if (n.pull > TUNE.police.pullTime) { n.pull = 0; pullOut(); } }
         else n.pull = Math.max(0, n.pull - dt);
@@ -1066,9 +1131,9 @@ function updateNpcs(dt) {
     if (sp > 0) { n.h += angDiff(n.h, Math.atan2(tx - n.x, tz - n.z)) * Math.min(1, 8 * dt); n.x += Math.sin(n.h) * sp * dt; n.z += Math.cos(n.h) * sp * dt; }
     else if (faceP) n.h += angDiff(n.h, Math.atan2(px - n.x, pz - n.z)) * Math.min(1, 8 * dt);
     n.x += n.kx * dt; n.z += n.kz * dt; n.kx *= 1 - 6 * dt; n.kz *= 1 - 6 * dt;
-    resolve(n, 0.45);
+    if (n.roof) roofClamp(n, n.roof, 0.45); else resolve(n, 0.45);
     if (G.mode === 'solo' && player.mode === 'car' && n.hitCd <= 0) { const c = player.car, d = carDist(c, n.x, n.z); if (d < 2.4 && Math.abs(c.v) > 5) { n.hitCd = 0.6; damageNpc(n, Math.abs(c.v) * 4, Math.sin(c.h) * c.v * 0.5, Math.cos(c.h) * c.v * 0.5); } }
-    if (n.hp > 0) { n.per.g.position.set(n.x, onWalk(n.x, n.z) ? 0.3 : 0, n.z); n.per.g.rotation.y = n.h; animPerson(n.per, sp, dt); if (n.swing > 0 || n.pull > 0) n.per.armR.rotation.x = -1.5; }
+    if (n.hp > 0) { n.per.g.position.set(n.x, n.roof ? n.roof.top : onWalk(n.x, n.z) ? 0.3 : 0, n.z); n.per.g.rotation.y = n.h; animPerson(n.per, sp, dt); if (n.swing > 0 || n.pull > 0) n.per.armR.rotation.x = -1.5; }
   }
 }
 
@@ -1080,7 +1145,7 @@ function canAttack() { return G.started && (G.mode === 'solo' || (shootOn() && G
 const curWeapon = () => player.inv[player.wi];
 const isGun = wk => !WEAPONS[wk].melee; // ねらって使う武器(銃・投げる物)
 const isThrown = wk => !!WEAPONS[wk].thrown;
-function ammoOf(wk) { return wk === 'pistol' ? player.ammo : wk === 'mg' ? player.mg : wk === 'pig' ? player.pigs : wk === 'snake' ? player.snakes : Infinity; }
+function ammoOf(wk) { return wk === 'rifle' ? player.rf : wk === 'pistol' ? player.ammo : wk === 'mg' ? player.mg : wk === 'pig' ? player.pigs : wk === 'snake' ? player.snakes : Infinity; }
 let noAmmoT = 0;
 // こうげき(素手・刀は近くの敵に。ピストル・マシンガンは向いている方へ。前の近くに敵がいたら、その敵をねらう)
 function playerAttack() {
@@ -1090,6 +1155,7 @@ function playerAttack() {
   player.atkCd = W.cd; player.swing = 0.22;
   let best = null, bd = 1e9;
   for (const g of foes()) {
+    if (lvOf(g) !== player.roof) continue; // 屋上と地面では、なぐれない(v=29)
     const dx = g.x - player.x, dz = g.z - player.z, d = Math.hypot(dx, dz), a = Math.abs(angDiff(player.h, Math.atan2(dx, dz)));
     if (d > W.range + 0.4) continue; const score = d + a * 1.5; if (score < bd) { bd = score; best = g; }
   }
@@ -1100,13 +1166,15 @@ function gunTarget(W, dir, assist) {
   let best = null, bd = 1e9;
   for (const g of foes()) {
     const dx = g.x - player.x, dz = g.z - player.z, d = Math.hypot(dx, dz), a = Math.abs(angDiff(dir, Math.atan2(dx, dz)));
-    if (d > W.range || a > assist || !lineClear(player.x, player.z, g.x, g.z)) continue;
+    const gl = lvOf(g); // 屋上と地面のあいだ(v=29): 投げる物はとどかない。銃は高さも入れた距離で、かべは見ない
+    if (gl !== player.roof) { if (W.thrown || a > assist || Math.hypot(d, lvY(gl) - lvY(player.roof)) > W.range) continue; }
+    else if (d > W.range || a > assist || !lineClear(player.x, player.z, g.x, g.z)) continue;
     const score = d + a * (assist < 0.3 ? 30 : 0); // ねらったときは、線に近い敵を先に
     if (score < bd) { bd = score; best = g; }
   }
   return best;
 }
-function rayEnd(dir, range) { let ex = player.x, ez = player.z; for (let s = 0.5; s <= range; s += 0.5) { const nx = player.x + Math.sin(dir) * s, nz = player.z + Math.cos(dir) * s; if (pointBlocked(nx, nz)) break; ex = nx; ez = nz; } return [ex, ez]; }
+function rayEnd(dir, range) { if (player.roof) return [player.x + Math.sin(dir) * range, player.z + Math.cos(dir) * range]; let ex = player.x, ez = player.z; for (let s = 0.5; s <= range; s += 0.5) { const nx = player.x + Math.sin(dir) * s, nz = player.z + Math.cos(dir) * s; if (pointBlocked(nx, nz)) break; ex = nx; ez = nz; } return [ex, ez]; }
 function fireGun(wk, dir, assist, turn) {
   const W = WEAPONS[wk];
   if (ammoOf(wk) <= 0) { if (noAmmoT <= 0) { toast(tr('弾がない！'), 1); noAmmoT = 1; } return false; }
@@ -1114,8 +1182,9 @@ function fireGun(wk, dir, assist, turn) {
   player.atkCd = W.cd; player.swing = 0.22;
   if (W.spread) dir += (Math.random() - 0.5) * W.spread;
   const best = gunTarget(W, dir, assist), push = wk === 'mg' ? 0.8 : 2;
-  if (best) { const a = Math.atan2(best.x - player.x, best.z - player.z); if (turn) player.h = a; tracer(player.x, player.z, best.x, best.z); shootFx('r', best.x, best.z); hitFoe(best, W.dmg, Math.sin(a) * push, Math.cos(a) * push); }
-  else { const [ex, ez] = rayEnd(dir, W.range); tracer(player.x, player.z, ex, ez); shootFx('r', ex, ez); }
+  const y0 = lvY(player.roof) + 1.6;
+  if (best) { const a = Math.atan2(best.x - player.x, best.z - player.z), y1 = lvY(lvOf(best)) + 1.5; if (turn) player.h = a; tracer(player.x, player.z, best.x, best.z, y0, y1); shotFx(best.x, y1, best.z); hitFoe(best, W.dmg, Math.sin(a) * push, Math.cos(a) * push); }
+  else { const [ex, ez] = rayEnd(dir, W.range), y1 = player.roof ? 0.5 : 1.5; tracer(player.x, player.z, ex, ez, y0, y1); shotFx(ex, y1, ez); }
   return true;
 }
 
@@ -1123,13 +1192,15 @@ function fireGun(wk, dir, assist, turn) {
    当たったかは撃った人のスマホで決めて、送る位置の ev に入れる([番号, 'h', 相手, ダメージ, かぶる/巻きつく])。撃たれた人のスマホが体力をへらす
    見た目だけのもの(弾のすじ 'r'・投げた豚の頭 'p'・ヘビ 's')も ev で送る。やられたら dn(やられた数)と by(たおした人)を送る → ホストが数える
    アイテムは online.js のホストが置く(R.state.items)。近づくと pk = [番号, 何回目か] を送って、ホストが got に書いたら効く */
-const SHOOT_T = { respawn: 3, inv: 2, runDmg: 50, runSpeed: 5, speed: 1.4, speedT: 10, heal: 40, vest: 50, ammo: { pistol: 12, mg: 30 }, pick: 3.2, evKeep: 1.2 };
+const SHOOT_T = { respawn: 3, inv: 2, runDmg: 50, runSpeed: 5, speed: 1.4, speedT: 10, heal: 40, vest: 50, ammo: { pistol: 12, mg: 30, rifle: 5, rifleBox: 3 }, pick: 3.2, evKeep: 1.2 };
 const shootOn = () => G.mode === 'race' && G.rule === 'shoot';
 const ITEM_NAME = { ammo: '弾の箱', vest: '防弾チョッキ', heal: '回復薬', speed: 'スピードアップ' };
 const itemName = k => tr(WEAPONS[k] ? WEAPONS[k].name : ITEM_NAME[k]);
 function shootFoes() { const a = []; for (const id in R.avatars) { const av = R.avatars[id], r = R.remotes[id]; if (av.seen && r && !r.dd && !r.iv) { av.remote = id; a.push(av); } } return a; }
 function shootEv(e) { R.evSeq++; R.ev.push([R.evSeq, T, ...e]); }
 function shootHit(id, dmg, st) { shootEv(['h', id, dmg, st || 0]); }
+// 弾のすじをほかの人に送る。屋上がからむときは高さも送る('q')(v=29)
+function shotFx(x1, y1, z1) { const y0 = lvY(player.roof) + 1.6; if (y0 === 1.6 && y1 === 1.5) { shootFx('r', x1, z1); return; } if (shootOn()) { const r1 = n => Math.round(n * 10) / 10; shootEv(['q', r1(player.x), r1(y0), r1(player.z), r1(x1), r1(y1), r1(z1)]); } }
 function shootFx(type, x1, z1, hit) { if (shootOn()) shootEv([type, Math.round(player.x * 10) / 10, Math.round(player.z * 10) / 10, Math.round(x1 * 10) / 10, Math.round(z1 * 10) / 10, hit || 0]); }
 // ほかの人の ev を見る(まだ見ていない番号だけ)
 function shootRecv() {
@@ -1140,6 +1211,7 @@ function shootRecv() {
       const [, type, a, b, c, d, f] = e;
       if (type === 'h' && a === R.me) shootHurt(b, id, c);
       else if (type === 'r') tracer(a, b, c, d);
+      else if (type === 'q') { const [, , x0, y0, z0, x1, y1, z1] = e; tracer(x0, z0, x1, z1, y0, y1); }
       else if (type === 'p' || type === 's') { const kind = type === 'p' ? 'pig' : 'snake', m = marketItem(kind), L = Math.max(0.5, Math.hypot(c - a, d - b)); m.position.set(a, 1.7, b); scene.add(m); shots.push({ kind, m, x0: a, z0: b, x1: c, z1: d, L, y1: f ? 1.6 : 0.5, t: 0, dur: Math.max(0.2, L / MKT.speed), vis: true }); }
     }
     R.evSeen[id] = last;
@@ -1154,12 +1226,12 @@ function shootHurt(d, by, st) {
   if (player.hp <= 0) shootDie(by);
 }
 function shootReset() { // 持ち物を全部なくして、素手・体力100
-  player.inv = ['fist']; player.wi = 0; player.ammo = 0; player.mg = 0; player.pigs = 0; player.snakes = 0; player.armor = 0; player.heals = 0; player.hp = TUNE.hp; player.atkCd = 0;
-  setHand(player.per, player, null); clearStatus(player); pendShot = null; endAim(); G.spdT = 0;
+  player.inv = ['fist']; player.wi = 0; player.ammo = 0; player.mg = 0; player.rf = 0; player.pigs = 0; player.snakes = 0; player.armor = 0; player.heals = 0; player.hp = TUNE.hp; player.atkCd = 0;
+  setHand(player.per, player, null); clearStatus(player); pendShot = null; endAim(); endScope(); G.spdT = 0;
 }
 function shootDie(by) {
   G.shDown = SHOOT_T.respawn; G.dn++; G.by = by || null; G.pk = null; if (player.mode === 'car') exitCar();
-  player.per.g.rotation.x = -Math.PI / 2; clearStatus(player); endAim();
+  player.per.g.rotation.x = -Math.PI / 2; clearStatus(player); endAim(); endScope();
   toast(by ? tr('{name}にやられた…', { name: raceName(by) }) : tr('やられた…'), 2.4);
 }
 // 復活: ほかの人から60m以上はなれた道の上(なければ、いちばん遠い所)
@@ -1171,19 +1243,19 @@ function shootRespawn() {
 }
 // 拾えるか(持てないものは拾わない)
 function canTake(k) {
-  if (k === 'pistol' || k === 'mg' || k === 'speed') return true;
+  if (k === 'pistol' || k === 'mg' || k === 'rifle' || k === 'speed') return true;
   if (k === 'knife' || k === 'katana') return !player.inv.includes(k);
   if (k === 'pig' || k === 'snake') return ammoOf(k) < MKT.max;
-  if (k === 'ammo') return player.inv.includes('pistol') || player.inv.includes('mg');
+  if (k === 'ammo') return player.inv.includes('pistol') || player.inv.includes('mg') || player.inv.includes('rifle');
   if (k === 'vest') return player.armor < TUNE.armor;
   if (k === 'heal') return player.hp < TUNE.hp;
   return false;
 }
 function applyItem(k) {
   let note = '';
-  if (k === 'pistol' || k === 'mg') { addWeapon(k, SHOOT_T.ammo[k]); note = tr(' (弾+{n})', { n: SHOOT_T.ammo[k] }); }
+  if (k === 'pistol' || k === 'mg' || k === 'rifle') { addWeapon(k, SHOOT_T.ammo[k]); note = tr(' (弾+{n})', { n: SHOOT_T.ammo[k] }); }
   else if (WEAPONS[k]) addWeapon(k);
-  else if (k === 'ammo') { if (player.inv.includes('pistol')) player.ammo += SHOOT_T.ammo.pistol; if (player.inv.includes('mg')) player.mg += SHOOT_T.ammo.mg; }
+  else if (k === 'ammo') { if (player.inv.includes('pistol')) player.ammo += SHOOT_T.ammo.pistol; if (player.inv.includes('mg')) player.mg += SHOOT_T.ammo.mg; if (player.inv.includes('rifle')) player.rf += SHOOT_T.ammo.rifleBox; }
   else if (k === 'vest') player.armor = Math.min(TUNE.armor, player.armor + SHOOT_T.vest);
   else if (k === 'heal') player.hp = Math.min(TUNE.hp, player.hp + SHOOT_T.heal);
   else if (k === 'speed') G.spdT = T + SHOOT_T.speedT;
@@ -1214,7 +1286,7 @@ function clearItems() { for (const m of R.itemM) if (m) scene.remove(m.g); R.ite
 // 車でひく(1人1秒に1回。歩いている人だけ)
 function shootRun(id) {
   if (player.mode !== 'car' || Math.abs(player.car.v) <= SHOOT_T.runSpeed || G.shDown > 0 || !R.state || R.state.phase !== 'play') return;
-  const a = R.avatars[id], r = R.remotes[id]; if (!a || !a.seen || !r || r.c || r.dd || r.iv || (R.runCd[id] || 0) > T) return;
+  const a = R.avatars[id], r = R.remotes[id]; if (!a || !a.seen || !r || r.c || r.dd || r.iv || r.rf || (R.runCd[id] || 0) > T) return;
   if (carDist(player.car, a.x, a.z) < 2.6) { R.runCd[id] = T + 1; shootHit(id, SHOOT_T.runDmg); spark(a.x, 1, a.z); }
 }
 // 毎フレーム(撃ち合いのとき)
@@ -1223,8 +1295,8 @@ function updateShoot(dt) {
   if (hurtT > 0) hurtT -= dt;
   $('hurt').style.opacity = Math.max(0, hurtT / 0.35) * 0.9 + (player.hp > 0 && player.hp < 30 ? 0.25 : 0);
   statusTick(player, dt); $('blindFx').style.opacity = player.blind > 0 ? Math.min(1, player.blind) * 0.92 : 0; // 豚の頭をかぶると、前が見えない
-  if (G.shDown > 0) { G.shDown -= dt; player.per.g.position.set(player.x, 0.4, player.z); if (G.shDown <= 0 && R.state && R.state.phase === 'play') shootRespawn(); }
-  player.per.g.visible = player.mode !== 'car' && (T >= G.shInv || Math.floor(T * 10) % 2 === 0); // 無敵の間は、ちかちかする
+  if (G.shDown > 0) { G.shDown -= dt; player.per.g.position.set(player.x, lvY(player.roof) + 0.4, player.z); if (G.shDown <= 0 && R.state && R.state.phase === 'play') shootRespawn(); }
+  player.per.g.visible = player.mode !== 'car' && !G.scope && (T >= G.shInv || Math.floor(T * 10) % 2 === 0); // 無敵の間は、ちかちかする
   const s = R.state; if (!s || s.phase !== 'play' || G.shDown > 0) { G.pk = null; return; }
   for (const id in R.avatars) shootRun(id); // 車でひく
   // アイテムを拾う(ホストに知らせる)
@@ -1239,6 +1311,7 @@ function arcY(t, L, y1) { return 1.7 + (y1 - 1.7) * t + 4 * Math.min(1.5, L * 0.
 const shots = []; // 飛んでいる豚の頭・ヘビ
 function throwItem(wk, dir, assist, turn) {
   const W = WEAPONS[wk]; if (ammoOf(wk) <= 0) return false;
+  if (player.roof) { if (noAmmoT <= 0) { toast(tr('屋上からは投げられない'), 1.2); noAmmoT = 1; } return false; } // v=29
   const tg = gunTarget(W, dir, assist); let ex, ez;
   if (tg) { ex = tg.x; ez = tg.z; if (turn) player.h = Math.atan2(ex - player.x, ez - player.z); } else [ex, ez] = rayEnd(dir, W.range);
   if (wk === 'pig') player.pigs--; else player.snakes--;
@@ -1318,15 +1391,18 @@ function atkDown(e) {
   e.preventDefault(); e.stopPropagation();
   try { $('atkBtn').setPointerCapture(e.pointerId); } catch (_) { /* なくてもよい */ }
   if (!isGun(curWeapon())) { playerAttack(); return; } // 素手・刀は、押したらすぐ
+  if (WEAPONS[curWeapon()].scope) { startScope(e); return; } // ライフル(v=29): スコープ
   atk = { id: e.pointerId, sx: e.clientX, sy: e.clientY, dx: 0, dy: 0, aim: false };
 }
 function atkMove(e) {
+  if (G.scope && e.pointerId === G.scope.id) { moveScope(e); return; }
   if (!atk || e.pointerId !== atk.id) return;
   let dx = e.clientX - atk.sx, dy = e.clientY - atk.sy; const l = Math.hypot(dx, dy);
   atk.dx = dx; atk.dy = dy; if (l > AIM.dead) atk.aim = true; else if (!atk.aim) return;
   if (l > AIM.max) { dx *= AIM.max / l; dy *= AIM.max / l; } setAtkKnob(dx, dy);
 }
 function atkUp(e) {
+  if (G.scope && e.pointerId === G.scope.id) { upScope(e); return; }
   if (!atk || e.pointerId !== atk.id) return;
   const wk = curWeapon();
   if ((wk === 'pistol' || isThrown(wk)) && e.type === 'pointerup') pendShot = atk.aim ? { dir: aimDir(), assist: AIM.assist, turn: false, t: AIM.wait } : { dir: null, assist: AIM.tapAssist, turn: true, t: AIM.wait };
@@ -1336,6 +1412,7 @@ function atkUp(e) {
 function updateAim(dt) {
   noAmmoT -= dt;
   const wk = curWeapon(), gun = isGun(wk), ok = canAttack();
+  if (G.scope) { if (!ok || !WEAPONS[wk].scope) endScope(); else { player.h = G.scope.yaw; player.per.g.rotation.y = G.scope.yaw; $('scopeInfo').textContent = player.atkCd > 0 ? tr('装てん中…') : tr('弾 {n}・離すと撃つ', { n: player.rf }); } }
   if (atk && (!gun || !ok)) { if (!ok) endAim(); else hideAim(); }
   if (atk && atk.aim && gun && ok) {
     const dir = aimDir(), W = WEAPONS[wk]; player.h = dir; player.per.g.rotation.y = dir; player.per.armR.rotation.x = -1.5;
@@ -1358,6 +1435,76 @@ function updateAim(dt) {
     } else if (pendShot && (wk === 'pistol' || isThrown(wk))) { const ps = pendShot; pendShot = null; if (ps.dir !== null) player.h = ps.dir; shoot(wk, ps.dir === null ? player.h : ps.dir, ps.assist, ps.turn); }
   }
   if (pendShot) { pendShot.t -= dt; if (pendShot.t <= 0 || !gun) pendShot = null; }
+}
+/* ===== ライフル(v=29) =====
+   こうげきボタンを押すとスコープ(拡大した丸い画面)。押したままドラッグでねらって、離すと撃つ(短く押しただけなら撃たない)
+   弾はカメラのまん中へまっすぐ飛ぶ。かべ(高さは、ビルは本当の高さ・ほかは7m)と地面で止まる */
+function startScope(e) {
+  if (!canAttack()) return;
+  const k = G.scAim && T - G.scAim.t < 4 && G.scAim.roof === player.roof && Math.hypot(G.scAim.x - player.x, G.scAim.z - player.z) < 2; // すぐにもう一度のぞくと、前のねらいのまま
+  G.scope = { id: e.pointerId, lx: e.clientX, ly: e.clientY, t0: T, yaw: k ? G.scAim.yaw : G.camYaw, pitch: k ? G.scAim.pitch : player.roof ? -0.3 : -0.02 };
+  document.body.classList.add('scoped'); player.per.g.visible = false; pendShot = null;
+}
+function moveScope(e) {
+  const sc = G.scope, dx = e.clientX - sc.lx, dy = e.clientY - sc.ly; sc.lx = e.clientX; sc.ly = e.clientY;
+  sc.yaw -= dx * TUNE.rifle.sens; sc.pitch = clamp(sc.pitch - dy * TUNE.rifle.sens, -1.45, 0.5); // 右へドラッグ = 右を向く、下へ = 下を向く
+}
+function upScope(e) {
+  const sc = G.scope; endScope();
+  if (e.type === 'pointerup' && T - sc.t0 >= TUNE.rifle.tap) fireRifle(sc.yaw, sc.pitch);
+}
+function endScope() {
+  if (!G.scope) return; const sc = G.scope; G.scope = null; G.scAim = { yaw: sc.yaw, pitch: sc.pitch, t: T, x: player.x, z: player.z, roof: player.roof };
+  document.body.classList.remove('scoped'); if (player.mode === 'foot') player.per.g.visible = true; G.camYaw = sc.yaw;
+}
+// 目の位置。屋上では、ふちの近く(2.4m まで)なら、ねらう方へ身をのり出す(下の道まで見える)
+function scopeEye(yaw) {
+  const rf = player.roof, o = { x: player.x, y: lvY(rf) + 1.75, z: player.z }; if (!rf) return o;
+  if (yaw === undefined) yaw = G.scope ? G.scope.yaw : player.h;
+  const dx = Math.sin(yaw), dz = Math.cos(yaw), ex = rf.x + (dx > 0 ? 1 : -1) * rf.w / 2, ez = rf.z + (dz > 0 ? 1 : -1) * rf.d / 2;
+  const t = Math.min(Math.abs(dx) > 1e-6 ? (ex - o.x) / dx : 1e9, Math.abs(dz) > 1e-6 ? (ez - o.z) / dz : 1e9);
+  if (t < 2.4) { o.x += dx * (t + 0.6); o.z += dz * (t + 0.6); }
+  return o;
+}
+const scopeDir = (yaw, pitch) => ({ x: Math.sin(yaw) * Math.cos(pitch), y: Math.sin(pitch), z: Math.cos(yaw) * Math.cos(pitch) });
+// 箱に当たるまでの長さ(当たらなければ null)
+function rayBox(o, d, x0, y0, z0, x1, y1, z1) {
+  let t0 = 0, t1 = 1e9;
+  for (const [oo, dd, a, b] of [[o.x, d.x, x0, x1], [o.y, d.y, y0, y1], [o.z, d.z, z0, z1]]) {
+    if (Math.abs(dd) < 1e-9) { if (oo < a || oo > b) return null; continue; }
+    let ta = (a - oo) / dd, tb = (b - oo) / dd; if (ta > tb) { const q = ta; ta = tb; tb = q; }
+    t0 = Math.max(t0, ta); t1 = Math.min(t1, tb); if (t0 > t1) return null;
+  }
+  return t0;
+}
+// 人(立っている円柱)に当たるまでの長さ
+function rayPerson(o, d, x, y0, z, r) {
+  const ox = o.x - x, oz = o.z - z, a = d.x * d.x + d.z * d.z, b = 2 * (ox * d.x + oz * d.z), c = ox * ox + oz * oz - r * r;
+  let t0 = 0, t1 = 1e9;
+  if (a > 1e-9) { const D = b * b - 4 * a * c; if (D < 0) return null; const q = Math.sqrt(D); t0 = (-b - q) / (2 * a); t1 = (-b + q) / (2 * a); } else if (c > 0) return null;
+  if (Math.abs(d.y) > 1e-9) { let ya = (y0 - o.y) / d.y, yb = (y0 + 2.4 - o.y) / d.y; if (ya > yb) { const q = ya; ya = yb; yb = q; } t0 = Math.max(t0, ya); t1 = Math.min(t1, yb); } else if (o.y < y0 || o.y > y0 + 2.4) return null;
+  return t0 <= t1 && t1 > 0 ? Math.max(0, t0) : null;
+}
+// 弾がどこまで飛ぶか・だれに当たるか
+function rifleRay(o, d, range) {
+  let tEnd = range; if (d.y < -1e-6) tEnd = Math.min(tEnd, (0 - o.y) / d.y); // 地面
+  for (const b of buildings) if (b.h) { const t = rayBox(o, d, b.x - b.w / 2, 0, b.z - b.d / 2, b.x + b.w / 2, b.h + 0.3, b.z + b.d / 2); if (t !== null && t < tEnd) tEnd = t; }
+  for (const c of colliders) { if (c.x1 - c.x0 > 100) continue; const t = rayBox(o, d, c.x0, 0, c.z0, c.x1, 7, c.z1); if (t !== null && t > 0.3 && t < tEnd) tEnd = t; } // ほかのかべ(店・屋台など)は7mとする。足もとのかべは見ない
+  let best = null;
+  for (const f of foes()) { const t = rayPerson(o, d, f.x, lvY(lvOf(f)), f.z, TUNE.rifle.hitR); if (t !== null && t < tEnd) { tEnd = t; best = f; } }
+  return { f: best, t: tEnd };
+}
+function fireRifle(yaw, pitch) {
+  if (!canAttack()) return false;
+  if (player.atkCd > 0) { toast(tr('装てん中…'), 0.8); return false; }
+  if (player.rf <= 0) { toast(tr('弾がない！'), 1); return false; }
+  player.rf--; player.atkCd = TUNE.rifle.cd; player.h = yaw;
+  const o = scopeEye(yaw), d = scopeDir(yaw, pitch), hit = rifleRay(o, d, WEAPONS.rifle.range), ex = o.x + d.x * hit.t, ey = o.y + d.y * hit.t, ez = o.z + d.z * hit.t;
+  tracer(o.x + d.x * 0.8, o.z + d.z * 0.8, ex, ez, o.y - 0.1 + d.y * 0.8, ey); if (shootOn()) { const r1 = n => Math.round(n * 10) / 10; shootEv(['q', r1(o.x), r1(o.y - 0.1), r1(o.z), r1(ex), r1(ey), r1(ez)]); }
+  const f = hit.f;
+  if (f) { const dmg = shootOn() ? TUNE.rifle.pvp : f.boss ? TUNE.rifle.boss : Math.max(WEAPONS.rifle.dmg, f.hp); hitFoe(f, dmg, d.x * 3, d.z * 3); }
+  else spark(ex, ey, ez);
+  return !!f;
 }
 function switchWeapon() { if (!G.started || (G.mode !== 'solo' && !shootOn()) || player.hp <= 0) return; player.wi = (player.wi + 1) % player.inv.length; setHand(player.per, player, player.inv[player.wi]); pendShot = null; }
 // 持っておく回復を使う(体力+50)
@@ -1512,7 +1659,7 @@ let talk = null, lastLine = null, lastQA = null, talkShown = null;
 const bubV = new THREE.Vector3();
 // 話しかけられる相手(いちばん近い人)。歩いているとき・手配されていないときだけ
 function talkTarget() {
-  if (!G.started || G.mode !== 'solo' || player.mode !== 'foot' || player.hp <= 0 || G.downT > 0 || G.stunT > 0 || G.shop || G.wanted > 0 || (talk && talk.qa)) return null;
+  if (!G.started || G.mode !== 'solo' || player.mode !== 'foot' || player.roof || player.hp <= 0 || G.downT > 0 || G.stunT > 0 || G.shop || G.wanted > 0 || (talk && talk.qa)) return null;
   let best = null, bd = TALK.dist;
   const see = e => { if (e.off || e.down > 0 || e.angry || (talk && talk.who === e)) return; const d = Math.hypot(e.x - player.x, e.z - player.z); if (d < bd) { bd = d; best = e; } };
   peds.forEach(see); vendors.forEach(see);
@@ -1738,7 +1885,7 @@ function raceWanted(msg) { if (G.mode !== 'race' || G.rule !== 'deliver' || G.ou
 const peace = () => TUNE.peace && G.mi < MISSIONS.length;
 // ゲームが止まっている間(買い物・ミッションをえらぶ・お話・ねる)
 const paused = () => !!(G.shop || G.offer || G.story || G.sleep || G.pause); // G.pause = 一時停止の窓(v=23)
-function stopInput() { releaseHeld(); if (joy) { joy = null; setKnob(0, 0); } camTouch = null; }
+function stopInput() { endScope(); releaseHeld(); if (joy) { joy = null; setKnob(0, 0); } camTouch = null; }
 
 /* ===== お話の場面・ひとこと(v=15) ===== */
 // お話: 文字が1行ずつ出る。タップで次へ。「とばす」で終わりまで。出ている間はゲームが止まる。終わったら done()
@@ -2055,7 +2202,7 @@ function debtHook(next) {
 /* ===== セーブ(v=14) ===== */
 // そのスマホのブラウザの中(localStorage)に残す。覚えるもの: お金・クリアしたミッション・武器と弾・回復薬・チョッキ・たおした幹部・遊んだ時間
 const SAVE_KEY = 'sc-save';
-function saveData() { return { v: 1, money: G.money, mi: G.mi, done: Object.keys(G.done), inv: player.inv.slice(), ammo: player.ammo, mg: player.mg, pigs: player.pigs, snakes: player.snakes, heals: player.heals, armor: player.armor, bosses: G.bosses.slice(), lent: G.lent, tru: G.tru, sis: G.sis, play: Math.floor(G.play) }; }
+function saveData() { return { v: 1, money: G.money, mi: G.mi, done: Object.keys(G.done), inv: player.inv.slice(), ammo: player.ammo, mg: player.mg, rf: player.rf, pigs: player.pigs, snakes: player.snakes, heals: player.heals, armor: player.armor, bosses: G.bosses.slice(), lent: G.lent, tru: G.tru, sis: G.sis, play: Math.floor(G.play) }; }
 function save() { if (G.mode !== 'solo') return false; try { localStorage.setItem(SAVE_KEY, JSON.stringify(saveData())); return true; } catch (e) { return false; } }
 function readSave() { try { const d = JSON.parse(localStorage.getItem(SAVE_KEY)); return d && d.v === 1 ? d : null; } catch (e) { return null; } }
 function clearSave() { try { localStorage.removeItem(SAVE_KEY); } catch (e) { /* 消せなくてもよい */ } }
@@ -2066,7 +2213,8 @@ function canSuspend() { return G.started && G.mode === 'solo' && !G.over && !G.s
 function leave() { G.leaving = true; G.pause = false; location.reload(); }
 function writeSuspend() {
   if (!canSuspend()) return false;
-  const d = saveData(); Object.assign(d, { susp: 1, x: Math.round(player.x * 10) / 10, z: Math.round(player.z * 10) / 10, h: Math.round(player.h * 100) / 100, clock: Math.floor(G.clock), hp: Math.ceil(player.hp) });
+  const d = saveData(), at = player.roof ? player.roof.back : player; Object.assign(d, { susp: 1, x: Math.round(at.x * 10) / 10, z: Math.round(at.z * 10) / 10, // 屋上にいたら、下の入口の前にもどる(v=29)
+    h: Math.round(player.h * 100) / 100, clock: Math.floor(G.clock), hp: Math.ceil(player.hp) });
   if (player.mode === 'car' && player.car && !player.car.cop) d.car = { t: player.car.type || 'sedan', c: player.car.color >>> 0 }; // パトカーは残さない(歩きにもどる)
   try { localStorage.setItem(SUSP_KEY, JSON.stringify(d)); return true; } catch (e) { return false; }
 }
@@ -2094,7 +2242,7 @@ function applySave(d) {
   G.done = {}; for (const id of Array.isArray(d.done) ? d.done : []) if (FREE.some(f => f.id === id)) G.done[id] = 1;
   G.bosses = (Array.isArray(d.bosses) ? d.bosses : []).filter(b => typeof b === 'string');
   G.lent = num(d.lent, 0, 2); G.tru = num(d.tru, 0, 1); G.sis = num(d.sis, 0, 1);
-  player.ammo = num(d.ammo, 0, 9999); player.mg = num(d.mg, 0, 9999); player.pigs = num(d.pigs, 0, MKT.max); player.snakes = num(d.snakes, 0, MKT.max);
+  player.ammo = num(d.ammo, 0, 9999); player.mg = num(d.mg, 0, 9999); player.rf = num(d.rf, 0, 9999); player.pigs = num(d.pigs, 0, MKT.max); player.snakes = num(d.snakes, 0, MKT.max);
   player.heals = num(d.heals, 0, TUNE.maxHeal); player.armor = num(d.armor, 0, TUNE.armor); player.hp = TUNE.hp;
   const inv = ['fist']; for (const k of Array.isArray(d.inv) ? d.inv : []) if (WEAPONS[k] && !inv.includes(k) && !(k === 'pig' && !player.pigs) && !(k === 'snake' && !player.snakes)) inv.push(k);
   player.inv = inv; player.wi = 0; setHand(player.per, player, null);
@@ -2230,7 +2378,7 @@ function readInput() {
 }
 
 /* ===== 車の乗り降り ===== */
-function nearestEnterable() { let best = null, bd = TUNE.enterDist; for (const c of cars) { if ((c.kind === 'police' && G.mode !== 'solo') || c.flee || c.kind === 'hunter') continue; const d = carDist(c, player.x, player.z) - (c.type === 'truck' || c.type === 'bus' ? 0.4 : 0); if (d < bd) { bd = d; best = c; } } return best; }
+function nearestEnterable() { if (player.roof) return null; let best = null, bd = TUNE.enterDist; for (const c of cars) { if ((c.kind === 'police' && G.mode !== 'solo') || c.flee || c.kind === 'hunter') continue; const d = carDist(c, player.x, player.z) - (c.type === 'truck' || c.type === 'bus' ? 0.4 : 0); if (d < bd) { bd = d; best = c; } } return best; }
 function toggleCar() {
   if (!G.started || G.stunT > 0 || G.downT > 0 || G.out || kdFrozen() || (shootOn() && G.shDown > 0) || paused()) return; if (player.mode === 'car') { exitCar(); return; }
   const c = nearestEnterable(); if (!c) return;
@@ -2258,7 +2406,7 @@ function exitCar() {
 let shownCar = null;
 function updatePlayer(dt) {
   const inCar = player.mode === 'car'; if (inCar !== shownCar) { shownCar = inCar; document.body.classList.toggle('incar', inCar); } // 車のボタンに切りかえ
-  if (G.downT > 0 || (shootOn() && G.shDown > 0)) { player.per.g.position.set(player.x, 0.4, player.z); return; } // やられて倒れている
+  if (G.downT > 0 || (shootOn() && G.shDown > 0)) { player.per.g.position.set(player.x, lvY(player.roof) + 0.4, player.z); return; } // やられて倒れている
   if (G.stunT > 0) { // 車から引きずり出されて、たおれている
     G.stunT -= dt; player.per.g.position.set(player.x, 0.4, player.z); player.v = 0;
     if (G.stunT <= 0) player.per.g.rotation.x = 0;
@@ -2268,10 +2416,11 @@ function updatePlayer(dt) {
     const a = G.camYaw; const fx = Math.sin(a), fz = Math.cos(a), rx = -Math.cos(a), rz = Math.sin(a);
     let mx = fx * input.jy + rx * input.jx, mz = fz * input.jy + rz * input.jx; const l = Math.hypot(mx, mz); let sp = 0;
     if (l > 0.08) { mx /= l; mz /= l; sp = (input.dash ? TUNE.dash : TUNE.walk) * Math.min(1, l) * (shootOn() && G.spdT > T ? SHOOT_T.speed : 1); player.x += mx * sp * dt; player.z += mz * sp * dt; player.h += angDiff(player.h, Math.atan2(mx, mz)) * Math.min(1, 12 * dt); }
-    resolve(player, 0.5);
-    for (const c of cars) { const q = carNear(c, player.x, player.z), dx = player.x - q.x, dz = player.z - q.z, d = Math.hypot(dx, dz), r = c.type === 'truck' || c.type === 'bus' ? 1.95 : 2.1; if (d < r && d > 0.001) { player.x = q.x + dx / d * r; player.z = q.z + dz / d * r; } }
+    if (player.roof) roofClamp(player, player.roof, 0.5); // 屋上(v=29): ふちの内がわだけ
+    else { resolve(player, 0.5);
+    for (const c of cars) { const q = carNear(c, player.x, player.z), dx = player.x - q.x, dz = player.z - q.z, d = Math.hypot(dx, dz), r = c.type === 'truck' || c.type === 'bus' ? 1.95 : 2.1; if (d < r && d > 0.001) { player.x = q.x + dx / d * r; player.z = q.z + dz / d * r; } } }
     player.v = sp;
-    const per = player.per; per.g.position.set(player.x, onWalk(player.x, player.z) ? 0.3 : 0, player.z); per.g.rotation.y = player.h; animPerson(per, sp, dt);
+    const per = player.per; per.g.position.set(player.x, player.roof ? player.roof.top : onWalk(player.x, player.z) ? 0.3 : 0, player.z); per.g.rotation.y = player.h; animPerson(per, sp, dt);
     if (player.swing > 0) { player.swing -= dt; per.armR.rotation.x = -1.5; }
     $('enterBtn').textContent = tr('乗る'); $('enterBtn').classList.toggle('near', !!nearestEnterable());
   } else {
@@ -2420,7 +2569,9 @@ function managePolice(dt) {
     if (cand.length) { const q = cand[Math.floor(Math.random() * cand.length)]; const c = newCar('police', q.x, q.z, Math.atan2(player.x - q.x, player.z - q.z), 0); c.v = 10; if (race) c.crew = TUNE.racePolice.crew; }
   }
   let nd = 1e9, nearCop = false; for (const c of pol) if (c.crew > 0) nd = Math.min(nd, Math.hypot(c.x - player.x, c.z - player.z));
-  for (const n of npcs) { if (n.kind !== 'cop' || n.hp <= 0 || n.state !== 'chase' || n.blind > 0 || n.frozen > 0) continue; const d = Math.hypot(n.x - player.x, n.z - player.z); nd = Math.min(nd, d); if (player.mode === 'foot' && d < TUNE.police.catchDist && n.stagger <= 0) nearCop = true; }
+  for (const n of npcs) { if (n.kind !== 'cop' || n.hp <= 0 || n.state !== 'chase' || n.blind > 0 || n.frozen > 0) continue; const d = Math.hypot(n.x - player.x, n.z - player.z); nd = Math.min(nd, d); if (player.mode === 'foot' && d < TUNE.police.catchDist && n.stagger <= 0 && (n.roof || null) === player.roof) nearCop = true; }
+  // 屋上(v=29): ★が高いと、警察官が階段の小屋から上がってくる
+  if (!race && player.roof && G.wanted >= TUNE.roof.copWanted && player.hp > 0) { G.roofCopT -= dt; const rf = player.roof; if (G.roofCopT <= 0 && npcs.filter(n => n.roof === rf && n.hp > 0).length < TUNE.roof.copMax) { G.roofCopT = TUNE.roof.copEvery; const n = newNpc('cop', rf.door.x, rf.door.z, rf.s > 0 ? 0 : Math.PI); n.roof = rf; toast(tr('警察が屋上に上がってきた！'), 1.8); } }
   if (G.wanted > 0) { if (nd > TUNE.police.evadeDist) G.evade += dt; else G.evade = Math.max(0, G.evade - dt * 0.5); if (G.evade > TUNE.police.evadeTime * (G.phase === 'day' && !race ? DAY.dayEvade : 1)) { G.wanted--; G.evade = 0; toast(tr(G.wanted ? '手配度ダウン' : '逃げ切った！'), 1.6); } }
   // 逮捕: 歩いている主人公に、警察官がしばらくくっつく
   if (G.wanted > 0 && nearCop) G.bust += dt; else G.bust = Math.max(0, G.bust - dt);
@@ -2517,7 +2668,7 @@ function updateAvatars(dt) {
     if (!r || r.out) { a.seen = false; a.carM.g.visible = false; a.per.g.visible = false; a.star.visible = false; continue; } // つかまった人は、ほかの人の画面から消える
     a.star.visible = !!r.w; // 手配中の人の頭の上に、黄色い★
     if (r.w) { a.star.position.set(a.x, (a.car ? 3.4 : 3.3) + Math.sin(T * 4) * 0.15, a.z); a.star.rotation.y += dt * 3; }
-    if (!a.seen) { a.x = r.x; a.z = r.z; a.h = r.h; a.seen = true; }
+    if (!a.seen || (r.rf || 0) !== (a.rf || 0)) { a.x = r.x; a.z = r.z; a.h = r.h; a.seen = true; a.rf = r.rf || 0; } // 屋上に上がった・おりたときは、すぐその場所に(v=29)
     a.x += (r.x - a.x) * k; a.z += (r.z - a.z) * k; a.h += angDiff(a.h, r.h) * k; a.car = !!r.c;
     if (a.car) { const ty = CAR_KEYS[r.t] || 'sedan', cc = typeof r.cc === 'number' ? r.cc : a.col, pol = !!r.pc; if (ty !== a.type || cc !== a.cc || pol !== !!a.pol) { const vis = a.carM.g.visible; scene.remove(a.carM.g); a.carM = makeCarMesh(cc, pol, pol ? 'sedan' : ty); a.carM.g.visible = vis; a.type = ty; a.cc = cc; a.pol = pol; } } // 乗りかえた車の形と色(v=21)。パトカー(v=27)
     if (a.car && a.pol) copLights(a.carM, T); // ケイドロの警察のパトカーは、屋根のライトが光る
@@ -2530,7 +2681,7 @@ function updateAvatars(dt) {
       if (r.iv && Math.floor(T * 10) % 2) { a.per.g.visible = false; a.carM.g.visible = false; }
     }
     if (a.car) { a.carM.g.position.set(a.x, 0, a.z); a.carM.g.rotation.y = a.h; }
-    else { a.per.g.position.set(a.x, onWalk(a.x, a.z) ? 0.3 : 0, a.z); a.per.g.rotation.y = a.h; animPerson(a.per, Math.abs(r.v || 0), dt); }
+    else { const rf = ROOFS[(r.rf || 0) - 1]; a.per.g.position.set(a.x, rf ? rf.top + (r.dd ? 0.4 : 0) : onWalk(a.x, a.z) ? 0.3 : 0, a.z); a.per.g.rotation.y = a.h; animPerson(a.per, Math.abs(r.v || 0), dt); }
   }
 }
 function updateRaceMarks(t) {
@@ -2570,12 +2721,16 @@ function updateCamera(dt) {
     camPos.lerp(new THREE.Vector3(w.x - Math.sin(yaw) * dist, hgt, w.z - Math.cos(yaw) * dist), 1 - Math.exp(-4 * dt)); camera.position.copy(camPos);
     lookT.set(w.x + Math.sin(yaw) * 3, 1.6, w.z + Math.cos(yaw) * 3); camera.lookAt(lookT); return;
   }
-  let dist, hgt; const target = player.mode === 'car' ? player.car.h : player.h;
+  if (G.scope) { // ライフルのスコープ(v=29): 主人公の目から、ねらっている方を拡大して見る
+    const o = scopeEye(), d = scopeDir(G.scope.yaw, G.scope.pitch); camPos.set(o.x, o.y, o.z); camera.position.copy(camPos); lookT.set(o.x + d.x * 10, o.y + d.y * 10, o.z + d.z * 10); camera.lookAt(lookT);
+    if (Math.abs(camera.fov - TUNE.rifle.fov) > 0.1) { camera.fov = TUNE.rifle.fov; camera.updateProjectionMatrix(); } return;
+  }
+  let dist, hgt; const target = player.mode === 'car' ? player.car.h : player.h, by = lvY(player.roof); // by = 屋上の高さ(v=29)
   if (player.mode === 'car') { G.camYaw += angDiff(G.camYaw, target) * Math.min(1, 4 * dt); dist = 11 + Math.abs(player.car.v) * 0.08; hgt = 5; G.camDrag *= 1 - 2 * dt; }
   else { if (input.jy > -0.3 && (Math.abs(input.jx) + Math.abs(input.jy)) > 0.1) G.camYaw += angDiff(G.camYaw, target) * Math.min(1, 1.2 * dt); dist = 7.5; hgt = 3.8; if (G.camDrag) { G.camYaw += G.camDrag; G.camDrag = 0; } }
   const yaw = G.camYaw + (player.mode === 'car' ? G.camDrag : 0);
-  const want = new THREE.Vector3(player.x - Math.sin(yaw) * dist, hgt, player.z - Math.cos(yaw) * dist);
-  camPos.lerp(want, 1 - Math.exp(-6 * dt)); camera.position.copy(camPos); lookT.set(player.x + Math.sin(yaw) * 3, 1.6, player.z + Math.cos(yaw) * 3); camera.lookAt(lookT);
+  const want = new THREE.Vector3(player.x - Math.sin(yaw) * dist, hgt + by, player.z - Math.cos(yaw) * dist);
+  camPos.lerp(want, 1 - Math.exp(-6 * dt)); camera.position.copy(camPos); lookT.set(player.x + Math.sin(yaw) * 3, 1.6 + by, player.z + Math.cos(yaw) * 3); camera.lookAt(lookT);
   const f = baseFov + (player.mode === 'car' ? Math.abs(player.car.v) * 0.25 : 0); if (Math.abs(camera.fov - f) > 0.1) { camera.fov += (f - camera.fov) * Math.min(1, 3 * dt); camera.updateProjectionMatrix(); }
 }
 
@@ -2610,6 +2765,7 @@ function drawMinimap() {
   for (const c of MX.hunters) dot(c.x, c.z, '#ffffff', 6, false); // 追っ手の車(白)
   if (shootOn() && R.state && R.state.items) for (const it of R.state.items) if (it.on) dot(it.x, it.z, WEAPONS[it.k] ? '#ff5a4a' : '#5ae8ff', 4, false); // 撃ち合いのアイテム(武器は赤・補助は水色)
   if (G.mode === 'solo') { for (const f of FREE) if (freeOpen(f)) dot(f.at.x, f.at.z, f.info ? '#ffa53a' : f.col ? '#ffe9a0' : '#b06bff', 8, true); if (boatOpen()) dot(BOAT.at.x, BOAT.at.z, '#7fe8ff', 7, true); } // 受けられるミッション(紫)・船(水色)
+  if (roofOn()) for (const rf of ROOFS) dot(rf.ent.x, rf.ent.z, '#5cff8a', 5, false); // 屋上の入口(v=29)
   if (marker.visible) dot(marker.position.x, marker.position.z, '#' + ringMat.color.getHexString(), 9, true);
 }
 
@@ -2655,7 +2811,7 @@ function updateRaceHUD() {
 function updateRuleHUD() {
   const s = R.state, race = G.rule === 'race', n = race && s && s.cps ? s.cps.length : 0, who = id => '<b style="color:' + raceColor(id) + '">' + esc(raceName(id)) + '</b>';
   const kd = G.rule === 'cops', sh = G.rule === 'shoot', left = s && typeof s.left === 'number' ? s.left : kd ? 240 : 180;
-  let html = '<div class="t">' + (race ? tr('レース：チェックポイント{n}つ', { n: n || 8 }) : sh ? tr('撃ち合い：のこり {n}秒', { n: left }) : kd ? tr('ケイドロ：のこり {n}秒', { n: left }) : tr('鬼ごっこ：のこり {n}秒', { n: left })) + '</div>';
+  let html = '<div class="t">' + (race ? tr('レース：チェックポイント{n}つ', { n: n || 8 }) : sh ? tr('サバイバル：のこり {n}秒', { n: left }) : kd ? tr('ケイドロ：のこり {n}秒', { n: left }) : tr('鬼ごっこ：のこり {n}秒', { n: left })) + '</div>';
   if (!s) html += tr('準備中…');
   else if (s.phase === 'end') html += tr('おわり！');
   else if (sh) { // 撃ち合い(v=28)
@@ -2698,6 +2854,8 @@ const SHOP_ITEMS = {
     { name: () => tr('日本刀'), price: 300, can: () => !player.inv.includes('katana'), why: () => tr('持っている'), buy: () => addWeapon('katana') },
     { name: () => tr('マシンガン(弾50発つき)'), price: 1500, can: () => !player.inv.includes('mg'), why: () => tr('持っている'), buy: () => addWeapon('mg', 50) },
     { name: () => tr('マシンガンの弾 50発'), price: 250, can: () => player.inv.includes('mg'), why: () => tr('マシンガンがない'), buy: () => { player.mg += 50; } },
+    { name: () => tr('ライフル(弾{n}発つき)', { n: TUNE.rifle.ammo }), price: TUNE.rifle.price, can: () => !player.inv.includes('rifle'), why: () => tr('持っている'), buy: () => addWeapon('rifle', TUNE.rifle.ammo) }, // v=29
+    { name: () => tr('ライフルの弾 {n}発', { n: TUNE.rifle.ammo }), price: TUNE.rifle.ammoPrice, can: () => player.inv.includes('rifle'), why: () => tr('ライフルがない'), buy: () => { player.rf += TUNE.rifle.ammo; } },
   ],
   drug: [
     { name: () => tr('その場で全回復'), price: 150, can: () => player.hp < TUNE.hp, why: () => tr('体力は満タン'), buy: () => { player.hp = TUNE.hp; } },
@@ -2708,7 +2866,7 @@ const SHOP_ITEMS = {
 function renderShop() {
   const s = G.shop; if (!s) return;
   $('shopName').textContent = tr(s.name);
-  $('shopInfo').innerHTML = tr('所持金 ${m}', { m: G.money.toLocaleString() }).replace(/\$([\d,]+)/, '<b>$$$1</b>') + '　' + tr('体力 {n}', { n: Math.ceil(player.hp) }) + (player.armor > 0 ? '　' + tr('チョッキ {n}', { n: player.armor }) : '') + (player.heals ? '　' + tr('回復薬 {n}', { n: player.heals }) : '') + (player.inv.includes('pistol') ? '　' + tr('弾 {n}', { n: player.ammo }) : '') + (player.inv.includes('mg') ? '　' + tr('マシンガンの弾 {n}', { n: player.mg }) : '');
+  $('shopInfo').innerHTML = tr('所持金 ${m}', { m: G.money.toLocaleString() }).replace(/\$([\d,]+)/, '<b>$$$1</b>') + '　' + tr('体力 {n}', { n: Math.ceil(player.hp) }) + (player.armor > 0 ? '　' + tr('チョッキ {n}', { n: player.armor }) : '') + (player.heals ? '　' + tr('回復薬 {n}', { n: player.heals }) : '') + (player.inv.includes('pistol') ? '　' + tr('弾 {n}', { n: player.ammo }) : '') + (player.inv.includes('mg') ? '　' + tr('マシンガンの弾 {n}', { n: player.mg }) : '') + (player.inv.includes('rifle') ? '　' + tr('ライフルの弾 {n}', { n: player.rf }) : '');
   $('shopList').innerHTML = SHOP_ITEMS[s.kind].map((it, i) => {
     const ok = it.can(), money = G.money >= it.price;
     return '<button class="shopItem" data-i="' + i + '"' + (ok && money ? '' : ' disabled') + '><span>' + esc(it.name()) + '</span><b>$' + it.price.toLocaleString() + '</b>' + (!ok ? '<small>' + esc(it.why()) + '</small>' : !money ? '<small>' + tr('お金がたりない') + '</small>' : '') + '</button>';
@@ -2784,7 +2942,7 @@ function frame(now) {
     if (G.mode === 'solo') updateCombat(dt);
     if (G.mode === 'solo') { managePolice(dt); updateMission(dt); updateSub(dt); }
     else { if (shootOn()) updateShoot(dt); managePolice(dt); updateRaceMarks(T); R.sendT -= dt; if (R.sendT <= 0 && SC.onSend) { R.sendT = TUNE.posRate; SC.onSend(SC.getMe()); } }
-    checkShops(T); checkMarks(T); G.hitCd -= dt; G.play += dt;
+    checkShops(T); checkMarks(T); checkRoofs(T); G.hitCd -= dt; G.play += dt;
     for (const c of cars) { c.mesh.position.set(c.x, 0, c.z); c.mesh.rotation.y = c.h; }
     updateCamera(dt); updateTalk(dt); marker.rotation.y += dt; ring.position.y = 0.4 + Math.sin(T * 3) * 0.2;
     hudT -= dt; if (hudT <= 0) { updateHUD(); hudT = 0.1; } drawMinimap();
@@ -2800,7 +2958,7 @@ function frame(now) {
 /* ===== 画面の切りかえ ===== */
 function showOnly(id) { for (const s of ['start', 'lobby', 'result', 'clear']) $(s).classList.toggle('hidden', s !== id); }
 function setPlaying(on) { document.body.classList.toggle('playing', on); G.started = on; }
-function resetPlayerToFoot(x, z, h) { if (player.mode === 'car') exitCar(); player.x = x; player.z = z; player.h = h; player.per.g.visible = true; G.camYaw = h; camPos.set(x - Math.sin(h) * 8, 6, z - Math.cos(h) * 8); }
+function resetPlayerToFoot(x, z, h) { if (player.mode === 'car') exitCar(); if (player.roof) { player.roof = null; dropRoofCops(); } endScope(); player.x = x; player.z = z; player.h = h; player.per.g.visible = true; G.camYaw = h; camPos.set(x - Math.sin(h) * 8, 6, z - Math.cos(h) * 8); }
 // Android: スタートを押したら全画面にして横に固定する(iPhone はできないので、縦のときは「横にしてね」の警告だけ)
 function lockLandscape() {
   if (typeof navigator === 'undefined' || !/Android/i.test(navigator.userAgent)) return;
@@ -2853,6 +3011,7 @@ const SC = window.SC = {
   G, R, player, cars, peds, TUNE, MISSIONS, FREE, HOME, save, readSave, applySave, curM, pointBlocked, P, gangs, pickups, npcs, SHOPS, HOSPITAL, SHOP_ITEMS, closeShop, WEAPONS, MKT, MKW, shots, newNpc, confiscate, DAY, setClock, vendors, TALK, LINES, QAS, makeVip, startTalk, answerTalk, pickLine, getTalk: () => talk, camera, BOAT, PORT, MX, STORY, SNEAK, freeOpen, story, say, finish, openSleep, sleepTo, bump, CLUB, NEON_MATS, STALL_POS, APT, INTRO, INFO, LURE, BOSSCAR, RUMORS, infoPer, setTeam, applyTeams, inCT, newGang, damageGang, GANG_W, PGD, TOWER, INFO2, BOSS_AT, MK_DEEP, WAREHOUSE, twrInfo, twrOyaji, isCalm, CALM_LINES, endScene, END, ENDS, closeOffer, hurtPlayer, callMinions,
   raceMarker: () => marker, oniMark: () => oniMesh, // テスト用(v=26)
   applyItem, canTake, itemMeshes: () => R.itemM, // テスト用(v=28)
+  ROOFS, goRoof, leaveRoof, fireRifle, rifleRay, scopeEye, scopeDir, buildings, // テスト用(v=29)
   onSend: null, onQuit: null,
   startSolo,
   showOnly, setPlaying,
@@ -2868,10 +3027,10 @@ const SC = window.SC = {
     if (R.myCar) removeCar(R.myCar);
     const car = R.myCar = newCar('parked', x, z, h, color || 0xffffff);
     enterCar(car);
-    showOnly(null); setPlaying(true); toast(tr(G.rule === 'race' ? 'レーススタート！' : G.rule === 'tag' ? '鬼ごっこスタート！' : G.rule === 'cops' ? 'ケイドロスタート！' : G.rule === 'shoot' ? '撃ち合いスタート！ 武器を拾え' : '配達競争スタート！'), 2.2);
+    showOnly(null); setPlaying(true); toast(tr(G.rule === 'race' ? 'レーススタート！' : G.rule === 'tag' ? '鬼ごっこスタート！' : G.rule === 'cops' ? 'ケイドロスタート！' : G.rule === 'shoot' ? 'サバイバルスタート！ 武器を拾え' : '配達競争スタート！'), 2.2);
     // 撃ち合い(v=28): ひとり用の持ち物はとっておいて、素手・体力100で始める
     R.ev = []; R.evSeq = 0; R.evSeen = {}; R.gotN = 0; R.runCd = {}; clearItems(); G.shDown = 0; G.shInv = 0; G.dn = 0; G.by = null; G.pk = null; G.spdT = 0;
-    if (G.rule === 'shoot') { if (!R.soloKeep) R.soloKeep = { hp: player.hp, inv: player.inv.slice(), wi: player.wi, ammo: player.ammo, mg: player.mg, pigs: player.pigs, snakes: player.snakes, armor: player.armor, heals: player.heals }; shootReset(); }
+    if (G.rule === 'shoot') { if (!R.soloKeep) R.soloKeep = { hp: player.hp, inv: player.inv.slice(), wi: player.wi, ammo: player.ammo, mg: player.mg, rf: player.rf, pigs: player.pigs, snakes: player.snakes, armor: player.armor, heals: player.heals }; shootReset(); }
     else if (R.soloKeep) { Object.assign(player, R.soloKeep); R.soloKeep = null; setHand(player.per, player, player.inv[player.wi]); }
     document.body.classList.toggle('shoot', G.rule === 'shoot');
   },
@@ -2941,6 +3100,7 @@ const SC = window.SC = {
       if (G.dn) { me.dn = G.dn; if (G.by) me.by = G.by; } if (G.pk) me.pk = G.pk;
       const wk = player.inv[player.wi]; if (wk && wk !== 'fist' && player.mode === 'foot') me.wk = wk;
       const st = player.frozen > 0 ? 2 : player.blind > 0 ? 1 : 0; if (st) me.st = st; if (G.shDown > 0) me.dd = 1; if (T < G.shInv) me.iv = 1;
+      if (player.roof) me.rf = ROOFS.indexOf(player.roof) + 1; // 屋上にいる(v=29)
     }
     if (G.mode === 'race') {
       if (G.out) me.out = 1; else if (G.wanted) me.w = 1;

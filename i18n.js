@@ -23,9 +23,9 @@
     '📱 このゲームは<b>横向き</b>で遊びます': ['📱 This game is played in <b>landscape</b>', '📱 이 게임은 <b>가로 화면</b>으로 플레이합니다'],
     'ひとりで遊ぶ(ミッション)': ['Play Solo (Missions)', '혼자 하기(미션)'],
     '操作': ['Controls', '조작'],
-    '左下のスティック：歩く／車のハンドル(左右)<br>それ以外の場所をドラッグ：カメラを回す<br>「乗る／降りる」：車の乗り降り<br>「ダッシュ」：走る<br>「話す」：近くの街の人に話しかける<br>「こうげき」：銃はボタンを倒してねらい、離して撃つ<br>車では「アクセル」「ブレーキ」「バック」のボタンで走る': [
-      'Stick (bottom left): walk / steer the car (left and right)<br>Drag anywhere else: turn the camera<br>"Get in / Get out": get in and out of cars<br>"Dash": run<br>"Talk": talk to a person nearby<br>"Attack": with a gun, drag the button to aim and release to shoot<br>In a car, drive with the "Gas", "Brake" and "Reverse" buttons',
-      '왼쪽 아래 스틱: 걷기 / 자동차 핸들(좌우)<br>그 밖의 곳을 드래그: 카메라 돌리기<br>"타기 / 내리기": 차 타고 내리기<br>"대시": 달리기<br>"말 걸기": 근처의 사람에게 말 걸기<br>"공격": 총은 버튼을 끌어서 조준하고, 떼면 쏜다<br>차에서는 "액셀" "브레이크" "후진" 버튼으로 달린다'],
+    '左下のスティック：歩く／車のハンドル(左右)<br>それ以外の場所をドラッグ：カメラを回す<br>「乗る／降りる」：車の乗り降り<br>「ダッシュ」：走る<br>「話す」：近くの街の人に話しかける<br>「こうげき」：銃はボタンを倒してねらい、離して撃つ<br>ライフル：押すとスコープ。ドラッグでねらって、離すと撃つ<br>緑の光：高いビルの屋上に上がる・おりる<br>車では「アクセル」「ブレーキ」「バック」のボタンで走る': [
+      'Stick (bottom left): walk / steer the car (left and right)<br>Drag anywhere else: turn the camera<br>"Get in / Get out": get in and out of cars<br>"Dash": run<br>"Talk": talk to a person nearby<br>"Attack": with a gun, drag the button to aim and release to shoot<br>Rifle: press for the scope, drag to aim, release to shoot<br>Green light: go up to or down from the roof of a tall building<br>In a car, drive with the "Gas", "Brake" and "Reverse" buttons',
+      '왼쪽 아래 스틱: 걷기 / 자동차 핸들(좌우)<br>그 밖의 곳을 드래그: 카메라 돌리기<br>"타기 / 내리기": 차 타고 내리기<br>"대시": 달리기<br>"말 걸기": 근처의 사람에게 말 걸기<br>"공격": 총은 버튼을 끌어서 조준하고, 떼면 쏜다<br>라이플: 누르면 스코프. 드래그해서 조준하고, 떼면 쏜다<br>초록 빛: 높은 빌딩의 옥상으로 올라가기・내려가기<br>차에서는 "액셀" "브레이크" "후진" 버튼으로 달린다'],
     'ひとりで遊ぶ': ['Play Solo', '혼자 하기'],
     'マフィアのお使いをこなして、お金をかせごう。人をはねたり、車にぶつけたりすると手配度(★)が上がって警察が追ってくる。警察官につかまると逮捕！<br>光るマークの店で、武器(赤)や薬(緑)が買える。<br>家(青い光)に入るとセーブして、体力が全回復する。ミッションをクリアしたときも、自動でセーブする。': [
       'Run errands for the mafia and earn money. Hit people or crash into cars and your wanted level (★) goes up and the police come after you. If an officer catches you, you get arrested!<br>At shops with a glowing mark you can buy weapons (red) and medicine (green).<br>Step into your home (blue light) to save and fully recover. The game also saves automatically when you clear a mission.',
@@ -175,6 +175,18 @@
     'マシンガンの弾 50発': ['Machine gun ammo ×50', '기관총 탄약 50발'],
     'マシンガンがない': ['You need a machine gun', '기관총이 없음'],
     'マシンガンの弾 {n}': ['MG ammo {n}', '기관총 탄약 {n}'],
+    /* ---------- ライフルと屋上(v=29) ---------- */
+    'ライフル': ['Rifle', '라이플'],
+    'ライフル(弾{n}発つき)': ['Rifle ({n} rounds included)', '라이플(탄약 {n}발 포함)'],
+    'ライフルの弾 {n}発': ['Rifle ammo ×{n}', '라이플 탄약 {n}발'],
+    'ライフルがない': ['You need a rifle', '라이플이 없음'],
+    'ライフルの弾 {n}': ['Rifle ammo {n}', '라이플 탄약 {n}'],
+    '装てん中…': ['Reloading…', '장전 중…'],
+    '弾 {n}・離すと撃つ': ['Ammo {n} · release to shoot', '탄약 {n} · 떼면 쏜다'],
+    '屋上に上がった': ['You went up to the rooftop', '옥상으로 올라왔다'],
+    '下におりた': ['You went back down', '아래로 내려왔다'],
+    '警察が屋上に上がってきた！': ['The police are coming up to the roof!', '경찰이 옥상으로 올라왔다!'],
+    '屋上からは投げられない': ["Can't throw from the rooftop", '옥상에서는 던질 수 없다'],
     'その場で全回復': ['Full heal now', '즉시 완전 회복'],
     '回復薬(体力+{hp}。{max}つまで持てる)': ['Medkit (+{hp} HP, carry up to {max})', '회복약(체력 +{hp}, 최대 {max}개)'],
     'もう{max}つ持っている': ['Already carrying {max}', '이미 {max}개 가지고 있음'],
@@ -189,7 +201,7 @@
     /* ---------- レース・鬼ごっこ(v=26) ---------- */
     'みんなで対戦(オンライン)': ['Battle with Friends (Online)', '다 함께 대전(온라인)'],
     'オンライン対戦(2〜4人)': ['Online Battle (2–4 players)', '온라인 대전(2~4명)'],
-    'ルールはホストが待合室でえらぶ。<br>配達競争：荷物を先に取って、届け先まで運ぶと1点。荷物を持っている人にぶつかると奪える。先に3点取った人の勝ち！<br>レース：光るチェックポイントを順番に8つ回って、先にゴールした人の勝ち！<br>鬼ごっこ：鬼にぶつかられると鬼が交代。3分たったときに鬼だった人の負け！<br>ケイドロ：警察1人がパトカーで追いかける。つかまると警察の仲間に。4分逃げ切った人の勝ち！<br>撃ち合い：素手で始まって、道に落ちている武器を拾って戦う。3分でたおした数がいちばん多い人の勝ち！': ['The host picks the rules in the waiting room.<br>Delivery Race: Grab the package and bring it to the drop-off for 1 point. Ram whoever has it to steal it. First to 3 points wins!<br>Checkpoint Race: Hit the 8 glowing checkpoints in order. First to the finish wins!<br>Tag: If "it" rams you, you become "it". Whoever is "it" when 3 minutes are up loses!<br>Cops & Robbers: One cop chases everyone in a squad car. Get caught and you join the cops. Survive 4 minutes to win!<br>Shootout: Start bare-handed and grab weapons lying in the streets. Whoever takes down the most in 3 minutes wins!', '규칙은 호스트가 대기실에서 고른다.<br>배달 경쟁: 짐을 먼저 잡아서 배달처까지 옮기면 1점. 짐을 가진 사람에게 부딪히면 빼앗을 수 있다. 먼저 3점을 딴 사람이 승리!<br>레이스: 빛나는 체크포인트 8개를 순서대로 돌아서 먼저 골인한 사람이 승리!<br>술래잡기: 술래가 부딪히면 술래가 바뀐다. 3분이 지났을 때 술래였던 사람이 패배!<br>경찰과 도둑: 경찰 1명이 순찰차로 쫓는다. 잡히면 경찰 편이 된다. 4분 동안 도망친 사람이 승리!<br>총격전: 맨손으로 시작해서 길에 떨어진 무기를 주워 싸운다. 3분 동안 가장 많이 쓰러뜨린 사람이 승리!'],
+    'ルールはホストが待合室でえらぶ。<br>配達競争：荷物を先に取って、届け先まで運ぶと1点。荷物を持っている人にぶつかると奪える。先に3点取った人の勝ち！<br>レース：光るチェックポイントを順番に8つ回って、先にゴールした人の勝ち！<br>鬼ごっこ：鬼にぶつかられると鬼が交代。3分たったときに鬼だった人の負け！<br>ケイドロ：警察1人がパトカーで追いかける。つかまると警察の仲間に。4分逃げ切った人の勝ち！<br>サバイバル：素手で始まって、道に落ちている武器を拾って戦う。緑の光から屋上にも上がれる。3分でたおした数がいちばん多い人の勝ち！': ['The host picks the rules in the waiting room.<br>Delivery Race: Grab the package and bring it to the drop-off for 1 point. Ram whoever has it to steal it. First to 3 points wins!<br>Checkpoint Race: Hit the 8 glowing checkpoints in order. First to the finish wins!<br>Tag: If "it" rams you, you become "it". Whoever is "it" when 3 minutes are up loses!<br>Cops & Robbers: One cop chases everyone in a squad car. Get caught and you join the cops. Survive 4 minutes to win!<br>Survival: Start bare-handed and grab weapons lying in the streets. Green lights take you up to rooftops. Whoever takes down the most in 3 minutes wins!', '규칙은 호스트가 대기실에서 고른다.<br>배달 경쟁: 짐을 먼저 잡아서 배달처까지 옮기면 1점. 짐을 가진 사람에게 부딪히면 빼앗을 수 있다. 먼저 3점을 딴 사람이 승리!<br>레이스: 빛나는 체크포인트 8개를 순서대로 돌아서 먼저 골인한 사람이 승리!<br>술래잡기: 술래가 부딪히면 술래가 바뀐다. 3분이 지났을 때 술래였던 사람이 패배!<br>경찰과 도둑: 경찰 1명이 순찰차로 쫓는다. 잡히면 경찰 편이 된다. 4분 동안 도망친 사람이 승리!<br>서바이벌: 맨손으로 시작해서 길에 떨어진 무기를 주워 싸운다. 초록 빛에서 옥상으로도 올라갈 수 있다. 3분 동안 가장 많이 쓰러뜨린 사람이 승리!'],
     'オンライン対戦': ['Online Battle', '온라인 대전'],
     'ルール': ['Rules', '규칙'],
     'レース': ['Checkpoint Race', '레이스'],
@@ -254,11 +266,11 @@
     '逃げ {n}秒': ['Ran {n}s', '도망 {n}초'],
     '逃げ切った': ['got away', '도망 성공'],
 
-    /* ---------- 撃ち合い(v=28) ---------- */
-    '撃ち合い': ['Shootout', '총격전'],
-    '素手で始まって、道に落ちている武器を拾って戦う。3分でたおした数がいちばん多い人の勝ち': ['Start bare-handed and grab weapons lying in the streets. Whoever takes down the most in 3 minutes wins', '맨손으로 시작해서 길에 떨어진 무기를 주워 싸운다. 3분 동안 가장 많이 쓰러뜨린 사람이 승리'],
-    '撃ち合いスタート！ 武器を拾え': ['Shootout begins! Grab a weapon', '총격전 시작! 무기를 주워라'],
-    '撃ち合い：のこり {n}秒': ['Shootout: {n} sec left', '총격전: 남은 시간 {n}초'],
+    /* ---------- サバイバル(v=28 撃ち合い → v=29 で名前を変えた) ---------- */
+    'サバイバル': ['Survival', '서바이벌'],
+    '素手で始まって、道に落ちている武器を拾って戦う。緑の光から屋上にも上がれる。3分でたおした数がいちばん多い人の勝ち': ['Start bare-handed and grab weapons lying in the streets. Green lights take you up to rooftops. Whoever takes down the most in 3 minutes wins', '맨손으로 시작해서 길에 떨어진 무기를 주워 싸운다. 초록 빛에서 옥상으로도 올라갈 수 있다. 3분 동안 가장 많이 쓰러뜨린 사람이 승리'],
+    'サバイバルスタート！ 武器を拾え': ['Survival begins! Grab a weapon', '서바이벌 시작! 무기를 주워라'],
+    'サバイバル：のこり {n}秒': ['Survival: {n} sec left', '서바이벌: 남은 시간 {n}초'],
     '{name}にやられた…': ['Taken down by {name}…', '{name}에게 당했다…'],
     '復活！ 2秒は無敵': ['Back in! Invincible for 2 sec', '부활! 2초 동안 무적'],
     '{n}秒後に復活': ['Back in {n} sec', '{n}초 후에 부활'],
@@ -266,7 +278,7 @@
     'たおした {a}・やられた {b}': ['Takedowns {a} · Downed {b}', '쓰러뜨림 {a} · 당함 {b}'],
     'スピードアップ {n}秒': ['Speed up {n}s', '스피드 업 {n}초'],
     'たおした {n}': ['Takedowns {n}', '쓰러뜨림 {n}'],
-    '{n}分の撃ち合い。たおした数がいちばん多い人の勝ち': ['{n}-minute shootout. Most takedowns wins', '{n}분 총격전. 가장 많이 쓰러뜨린 사람이 승리'],
+    '{n}分のサバイバル。たおした数がいちばん多い人の勝ち': ['{n}-minute survival. Most takedowns wins', '{n}분 서바이벌. 가장 많이 쓰러뜨린 사람이 승리'],
     '弾の箱': ['Ammo Box', '탄약 상자'],
     '防弾チョッキ': ['Body Armor', '방탄조끼'],
     '回復薬': ['Medkit', '회복약'],
