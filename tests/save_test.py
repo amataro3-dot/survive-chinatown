@@ -114,7 +114,7 @@ with sync_playwright() as p:
     pg.evaluate("localStorage.setItem('muddys-lang','en'); localStorage.setItem('sc-save', JSON.stringify({v:1,money:500,mi:5,done:[],inv:['fist'],play:130}))"); pg.reload(); pg.wait_for_timeout(1200)
     import re
     jp = re.compile(r'[ぁ-んァ-ヶ一-龥]')
-    t = pg.inner_text("#start"); check(not jp.search(t) and "Continue" in t, "英語: スタート画面に日本語が残っていない")
+    t = pg.inner_text("#start").replace("日本語", ""); check(not jp.search(t) and "Continue" in t, "英語: スタート画面に日本語が残っていない")
     pg.click("#goCont"); pg.wait_for_timeout(800); quiet(); tp(F[0]['x'], F[0]['z'])
     t = pg.inner_text("#offer"); check(shown("#offer") and not jp.search(t) and "Market Errand" in t, "英語: ミッションをえらぶ画面に日本語が残っていない")
     pg.screenshot(path=SHOTS + "/s6_en.png")

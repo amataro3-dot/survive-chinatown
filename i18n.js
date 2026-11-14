@@ -1,5 +1,6 @@
 /* ことば(日本語・英語・韓国語)
-   - 言語は、サイトのホームページで選んだもの(localStorage の muddys-lang)。なければ日本語。ゲームの中に切りかえボタンはない
+   - 言語は、URL の ?lang → サイトやゲームで選んだもの(localStorage の muddys-lang)の順。なければ日本語
+   - スタート画面の「日本語 / English / 한국어」(data-lang)で切りかえる。押したら覚えて、読みこみ直す
    - 日本語の文をそのまま「かぎ」にする: t('やられた…') → 英語なら 'Wasted…'。辞書にない文は日本語のまま出る
    - {n} のような所は、t('体力 {n}', { n: 80 }) で数字や名前に入れかわる
    - index.html の data-t がついた所は、中の日本語(innerHTML)をかぎにして入れかえる。data-tp は placeholder
@@ -7,6 +8,11 @@
 (function () {
   let L = 'ja';
   try { L = localStorage.getItem('muddys-lang') || 'ja'; } catch (e) { /* 読めなくても日本語で遊べる */ }
+  // URL の ?lang=en などがあれば、そちらを使って覚える(ほかのゲームと同じ)
+  try {
+    const q = new URLSearchParams(location.search).get('lang');
+    if (q === 'ja' || q === 'en' || q === 'ko') { L = q; localStorage.setItem('muddys-lang', q); }
+  } catch (e) { /* なくてもよい */ }
   if (L !== 'en' && L !== 'ko') L = 'ja';
 
   // 日本語: [英語, 韓国語]
@@ -733,10 +739,20 @@
   function applyDom() {
     if (!document.querySelectorAll) return;
     document.documentElement.lang = L;
+    // 言語の切りかえボタン
+    document.querySelectorAll('[data-lang]').forEach(el => {
+      el.classList.toggle('on', el.dataset.lang === L);
+      el.onclick = () => {
+        if (el.dataset.lang === L) return;
+        try { localStorage.setItem('muddys-lang', el.dataset.lang); } catch (e) { /* 覚えられなくてもよい */ }
+        const u = new URL(location.href); u.searchParams.delete('lang'); location.href = u.toString();
+      };
+    });
     if (L === 'ja') return;
     document.querySelectorAll('[data-t]').forEach(el => { el.innerHTML = t(el.innerHTML.trim()); });
     document.querySelectorAll('[data-tp]').forEach(el => { el.placeholder = t(el.placeholder); });
     document.querySelectorAll('a[data-home]').forEach(el => { el.href = 'https://muddys-games.com/' + L + '/'; });
+    document.querySelectorAll('a[data-priv]').forEach(el => { el.href = 'https://muddys-games.com/' + L + '/privacy.html'; });
   }
   applyDom();
 })();

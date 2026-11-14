@@ -26,7 +26,7 @@ with sync_playwright() as p:
         ev = lambda js: pg.evaluate("(() => { const SC = window.SC; return " + js + "; })()")
         seen = []
         def look(where):
-            txt = pg.evaluate("document.body.innerText")
+            txt = pg.evaluate("(() => { const s = document.querySelector('.langSw'); if (s) s.style.display = 'none'; const t = document.body.innerText; if (s) s.style.display = ''; return t; })()")  # 言語ボタンの「日本語」は除く
             left = sorted(set(m for line in txt.splitlines() for m in [line] if JP.search(line)))
             seen.append((where, left))
         look('スタート画面'); pg.screenshot(path=f"{SHOTS}/l_{lang}_start.png")
