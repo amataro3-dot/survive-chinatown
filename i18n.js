@@ -235,7 +235,7 @@
     '屋上に着いた！ 車を守れ': ['On the roof! Protect the car', '옥상에 도착! 차를 지켜라'],
     'ボースンの車をねらうマフィアを狙撃しろ(のこり {n}人・車の体力 {hp})': ["Snipe the mobsters going after Bosun's car ({n} left · car HP {hp})", '갑판장의 차를 노리는 마피아를 저격해라(남은 {n}명・차 체력 {hp})'],
     'ボースンの車がこわされた… ミッション失敗': ["Bosun's car was wrecked… Mission failed", '갑판장의 차가 부서졌다… 미션 실패'],
-    '東からも来たぞ！': ['More coming from the east!', '동쪽에서도 온다!'],
+    '北からも来たぞ！': ['More coming from the north!', '북쪽에서도 온다!'],
     'その場で全回復': ['Full heal now', '즉시 완전 회복'],
     '回復薬(体力+{hp}。{max}つまで持てる)': ['Medkit (+{hp} HP, carry up to {max})', '회복약(체력 +{hp}, 최대 {max}개)'],
     'もう{max}つ持っている': ['Already carrying {max}', '이미 {max}개 가지고 있음'],

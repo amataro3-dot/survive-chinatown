@@ -51,7 +51,7 @@ with sync_playwright() as p:
     check(len(men) == 4 and all(m["white"] for m in men) and all(not ev(f"SC.pointBlocked({m['x']}, {m['z']})") for m in men), "取引の手下は白いスーツの4人(かべの中ではない)")
     check(57 <= ev("SC.G.timeLeft") <= 60 and "残り" in pg.inner_text("#timer"), "制限時間は60秒")
     pg.wait_for_timeout(1500)
-    moved = ev("SC.MX.foes.every((g, i) => Math.abs(g.x - [86, 88.5, 91, 93.5][i]) < 0.01)")
+    moved = ev("SC.MX.foes.every((g, i) => Math.abs(g.x - [46, 48.5, 51, 53.5][i]) < 0.01)")
     check(moved, "取引の手下は、その場に立ったまま")
     # 時間切れで失敗
     ev("(()=>{ SC.G.timeLeft = 0.05; return 0 })()"); pg.wait_for_timeout(300)
@@ -60,15 +60,23 @@ with sync_playwright() as p:
     ev("(()=>{ SC.leaveRoof(); return 0 })()"); away()
     tp(a["x"], a["z"]); pg.wait_for_timeout(300); pg.click("#offerYes"); pg.wait_for_timeout(200)
     tp(rf["ent"]["x"], rf["ent"]["z"]); pg.wait_for_timeout(400)
-    def snipe(g_idx, stand_x, stand_z):
-        return ev(f"""(()=>{{ SC.player.x = {stand_x}; SC.player.z = {stand_z}; SC.player.atkCd = 0; const g = SC.MX.foes[{g_idx}];
+    # 立つ所は、相手の方のふち(屋上の中で、相手にいちばん近い所)
+    def snipe(g_idx):
+        return ev(f"""(()=>{{ const g = SC.MX.foes[{g_idx}], r = SC.player.roof; SC.player.x = Math.min(Math.max(g.x, r.x0 + 0.6), r.x1 - 0.6); SC.player.z = Math.min(Math.max(g.z, r.z0 + 0.6), r.z1 - 0.6); SC.player.atkCd = 0;
           let yaw = Math.atan2(g.x - SC.player.x, g.z - SC.player.z), o = SC.scopeEye(yaw); yaw = Math.atan2(g.x - o.x, g.z - o.z); o = SC.scopeEye(yaw);
           return SC.fireRifle(yaw, Math.atan2(1.2 - o.y, Math.hypot(g.x - o.x, g.z - o.z))) }})()""")
-    hits = [snipe(i, 70, rf["z1"] - 0.6) for i in range(4)]
+    # v=33: 相手は遠く(50m 以上)。のぞいたときの向き(-0.3)から、画面の高さ(390px)のドラッグで届く
+    def reach(g_idx):
+        return ev(f"""(()=>{{ const g = SC.MX.foes[{g_idx}], r = SC.player.roof, sx = Math.min(Math.max(g.x, r.x0 + 0.6), r.x1 - 0.6), sz = Math.min(Math.max(g.z, r.z0 + 0.6), r.z1 - 0.6);
+          SC.player.x = sx; SC.player.z = sz; let yaw = Math.atan2(g.x - sx, g.z - sz), o = SC.scopeEye(yaw); yaw = Math.atan2(g.x - o.x, g.z - o.z); o = SC.scopeEye(yaw);
+          const hd = Math.hypot(g.x - o.x, g.z - o.z), p = Math.atan2(1.2 - o.y, hd); return [hd, Math.abs(p + 0.3) / SC.TUNE.rifle.sens] }})()""")
+    rs = [reach(i) for i in range(4)]
+    check(all(r[0] >= 50 and r[1] <= 390 for r in rs), "取引の手下は遠く(%s m)、ドラッグ %s px で届く" % ([round(r[0]) for r in rs], [round(r[1]) for r in rs]))
+    hits = [snipe(i) for i in range(4)]
     check(all(hits), f"屋上のふちから、4人とも狙撃できる {hits}")
     pg.wait_for_timeout(400)
     check(ev("SC.G.done.snipe1 === 1") and ev("SC.G.money") == 4000 and "+$4,000" in pg.inner_text("#toast"), "4人たおすとクリア(+$4,000)")
-    check(ev("SC.cars.every(c => !(Math.abs(c.x - 90) < 0.1 && Math.abs(c.z + 108.3) < 0.1))"), "取引の白い車は消える")
+    check(ev("SC.cars.every(c => !(Math.abs(c.x - 50) < 0.1 && Math.abs(c.z - 3.1) < 0.1))"), "取引の白い車は消える")
     ev("(()=>{ SC.leaveRoof(); return 0 })()"); away()
 
     # ---------- 見えない護衛(夜だけ) ----------
@@ -83,16 +91,18 @@ with sync_playwright() as p:
     tp(rf["ent"]["x"], rf["ent"]["z"]); pg.wait_for_timeout(400)
     t = pg.inner_text("#mission")
     check("ボースンの車をねらうマフィア" in t and "のこり 6人" in t and "車の体力 100" in t, "屋上で「ボースンの車をねらうマフィアを狙撃しろ(のこり 6人・車の体力 100)」")
-    check(ev("SC.MX.foes.length") == 3 and ev("!!SC.MX.mcar"), "はじめは西から3人(ボースンの車がある)")
+    check(ev("SC.MX.foes.length") == 3 and ev("!!SC.MX.mcar"), "はじめは南から3人(ボースンの車がある)")
     d0 = ev("Math.min(...SC.MX.foes.map(g => Math.hypot(g.x - SC.MX.mcar.x, g.z - SC.MX.mcar.z)))")
     pg.wait_for_timeout(1500)
     d1 = ev("Math.min(...SC.MX.foes.map(g => Math.hypot(g.x - SC.MX.mcar.x, g.z - SC.MX.mcar.z)))")
     check(d1 < d0 - 1.5, f"マフィアはボースンの車へ歩いてくる({d0:.1f}m → {d1:.1f}m)")
-    hit = snipe(0, 70, rf["z1"] - 0.6)
+    rs = [reach(i) for i in range(3)]
+    check(all(r[0] >= 50 and r[1] <= 390 for r in rs), "マフィアは遠く(%s m)、ドラッグ %s px で届く" % ([round(r[0]) for r in rs], [round(r[1]) for r in rs]))
+    hit = snipe(0)
     pg.wait_for_timeout(200)
     check(hit and "のこり 5人" in pg.inner_text("#mission"), "屋上から狙撃できる(のこり 5人)")
     ev("(()=>{ SC.MX.foes.forEach(g => { if (g.hp > 0) SC.damageGang(g, 999); }); return 0 })()"); pg.wait_for_timeout(300)
-    check(ev("SC.MX.foes.filter(g => g.hp > 0).length") == 3 and "東からも来たぞ" in pg.inner_text("#toast"), "西の3人をたおすと、東から3人来る")
+    check(ev("SC.MX.foes.filter(g => g.hp > 0).length") == 3 and "北からも来たぞ" in pg.inner_text("#toast"), "南の3人をたおすと、北から3人来る")
     # 車にとりつかれると、車の体力がへる → こわされると失敗
     ev("(()=>{ const c = SC.MX.mcar; SC.MX.foes.filter(g => g.hp > 0).forEach((g, k) => { g.x = c.x + 1.5; g.z = c.z + (k - 1); }); return 0 })()"); pg.wait_for_timeout(800)
     hp = ev("SC.G.escHp")

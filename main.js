@@ -1864,14 +1864,15 @@ const FREE = [
     steps: [{ type: 'collect', look: 'spice', got: '材料をひろった！', time: 60, items: SPICE_AT, text: '市場の4か所で、タレの材料を集めろ(のこり {n}こ。歩いて近づく)', done: '材料がそろった！ おやじの所へ' },
       { type: 'go', foot: 1, pos: OYAJI_AT, text: '材料を、屋台のおやじに届けよう(歩いて)' }] },
   // 狙撃ミッション(v=30。ライフルと弾がいる): roof = 屋上に上がる(roofAt のビル)、snipe = 屋上から狙撃(deal = 取引の手下、escort = 車を守る)
+  // v=33: 相手はビルの真下でなく、遠くの道に置く(屋上の目 = 南の交差点 約112m、見えない護衛 = 西の中央通り 約60m)。スマホの画面の高さのドラッグで、下を向いて届くように
   { id: 'snipe1', when: 'day', title: '屋上の目', desc: '大きなビルの屋上から、下で取引をする白虎幇の手下4人を、1分以内に狙撃する。ライフルがいる。', reward: 4000, at: { x: 66, z: -108.7 }, req: hasRifle, reqNote: 'ライフルと弾がいる(武器屋で買える)',
     say: { name: '黒龍幇の男', text: '白虎幇が、大きなビルの下で取引をする。上から全部つぶせ。1分で終わらせろ' }, endSay: { name: '黒龍幇の男', text: '見事だ。白虎幇は、しばらく静かになる' },
     steps: [{ type: 'roof', roofAt: { x: 52, z: -130 }, text: '大きなビルの屋上に上がろう(入口の緑の光)', done: '屋上に着いた！ 下の取引を探せ' },
-      { type: 'snipe', time: 60, late: '取引が終わって、逃げられた… ミッション失敗', deal: { car: [90, -108.3, Math.PI / 2], men: [[86, -111.4, Math.PI / 2], [88.5, -111.4, -Math.PI / 2], [91, -111.4, Math.PI / 2], [93.5, -111.4, -Math.PI / 2]] }, text: '取引に来た白虎幇の手下を狙撃しろ(のこり {n}人)' }] },
+      { type: 'snipe', time: 60, late: '取引が終わって、逃げられた… ミッション失敗', deal: { car: [50, 3.1, Math.PI / 2], men: [[46, 0, Math.PI / 2], [48.5, 0, -Math.PI / 2], [51, 0, Math.PI / 2], [53.5, 0, -Math.PI / 2]] }, text: '取引に来た白虎幇の手下を狙撃しろ(のこり {n}人)' }] },
   { id: 'snipe2', when: 'night', title: '見えない護衛', desc: '東のビルの屋上から、ボースンの車をねらうマフィア6人を狙撃して守る。ライフルがいる。', reward: 4000, at: { x: 90, z: -56.7 }, req: hasRifle, reqNote: 'ライフルと弾がいる(武器屋で買える)',
     say: { name: 'ボースン', text: '荷物を積んだ車が、東のビルの前で動けなくなった。上から見はって、近づくやつを撃て' }, endSay: { name: 'ボースン', text: '助かった。…お前、いい目をしてるな' },
     steps: [{ type: 'roof', roofAt: { x: 78, z: -78 }, text: '東のビルの屋上に上がろう(入口の緑の光)', done: '屋上に着いた！ 車を守れ' },
-      { type: 'snipe', escort: { car: [70, -48.8, Math.PI / 2], from: [[26, -55.2, Math.PI / 2], [118, -48.8, -Math.PI / 2]] }, fail: 'ボースンの車がこわされた… ミッション失敗', text: 'ボースンの車をねらうマフィアを狙撃しろ(のこり {n}人・車の体力 {hp})' }] },
+      { type: 'snipe', escort: { car: [0, -60, 0], from: [[0, -10, Math.PI / 2], [0, -108, Math.PI / 2]] }, fail: 'ボースンの車がこわされた… ミッション失敗', text: 'ボースンの車をねらうマフィアを狙撃しろ(のこり {n}人・車の体力 {hp})' }] },
   { id: 'sailor1', title: '船員のたのみ 1', desc: '箱を受け取って、港の倉庫まで運ぶ。', reward: 3000, at: PORT.sailor, say: { name: 'ボースン', text: '運び屋か。口がかたいなら、仕事がある。この箱を倉庫まで。中は見るな' }, endSay: { name: 'ボースン', text: '…見なかったな。また来い' }, steps: [{ type: 'go', pos: { x: roadC(1), z: roadC(1) + 20 }, text: '箱を受け取りに行こう', done: '箱ゲット！' }, { type: 'go', pos: { x: 162.5, z: 151 }, text: '箱を港の倉庫へ運ぼう' }] },
   { id: 'sailor2', after: 'sailor1', title: '船員のたのみ 2', desc: '市場の奥で箱を受け取って、港まで運ぶ。警察に追われる。', reward: 4000, at: PORT.sailor, say: { name: 'ボースン', text: '次は市場の奥から、港までだ。追われても、箱は落とすな' }, endSay: { name: 'ボースン', text: 'この港には、表に出せない荷物もある。知りたきゃ、もっと深い所まで来い' }, steps: [{ type: 'go', pos: MK_DEEP, text: '市場の奥で箱を受け取ろう(歩いて入る)', done: '箱ゲット！' }, { type: 'go', pos: PORT.sailor, wanted: 2, text: '警察をかわして、箱を港の船員に届けろ' }] },
   { id: 'sailor3', after: 'sailor2', need: () => !G.tru, title: '船員のたのみ 3', desc: '最後の荷物を、時間内に港の船まで運ぶ。警察に追われる。', reward: 5000, at: PORT.sailor, say: { name: 'ボースン', text: '最後だ。これを船まで運べ。済んだら、荷物にまぎれて乗せてやる' }, endSay: { name: 'ボースン', text: '約束だ。夜、コンテナの間を抜けてこい。見つかるなよ' }, steps: [{ type: 'go', pos: { x: roadC(0) + 20, z: roadC(6) }, text: '最後の荷物を受け取りに行こう', done: '荷物ゲット！' }, { type: 'go', pos: { x: 168, z: -60 }, time: 150, wanted: 3, text: '時間内に港の船へ運べ！' }] },
@@ -2095,7 +2096,7 @@ function beginStep() {
     const d = st.deal, c = newCar('parked', d.car[0], d.car[1], d.car[2], 0xf4f4f4); c.flee = true; MX.hunters.push(c); markerColor(0xff4a4a);
     d.men.forEach((q, k) => { const g = newGang(q[0], q[1]); g.temp = true; g.tier = 0; g.ctl = true; g.nofeud = true; setTeam(g, true, k % 2 ? 'pistol' : 'fist'); g.h = q[2]; MX.foes.push(g); });
   }
-  if (st.type === 'snipe' && st.escort) { // 見えない護衛: ボースンの車。マフィアの車が西から(あとで東からも)来て、3人ずつ降りてくる
+  if (st.type === 'snipe' && st.escort) { // 見えない護衛: ボースンの車。マフィアの車が南から(あとで北からも)来て、3人ずつ降りてくる
     const e = st.escort, c = MX.mcar = newCar('parked', e.car[0], e.car[1], e.car[2], 0x1f3a6e); c.flee = true; G.escHp = SNIPE.carHp; G.wave = 0; G.waveT = 0; spawnWave(e, 0); markerColor(0xff4a4a);
   }
   if (st.type === 'ask') { G.askId++; G.askI = Math.floor(Math.random() * RUMORS.length); }
@@ -2116,7 +2117,7 @@ function beginStep() {
 function spawnWave(e, i) {
   const q = e.from[i], c = newCar('parked', q[0], q[1], q[2], 0x111111); c.flee = true; MX.hunters.push(c); G.wave = i + 1;
   for (let k = 0; k < 3; k++) { const g = newGang(q[0] - Math.sin(q[2]) * (2 + k * 1.6) + (k - 1) * 0.3, q[1] + (k - 1) * 1.2); g.temp = true; g.tier = 0; g.ctl = true; g.nofeud = true; g.weapon = k ? 'knife' : 'pistol'; setHand(g.per, g, g.weapon); MX.foes.push(g); }
-  if (i) toast(tr('東からも来たぞ！'), 2);
+  if (i) toast(tr('北からも来たぞ！'), 2);
 }
 // 狙撃ミッションの毎フレーム
 // 秘伝の材料のつぼ(赤いふたと、白い紙)
