@@ -100,17 +100,31 @@ function boat(z) { addBox(8, 2.4, 22, 181, 1.2, z, M(0xeeeeee)); addBox(6, 2.5, 
 boat(60); boat(-60);
 
 const texCache = {};
+// 壁の模様(v=35): レンガ・階のさかい目・よごれ。街の乱数(rnd)は使わない(使うと街の形が変わる)。key から決まる乱数 hr を使う
+function hRand(str) { let h = 2166136261; for (let i = 0; i < str.length; i++) h = Math.imul(h ^ str.charCodeAt(i), 16777619); return () => { h = h + 0x6D2B79F5 | 0; let t = Math.imul(h ^ h >>> 15, 1 | h); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+function wallDetail(g, W, H, brick, hr) {
+  if (brick) { g.fillStyle = 'rgba(0,0,0,.15)'; for (let y = 0; y < H; y++) { g.fillRect(0, y + 0.5, W, 0.5); for (let x = (y % 2) * 1.5; x < W; x += 3) g.fillRect(x, y, 0.5, 1); } } // レンガ
+  else { for (let y = 0; y < H; y += 8) { g.fillStyle = 'rgba(0,0,0,.22)'; g.fillRect(0, y, W, 1); g.fillStyle = 'rgba(255,255,255,.08)'; g.fillRect(0, y + 1, W, 0.5); } g.fillStyle = 'rgba(0,0,0,.1)'; for (let x = 0; x < W; x += 8) g.fillRect(x, 0, 0.5, H); } // 階のさかい目と柱
+  for (let i = 0; i < W * H / 8; i++) { g.fillStyle = hr() < 0.5 ? 'rgba(0,0,0,.08)' : 'rgba(255,255,255,.05)'; g.fillRect(Math.floor(hr() * W * 2) / 2, Math.floor(hr() * H * 2) / 2, 0.5 + Math.floor(hr() * 3) / 2, 0.5); } // まだら
+}
+function wallGrime(g, W, H, cols, rows, hr) {
+  for (let r = 0; r < rows; r++) for (let k = 0; k < cols; k++) if (hr() < 0.45) { const l = 1.5 + hr() * 4, y = r * 8 + 7, gr = g.createLinearGradient(0, y, 0, y + l); gr.addColorStop(0, 'rgba(0,0,0,.3)'); gr.addColorStop(1, 'rgba(0,0,0,0)'); g.fillStyle = gr; g.fillRect(k * 8 + 2 + Math.floor(hr() * 4) / 2, y, 1 + Math.floor(hr() * 3) / 2, l); } // 窓の下のよごれ
+  const gb = g.createLinearGradient(0, H - 6, 0, H); gb.addColorStop(0, 'rgba(0,0,0,0)'); gb.addColorStop(1, 'rgba(0,0,0,.32)'); g.fillStyle = gb; g.fillRect(0, H - 6, W, 6); // 下のほうが黒ずむ
+  g.fillStyle = 'rgba(0,0,0,.25)'; g.fillRect(0, 0, W, 0.5);
+}
 function nightWin(cols, rows, base, lit, ct) {
   const key = 'n' + cols + '_' + rows + '_' + base + '_' + lit + '_' + ct; if (texCache[key]) return texCache[key];
   const W = cols * 8, H = rows * 8, c1 = document.createElement('canvas'), c2 = document.createElement('canvas');
-  c1.width = c2.width = W; c1.height = c2.height = H; const g1 = c1.getContext('2d'), g2 = c2.getContext('2d');
+  c1.width = c2.width = W * 2; c1.height = c2.height = H * 2; const g1 = c1.getContext('2d'), g2 = c2.getContext('2d'); g1.scale(2, 2); g2.scale(2, 2); // v=35: 模様のため2倍の細かさ
   g1.fillStyle = base; g1.fillRect(0, 0, W, H); g2.fillStyle = '#000'; g2.fillRect(0, 0, W, H);
+  const hr = hRand(key); wallDetail(g1, W, H, ct && hr() < 0.65, hr);
   for (let r = 0; r < rows; r++) for (let k = 0; k < cols; k++) {
     const on = rnd() < lit, warm = rnd() < 0.35 ? '#ffb46a' : '#ffe6a8';
     g1.fillStyle = on ? warm : '#1a2232'; g1.fillRect(k * 8 + 2, r * 8 + 2, 4, 5);
     if (on) { g2.fillStyle = warm; g2.fillRect(k * 8 + 2, r * 8 + 2, 4, 5); }
     if (ct) { g1.fillStyle = 'rgba(0,0,0,.45)'; g1.fillRect(k * 8, r * 8 + 7, 8, 1); }
   }
+  wallGrime(g1, W, H, cols, rows, hr);
   const t1 = new THREE.CanvasTexture(c1), t2 = new THREE.CanvasTexture(c2); t1.magFilter = t2.magFilter = THREE.NearestFilter;
   return (texCache[key] = { map: t1, em: t2 });
 }
@@ -135,8 +149,178 @@ function makeBuilding(x, z, w, d, h, realH) {
   if (realH) { const sv = seed, had = new Set(Object.keys(texCache)), rr = Math.max(2, Math.round(realH / 4)); mz = nightMat(cw, rr, base, 0.28, false); mx = nightMat(cd, rr, base, 0.28, false); for (const k of Object.keys(texCache)) if (!had.has(k)) delete texCache[k]; seed = sv; h = realH; }
   else { mz = nightMat(cw, rows, base, 0.28, false); mx = nightMat(cd, rows, base, 0.28, false); }
   const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), [mx, mx, roofMat, roofMat, mz, mz]); m.position.set(x, h / 2 + 0.3, z); scene.add(m);
-  addCol(x - w / 2, x + w / 2, z - d / 2, z + d / 2); buildings.push({ x, z, w, d, h });
+  addCol(x - w / 2, x + w / 2, z - d / 2, z + d / 2); buildings.push({ x, z, w, d, h, base }); // base = 壁の色(飾りの色に使う。v=35)
 }
+/* ===== 建物の飾り(v=35): 屋上・ベランダ・室外機・非常階段・1階の店・チャイナタウンの格子やひさし =====
+   - 飾りの乱数は、街の乱数(rnd)を使わない(使うと、街の形やほかの見た目が変わる)。建物の場所から決まる乱数 drand を使う
+   - 飾りは数が多いので、まとめて描く(InstancedMesh)。形 × 材質 × 街を 4×4(小さい部品は 8×8)に分けた場所 ごとに1つ。buildDecor() で作る
+   - 遠い場所の飾りは描かない(decorCull、毎フレーム)。大きい部品は霧で見えなくなるまで、小さい部品(室外機・手すりなど)は 130 まで
+   - 飾りには、ぶつかり判定はない(かべの外に少し出るだけ) */
+let dSeed = 1;
+function drand() { dSeed = dSeed + 0x6D2B79F5 | 0; let t = Math.imul(dSeed ^ dSeed >>> 15, 1 | dSeed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }
+function dSeedAt(x, z) { dSeed = Math.imul(Math.round(x * 10) | 0, 73856093) ^ Math.imul(Math.round(z * 10) | 0, 19349663); drand(); drand(); }
+const dpick = a => a[Math.floor(drand() * a.length)];
+const DGEO = { box: new THREE.BoxGeometry(1, 1, 1), cyl: new THREE.CylinderGeometry(0.5, 0.5, 1, 8) };
+const DM = new THREE.MeshLambertMaterial({ color: 0xffffff });  // ふつうの部品(色は1つずつ)
+const DMB = new THREE.MeshBasicMaterial({ color: 0xffffff });   // 光る部品(色は1つずつ)
+const shutterMat = new THREE.MeshLambertMaterial({ map: canvasTex(16, 32, g => { for (let k = 0; k < 16; k++) { g.fillStyle = k % 2 ? '#8e9196' : '#6c6f75'; g.fillRect(0, k * 2, 16, 2); } g.fillStyle = 'rgba(0,0,0,.25)'; g.fillRect(0, 28, 16, 4); }) });
+const shopLitMats = [['#fff1c8', '#e8a44a'], ['#e8f6ff', '#9cc8e8'], ['#fff6d8', '#d8c070']].map(([a, b]) => new THREE.MeshBasicMaterial({ map: canvasTex(64, 32, (g, w, h) => {
+  g.fillStyle = '#1c1612'; g.fillRect(0, 0, w, h);
+  const gr = g.createLinearGradient(0, 0, 0, h); gr.addColorStop(0, a); gr.addColorStop(1, b); g.fillStyle = gr; g.fillRect(2, 2, w - 4, h - 3);
+  g.fillStyle = 'rgba(60,35,20,.55)'; for (const y of [10, 19]) g.fillRect(4, y, w - 8, 2); // たな
+  for (let k = 0; k < 14; k++) { g.fillStyle = ['rgba(200,60,40,.7)', 'rgba(40,90,160,.7)', 'rgba(60,140,70,.7)', 'rgba(90,60,30,.6)'][k % 4]; g.fillRect(5 + k * 4, k % 2 ? 6 : 14, 3, 4); }
+  g.fillStyle = '#1c1612'; g.fillRect(w / 2 - 1, 0, 2, h); g.fillRect(0, h - 4, w, 4); // まどわく
+}) }));
+const darkGlassMat = new THREE.MeshLambertMaterial({ color: 0x1b2633 });
+const AC_COL = 0xc9ccd0, IRON = 0x2a2a30;
+const AWN = [0x2f6b4f, 0x8a2a22, 0x2a4a7a, 0xc89a3a, 0x5a3a6a], SIGN_LIT = [0xff3b6b, 0x3bf0ff, 0xffd23f, 0xffffff, 0x7dff6a, 0xff7a30];
+const GRILL = [0x2c3a34, 0x3a2c28, 0x55585c, 0x6a2a22], TILE = [0x2f7a55, 0x9a3324, 0x40464f], CLOTH = [0xf2f2f2, 0x3f7fd0, 0xd04040, 0xe0c040, 0x40a060, 0xff9ab0, 0x303030];
+const DECOR = new Map(), _do = new THREE.Object3D(), _dc = new THREE.Color();
+// T = 置く面 { x, z, r(向き), y(高さのもと) }。lx = 面にそって右、ly = 上、lz = 面から外へ。ry・rx・rz = 部品のかたむき
+function dec(T, geo, mat, lx, ly, lz, sx, sy, sz, col, ry, rx, rz) {
+  const c = Math.cos(T.r), s = Math.sin(T.r), wx = T.x + lx * c + lz * s, wz = T.z - lx * s + lz * c, wy = (T.y || 0) + ly;
+  _do.position.set(wx, wy, wz); _do.rotation.set(rx || 0, T.r + (ry || 0), rz || 0, 'YXZ'); _do.scale.set(sx, sy, sz); _do.updateMatrix();
+  const small = sx * sy * sz < 1.2, n = small ? 8 : 4, part = v => Math.min(n - 1, Math.max(0, Math.floor((v + HALF) / (HALF * 2 / n))));
+  const k = geo + '|' + mat.uuid + '|' + (part(wx) * n + part(wz)) + (small ? 's' : '');
+  let L = DECOR.get(k); if (!L) DECOR.set(k, L = { geo, mat, small, m: [], c: [], x0: 1e9, x1: -1e9, z0: 1e9, z1: -1e9, y1: 0 });
+  L.m.push(_do.matrix.clone()); L.c.push(col === undefined ? 0xffffff : col);
+  L.x0 = Math.min(L.x0, wx); L.x1 = Math.max(L.x1, wx); L.z0 = Math.min(L.z0, wz); L.z1 = Math.max(L.z1, wz); L.y1 = Math.max(L.y1, wy);
+}
+const DECOR_INFO = { parts: 0, meshes: 0 }, DECOR_MESHES = []; // テスト用(いくつ作ったか)
+function decorCull() { const f = scene.fog.far + 30, p = camera.position; for (const d of DECOR_MESHES) d.im.visible = Math.hypot(Math.max(0, Math.abs(p.x - d.cx) - d.hx), Math.max(0, Math.abs(p.z - d.cz) - d.hz)) < (d.small ? Math.min(130, f) : f); }
+function buildDecor() {
+  const roofs = new Set(buildings.filter(b => b.h).sort((a, b) => b.h - a.h).slice(0, TUNE.roof.count)); // 屋上に上がれるビル(屋上は ROOFS が作る。飾りは置かない)
+  for (const b of buildings) if (b.h && b.base) decoBuilding(b, roofs.has(b));
+  for (const L of DECOR.values()) {
+    const g = DGEO[L.geo].clone(), cx = (L.x0 + L.x1) / 2, cz = (L.z0 + L.z1) / 2;
+    g.boundingSphere = new THREE.Sphere(new THREE.Vector3(cx, L.y1 / 2, cz), Math.hypot(L.x1 - cx, L.y1 / 2, L.z1 - cz) + 12); // 画面の外の分は描かない
+    const im = new THREE.InstancedMesh(g, L.mat, L.m.length);
+    L.m.forEach((m, i) => { im.setMatrixAt(i, m); im.setColorAt(i, _dc.setHex(L.c[i])); });
+    scene.add(im); DECOR_INFO.parts += L.m.length; DECOR_INFO.meshes++; DECOR_MESHES.push({ im, small: L.small, cx, cz, hx: (L.x1 - L.x0) / 2 + 8, hz: (L.z1 - L.z0) / 2 + 8 });
+  }
+  DECOR.clear();
+}
+// 屋上の小物(室外機・給水タンク・アンテナ)。spot() = 置く場所
+function roofStuff(R, spot, tall, nAc, pTank, pAnt) {
+  if (drand() < pTank) {
+    const [px, pz] = spot(), rr = 0.8 + drand() * 0.7, th = 1.6 + drand() * 1.2, col = dpick([0x8c6a4a, 0x9aa0a6, 0x5d7280, 0x7a8a6a]);
+    for (const [a, c] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) dec(R, 'box', DM, px + a * rr * 0.6, 0.7, pz + c * rr * 0.6, 0.15, 1.4, 0.15, IRON);
+    dec(R, 'cyl', DM, px, 1.4 + th / 2, pz, rr * 2, th, rr * 2, col); dec(R, 'cyl', DM, px, 1.5 + th, pz, rr * 1.6, 0.2, rr * 1.6, _dc.setHex(col).multiplyScalar(0.7).getHex());
+  }
+  for (let n = nAc; n > 0; n--) { const [px, pz] = spot(); dec(R, 'box', DM, px, 0.5, pz, 1.4, 1.0, 1.0, AC_COL); }
+  if (drand() < pAnt) {
+    const [px, pz] = spot(), L = 2.5 + drand() * (tall ? 7 : 2.5);
+    dec(R, 'box', DM, px, L / 2, pz, 0.1, L, 0.1, 0x9aa0a8);
+    for (const [f, cw] of [[0.95, 1.0], [0.8, 1.5], [0.65, 2.0]]) dec(R, 'box', DM, px, L * f, pz, cw, 0.07, 0.07, 0x9aa0a8);
+    if (tall) dec(R, 'box', DMB, px, L + 0.15, pz, 0.35, 0.35, 0.35, 0xff2a2a); // 高いビルは赤いランプ
+  }
+}
+// ふつうの街のビル
+function decoBuilding(b, noRoof) {
+  const { x, z, w, d, h } = b; dSeedAt(x, z);
+  const dark = _dc.set(b.base).multiplyScalar(0.62).getHex();
+  const rows = Math.max(2, Math.round(h / 4)), tall = h > 34, apt = !tall && drand() < 0.55;
+  const winB = r => h * (1 - (r * 8 + 7) / (rows * 8)); // 上から r 段目の窓の下の高さ
+  // A. 屋上: ふちの出っぱり・階段の小屋・給水タンク・室外機・アンテナ
+  if (!noRoof) {
+    const R = { x, z, r: 0, y: h + 0.3 }, spot = () => [(drand() - 0.5) * (w - 4), (drand() - 0.5) * (d - 4)];
+    dec(R, 'box', DM, 0, 0.2, d / 2 - 0.1, w + 0.3, 1.0, 0.5, dark); dec(R, 'box', DM, 0, 0.2, -d / 2 + 0.1, w + 0.3, 1.0, 0.5, dark);
+    dec(R, 'box', DM, w / 2 - 0.1, 0.2, 0, 0.5, 1.0, d - 0.7, dark); dec(R, 'box', DM, -w / 2 + 0.1, 0.2, 0, 0.5, 1.0, d - 0.7, dark);
+    if (w > 10 && d > 10 && drand() < 0.6) { const [px, pz] = spot(); dec(R, 'box', DM, px, 1.3, pz, 3.2, 2.6, 3.4, 0x8a8d94); dec(R, 'box', DM, px, 2.67, pz, 3.6, 0.16, 3.8, dark); }
+    roofStuff(R, spot, tall, Math.floor(drand() * 4) + (w > 25 ? 2 : 0), 0.55, 0.45);
+  }
+  // 4つの面(lz が外向き)
+  const cw = Math.max(2, Math.round(w / 4)), cd = Math.max(2, Math.round(d / 4));
+  const F = [{ r: 0, L: w, n: cw, o: d / 2 }, { r: Math.PI, L: w, n: cw, o: d / 2 }, { r: Math.PI / 2, L: d, n: cd, o: w / 2 }, { r: -Math.PI / 2, L: d, n: cd, o: w / 2 }];
+  const fb = apt ? (drand() < 0.5 ? 0 : 1) : -1, fb2 = apt && drand() < 0.35 ? 1 - fb : -1, balAlt = drand() < 0.5, railCol = dpick([0xd8d4cc, 0x3a3a40, 0x9a9690, dark]);
+  const fe = !tall && rows >= 3 && drand() < 0.4 ? (drand() < 0.5 ? 2 : 3) : -1;
+  F.forEach((f, fi) => {
+    const T = { x: x + Math.sin(f.r) * f.o, z: z + Math.cos(f.r) * f.o, r: f.r, y: 0.3 }, cwid = f.L / f.n, cx = k => -f.L / 2 + (k + 0.5) * cwid;
+    // D. 1階: 店のガラス・シャッター・暗いガラス、ひさし、光る小さな看板
+    const gh = Math.min(3.6, h / rows * 0.85), n = Math.max(1, Math.round(f.L / 4.5)), sw = f.L / n;
+    dec(T, 'box', DM, 0, gh / 2, 0.12, f.L, gh, 0.24, 0x2a2624);
+    dec(T, 'box', DM, 0, gh + 0.2, 0.2, f.L + 0.1, 0.4, 0.4, dark);
+    for (let s = 0; s < n; s++) {
+      const sx = -f.L / 2 + (s + 0.5) * sw, t = drand(), ph = gh - 0.5;
+      if (t < 0.35) dec(T, 'box', shutterMat, sx, ph / 2 + 0.05, 0.27, sw - 0.6, ph, 0.06);
+      else if (t < 0.75) {
+        dec(T, 'box', dpick(shopLitMats), sx, ph / 2 + 0.05, 0.27, sw - 0.6, ph, 0.06);
+        if (drand() < 0.6) dec(T, 'box', DM, sx, gh - 0.2, 0.75, sw - 0.3, 0.1, 1.1, dpick(AWN), 0, 0.3);
+        else if (drand() < 0.7) dec(T, 'box', DMB, sx, gh + 0.2, 0.42, Math.min(sw - 0.8, 2.6), 0.3, 0.05, dpick(SIGN_LIT));
+      } else dec(T, 'box', darkGlassMat, sx, ph / 2 + 0.05, 0.27, sw - 0.6, ph, 0.06);
+    }
+    if (fi === fb || fi === fb2) { // B. ベランダ
+      for (let r = 0; r < rows - 1; r++) for (let k = 0; k < f.n; k++) {
+        if (balAlt && k % 2) continue;
+        const y = winB(r) - 0.05, bw = cwid * 0.86, lx = cx(k);
+        dec(T, 'box', DM, lx, y, 0.55, bw, 0.16, 1.1, 0xb4b0a8);
+        dec(T, 'box', DM, lx, y + 0.45, 1.07, bw, 0.75, 0.06, railCol);
+        if (drand() < 0.3) dec(T, 'box', DM, lx + bw * 0.25, y + 0.38, 0.45, 0.8, 0.6, 0.45, AC_COL);
+      }
+    } else if (fi === fe) { // B. 非常階段(ジグザグ)
+      const fw = 4.4, lx0 = (drand() - 0.5) * Math.max(0, f.L - 6);
+      for (let r = 0; r < rows - 1; r++) {
+        const y = winB(r) - 0.1;
+        dec(T, 'box', DM, lx0, y, 0.7, fw, 0.12, 1.3, IRON);
+        dec(T, 'box', DM, lx0, y + 0.95, 1.33, fw, 0.06, 0.06, IRON); dec(T, 'box', DM, lx0, y + 0.5, 1.33, fw, 0.04, 0.04, IRON);
+        if (r < rows - 2) { const y2 = winB(r + 1) - 0.1, rise = y - y2, run = fw - 1.2; dec(T, 'box', DM, lx0, (y + y2) / 2, 0.72, Math.hypot(run, rise), 0.1, 0.6, IRON, 0, 0, (r % 2 ? 1 : -1) * Math.atan2(rise, run)); }
+      }
+    } else { // B. 壁の室外機
+      for (let r = 0; r < rows - 1; r++) for (let k = 0; k < f.n; k++) if (drand() < 0.1) {
+        const y = winB(r) - 0.45, lx = cx(k) + (drand() - 0.5) * cwid * 0.3;
+        dec(T, 'box', DM, lx, y, 0.25, 0.9, 0.6, 0.5, AC_COL);
+      }
+    }
+  });
+}
+// チャイナタウンの店(前は lz = d/2。g = 店のグループ)
+function decoShop(x, z, w, d, h, r, g, flat, vs, rows) {
+  dSeedAt(x, z);
+  const T = { x, z, r, y: 0.3 }, fc = Math.max(2, Math.round(w / 2.6)), uh = h - 3.2, cwid = w / fc, fz = d / 2;
+  const cx = k => -w / 2 + (k + 0.5) * cwid, wT = rr => 3.2 + uh * (1 - (rr * 8 + 2) / (rows * 8)), wB = rr => 3.2 + uh * (1 - (rr * 8 + 7) / (rows * 8));
+  const free = (rr, k) => wB(rr) > 4.6 && !(vs && k === (vs < 0 ? 0 : fc - 1)); // 1階の看板・縦の看板と重ならない窓
+  const used = new Set();
+  // E. 窓の格子(鉄のかご)
+  const gcol = dpick(GRILL), pg = 0.15 + drand() * 0.3;
+  for (let rr = 0; rr < rows; rr++) for (let k = 0; k < fc; k++) if (free(rr, k) && drand() < pg) {
+    used.add(rr * 20 + k); const ww = cwid * 0.5 + 0.35, wh = wT(rr) - wB(rr) + 0.3, yc = (wT(rr) + wB(rr)) / 2, lx = cx(k);
+    dec(T, 'box', DM, lx, yc - wh / 2, fz + 0.25, ww, 0.07, 0.5, gcol); dec(T, 'box', DM, lx, yc + wh / 2, fz + 0.25, ww + 0.1, 0.07, 0.55, gcol);
+    for (let b = 0; b <= 3; b++) dec(T, 'box', DM, lx - ww / 2 + b * ww / 3, yc, fz + 0.5, 0.05, wh, 0.05, gcol);
+  }
+  // E. 窓の上の小さなひさし
+  if (drand() < 0.6) { const tc = dpick(TILE), all = drand() < 0.35; for (let rr = rows - 1; rr >= 0; rr--) { if (!all && rr !== rows - 1) break; if (wB(rr) > 4.6) dec(T, 'box', DM, 0, wT(rr) + 0.45, fz + 0.45, w - 0.3, 0.1, 1.0, tc, 0, 0.35); } }
+  // E. 洗たく物(窓の前に竿)
+  if (drand() < 0.4) {
+    const rr = Math.floor(drand() * rows), k = Math.floor(drand() * fc), pl = Math.min(w * 0.6, 3.2);
+    if (free(rr, k)) {
+      const y = wB(rr) + 0.85, px = clamp(cx(k), -w / 2 + pl / 2 + 0.3, w / 2 - pl / 2 - 0.3);
+      for (const e of [-pl / 2, pl / 2]) dec(T, 'box', DM, px + e, y, fz + 0.45, 0.04, 0.04, 0.9, 0x6a6a70);
+      dec(T, 'box', DM, px, y, fz + 0.9, pl, 0.04, 0.04, 0x8a8a90);
+      for (let c = 0; c < Math.floor(pl / 0.62); c++) { const ch = 0.4 + drand() * 0.4; dec(T, 'box', DM, px - pl / 2 + 0.35 + c * 0.62, y - ch / 2 - 0.03, fz + 0.9, 0.5, ch, 0.03, dpick(CLOTH)); }
+    }
+  }
+  // B. 壁の室外機
+  for (let rr = 0; rr < rows; rr++) for (let k = 0; k < fc; k++) if (free(rr, k) && !used.has(rr * 20 + k) && drand() < 0.15) {
+    const y = wB(rr) - 0.4, lx = cx(k); if (y < 4.8) continue;
+    dec(T, 'box', DM, lx, y, fz + 0.25, 0.8, 0.55, 0.5, AC_COL);
+  }
+  // E. 横に出るつり下げ看板(縦の看板と反対がわ)
+  if (h > 7.5 && drand() < 0.55) {
+    const side = vs ? -vs : (drand() < 0.5 ? -1 : 1), wd = dpick(SHOP_NAMES), len = wd.length * 0.85 + 0.5, y = 5.2 + drand() * Math.max(0, h - 7.2);
+    const s = new THREE.Mesh(BG(len, 0.85, 0.14), hSignMat(wd, dpick(['#7a0e0e', '#101010', '#0e3a2a', '#1a1450']), dpick(['#ffd75a', '#ffffff', '#7dff6a', '#3bf0ff'])));
+    s.rotation.y = Math.PI / 2; s.position.set(side * (w / 2 - 0.45), y, fz + 0.35 + len / 2); g.add(s);
+    dec(T, 'box', DM, side * (w / 2 - 0.45), y + 0.5, fz + 0.2 + len / 2, 0.05, 0.05, len + 0.4, 0x2a2a2a);
+  }
+  // D. 閉まった店(シャッター)
+  if (drand() < 0.15) dec(T, 'box', shutterMat, 0, 1.45, fz - 0.68, w - 0.6, 2.7, 0.06);
+  // A. 平らな屋根: ふち・室外機・給水タンク・テレビのアンテナ
+  if (flat) {
+    const R = { x, z, r, y: h + 0.9 }, spot = () => [(drand() - 0.5) * (w - 2.5), (drand() - 0.5) * (d - 3)];
+    for (const s of [1, -1]) dec(R, 'box', DM, 0, 0.3, s * (d / 2 - 0.15), w, 0.6, 0.3, 0x4a4246);
+    roofStuff(R, spot, false, Math.floor(drand() * 3), 0.3, 0.5);
+  }
+}
+
 /* チャイナタウン: 西寄りの 3×3 区画。その中の2区画(横につなげる)が、歩いてしか入れない市場 */
 const CT = { i0: 1, i1: 3, j0: 2, j1: 4 };
 const isCT = (i, j) => i >= CT.i0 && i <= CT.i1 && j >= CT.j0 && j <= CT.j1;
@@ -281,15 +465,17 @@ function shophouse(x, z, w, d, h, r) {
   const sf = new THREE.Mesh(BG(w - 0.6, 2.7, 0.1), shopMat); sf.position.set(0, 1.45, d / 2 - 0.75); g.add(sf);
   const aw = new THREE.Mesh(BG(w - 0.3, 0.15, 1.5), M(rnd() < 0.5 ? 0xa8241c : 0x2a6a48)); aw.position.set(0, 3.05, d / 2 + 0.35); aw.rotation.x = 0.28; g.add(aw);
   if (rnd() < 0.8) { const wd = pick(SHOP_NAMES); const s = new THREE.Mesh(BG(Math.min(w - 0.8, wd.length * 1.25 + 0.7), 1.1, 0.15), hSignMat(wd, rnd() < 0.5 ? '#7a0e0e' : '#101010', '#ffd75a')); s.position.set(0, 3.95, d / 2 + 0.1); g.add(s); }
+  let vs = 0, flat = false; // vs = 縦の看板の側(-1・1、ないとき0)、flat = 平らな屋根(v=35: 飾りに使う)
   if (rnd() < 0.75 && h > 7) {
     const wd = pick(SIGN_WORDS), col = pick(NEON), sh = wd.length * 1.35 + 0.5;
-    const s = new THREE.Mesh(BG(0.2, sh, 1.2), vSignMat(wd, col)); s.position.set((rnd() < 0.5 ? -1 : 1) * (w / 2 - 0.5), Math.min(h - sh / 2 - 0.3, 4.7 + sh / 2), d / 2 + 0.75); g.add(s);
+    const s = new THREE.Mesh(BG(0.2, sh, 1.2), vSignMat(wd, col)); vs = rnd() < 0.5 ? -1 : 1; s.position.set(vs * (w / 2 - 0.5), Math.min(h - sh / 2 - 0.3, 4.7 + sh / 2), d / 2 + 0.75); g.add(s);
   }
   if (rnd() < 0.6) { const rh = 1.5 + w * 0.12; const m = new THREE.Mesh(roofGeo(w + 1.4, d + 1.4, rh, 0.9), ctRoof(pick(ROOF_COLS))); m.position.y = h; g.add(m); }
-  else { const m = new THREE.Mesh(BG(w, 0.6, d), M(0x3a3236)); m.position.y = h + 0.3; g.add(m); }
+  else { flat = true; const m = new THREE.Mesh(BG(w, 0.6, d), M(0x3a3236)); m.position.y = h + 0.3; g.add(m); }
   for (const sx of [-w / 2 + 1.1, w / 2 - 1.1]) { const q = toW(x, z, r, sx, d / 2 + 0.6), c = rnd() < 0.5 ? 1 : 0; if (!skip) LANTERNS.push([q[0], 3.0, q[1], 0.7, c]); }
   if (skip) return;
   const q = toW(x, z, r, 0, d / 2 + 1.6); GLOWS.push([q[0], q[1], 4.5, 1]);
+  decoShop(x, z, w, d, h, r, g, flat, vs, rows);
   scene.add(g); colRot(x, z, w, d, r);
 }
 // [a,b] を、gaps をよけて、同じくらいの幅の店で埋める
@@ -567,6 +753,7 @@ function buildSpecial(b) {
   apartment();
   market();
   for (const m of MERGES) if (m.kind !== 'market') buildMerged(m);
+  buildDecor(); // 建物の飾りを、まとめて作る(v=35)
   gate(roadC(1) + 8, roadC(4), Math.PI / 2); gate(roadC(4) - 8, roadC(3), Math.PI / 2); gate(roadC(2), roadC(2) + 8, 0); gate(roadC(3), roadC(5) - 8, 0);
   // 道の上のちょうちん(道を横切るように吊るす)
   const nearX = t => { for (let m = 0; m <= N; m++) if (Math.abs(t - roadC(m)) < 8) return true; return false; };
@@ -3092,7 +3279,7 @@ function frame(now) {
     updatePeds(dt); updateVendors(dt); updateGangs(dt); updateNpcs(dt);
     const a = T * 0.08; camera.position.set(Math.sin(a) * 150, 70, Math.cos(a) * 150); camera.lookAt(0, 0, 0); player.per.g.position.set(player.x, 0.3, player.z);
   }
-  renderer.render(scene, camera); requestAnimationFrame(frame);
+  decorCull(); renderer.render(scene, camera); requestAnimationFrame(frame);
 }
 
 /* ===== 画面の切りかえ ===== */
