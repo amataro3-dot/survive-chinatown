@@ -232,15 +232,17 @@ function makePerson(shirt, pants, skin, o) {
   const hair = new THREE.Mesh(hairGeo(look.hair, look.hairCol, look.hat, look.hatCol), mat); g.add(hair);
   function limb(x, y, geo) { const p = new THREE.Group(); p.position.set(x, y, 0); const m = new THREE.Mesh(geo, mat); p.add(m); g.add(p); return p; }
   const legL = limb(-0.16, 0.85, legGeo(pants, look.shoe)), legR = limb(0.16, 0.85, legGeo(pants, look.shoe)), armL = limb(-0.49, 1.78, armGeo(shirt, skin)), armR = limb(0.49, 1.78, armGeo(shirt, skin));
-  scene.add(g); return { g, body, head: body, hair, legL, legR, armL, armR, phase: 0, look };
+  scene.add(g); return { g, body, head: body, hair, legL, legR, armL, armR, phase: 0, look, face: look.face };
 }
 // 服の色を変える(白虎幇に着せかえるときなど)
 function dressPerson(per, shirt, pants, cloth) {
   const l = per.look; l.shirt = shirt; l.pants = pants; if (cloth) l.cloth = cloth;
-  per.body.geometry = trunkGeo(shirt, l.skin, l.face, l.cloth, l.front);
+  per.body.geometry = trunkGeo(shirt, l.skin, per.face === undefined ? l.face : per.face, l.cloth, l.front);
   per.armL.children[0].geometry = per.armR.children[0].geometry = armGeo(shirt, l.skin);
   per.legL.children[0].geometry = per.legR.children[0].geometry = legGeo(pants, l.shoe);
 }
+// 顔だけ変える(びっくり 15・どなる 14 など)。f がなければ元の顔にもどす
+function setFace(per, f) { const l = per.look; if (!l) return; if (f === undefined) f = l.face; if (per.face === f) return; per.face = f; per.body.geometry = trunkGeo(l.shirt, l.skin, f, l.cloth, l.front); }
 // かみの色を変える(おやじの白髪など)
 function hairColor(per, col) { const l = per.look; l.hairCol = col; per.hair.geometry = hairGeo(l.hair, col, l.hat, l.hatCol); }
 // まるいサングラス(1つにまとめる)
@@ -1456,6 +1458,7 @@ function ejectDriver(c) {
   const n = newNpc('driver', c.x - rx * 1.8, c.z - rz * 1.8, c.h + Math.PI / 2);
   n.down = 0.9; n.kx = -rx * 5; n.kz = -rz * 5;
   if (G.mode === 'solo' && Math.random() < TUNE.driver.angry) n.state = 'angry';
+  setFace(n.per, n.state === 'angry' ? 14 : 15); // ほうり出されて、びっくり(おそってくる人は、どなる顔)
 }
 // パトカーが止まって、警察官が降りる
 function deployCops(c) {
@@ -1565,9 +1568,13 @@ function gunTarget(W, dir, assist) {
   return best;
 }
 function rayEnd(dir, range) { if (player.roof) return [player.x + Math.sin(dir) * range, player.z + Math.cos(dir) * range]; let ex = player.x, ez = player.z; for (let s = 0.5; s <= range; s += 0.5) { const nx = player.x + Math.sin(dir) * s, nz = player.z + Math.cos(dir) * s; if (pointBlocked(nx, nz)) break; ex = nx; ez = nz; } return [ex, ez]; }
+// 銃声・車がつっこんできた: 近くの街の人がびっくりして、少しの間走って逃げる
+const SCARE = { gun: 25, gunT: 3.5, car: 6, carSpeed: 8, carT: 2.5 };
+function scarePeds(x, z, r, t) { for (const p of peds) if (!p.off && Math.hypot(p.x - x, p.z - z) < r) p.scareT = Math.max(p.scareT || 0, t); }
 function fireGun(wk, dir, assist, turn) {
   const W = WEAPONS[wk];
   if (ammoOf(wk) <= 0) { if (noAmmoT <= 0) { toast(tr('弾がない！'), 1); noAmmoT = 1; } return false; }
+  scarePeds(player.x, player.z, SCARE.gun, SCARE.gunT);
   if (wk === 'pistol') player.ammo--; else player.mg--;
   player.atkCd = W.cd; player.swing = 0.22;
   if (W.spread) dir += (Math.random() - 0.5) * W.spread;
@@ -1889,7 +1896,7 @@ function fireRifle(yaw, pitch) {
   if (!canAttack()) return false;
   if (player.atkCd > 0) { toast(tr('装てん中…'), 0.8); return false; }
   if (player.rf <= 0) { toast(tr('弾がない！'), 1); return false; }
-  player.rf--; player.atkCd = TUNE.rifle.cd; player.h = yaw;
+  player.rf--; player.atkCd = TUNE.rifle.cd; player.h = yaw; scarePeds(player.x, player.z, SCARE.gun, SCARE.gunT);
   const o = scopeEye(yaw), d = scopeDir(yaw, pitch), hit = rifleRay(o, d, WEAPONS.rifle.range), ex = o.x + d.x * hit.t, ey = o.y + d.y * hit.t, ez = o.z + d.z * hit.t;
   tracer(o.x + d.x * 0.8, o.z + d.z * 0.8, ex, ez, o.y - 0.1 + d.y * 0.8, ey); if (shootOn()) { const r1 = n => Math.round(n * 10) / 10; shootEv(['q', r1(o.x), r1(o.y - 0.1), r1(o.z), r1(ex), r1(ey), r1(ez)]); }
   const f = hit.f;
@@ -1960,7 +1967,7 @@ function makeVip(kind, o) {
 //   later = 幹部・白いスーツ・ボス・黒と白のケンカ・「あの屋台だけは…」の話もするか(v=18 から true。白が出る「大きな仕事のあと」から言う)
 //   rumor = 「聞きこみ」のうわさが出ている秒(文が長いので、ふつうより長い)
 //   mobHit = マフィアの Q&A でまちがえたときに、なぐられる体力(v=25。これでやられることはない)、mobWait = なぐられたあと、その人と話せない秒
-const TALK = { dist: 2.8, show: 3.2, qa: 0.3, oyajiQa: 0.5, hint: 0.3, wait: 12, leave: 7, vendors: 6, later: true, rumor: 5.5, mobHit: 10, mobWait: 30 };
+const TALK = { dist: 2.8, show: 3.2, qa: 0.3, oyajiQa: 0.5, hint: 0.3, wait: 12, leave: 7, vendors: 6, later: true, rumor: 5.5, mobHit: 10, mobWait: 30, surprise: 0.2, surpriseT: 1.2 }; // surprise = 話しかけると、びっくりする割合(街の人。surpriseT 秒)
 // ひとこと。hint = ヒント・うわさ、self = 屋台のおやじの話(おやじ本人は言わない)
 const LINES = [
   { text: 'この街の家賃、ギャングよりこわいよ' },
@@ -2090,6 +2097,7 @@ function startTalk() {
   if (who.mob && Math.random() >= TALK.qa) { endTalk(); const pool = CALM_LINES.filter(l => l !== who.lastLine), l = pool[Math.floor(Math.random() * pool.length)]; who.lastLine = l; who.talkT = TALK.show; talk = { who, t: TALK.show }; setBubble(tr(l.text)); return; }
   const ask = !!asking() && who.asked !== G.askId; // 聞きこみ中で、まだ聞いていない人
   endTalk(); who.talkT = TALK.show; let qa = null;
+  if (peds.includes(who) && Math.random() < TALK.surprise) who.faceT = TALK.surpriseT; // ときどき、話しかけるとびっくりする
   if (who.mob) { const pool = QAS.filter(q => q.who === (who.white ? 'mobW' : 'mobB') && q !== lastQA); qa = pool[Math.floor(Math.random() * pool.length)]; } // おとなしくなったマフィアの Q&A(v=25)
   else if (who.oyaji) { if (!who.met || Math.random() < TALK.oyajiQa) qa = QAS.find(q => q.who === 'oyaji'); who.met = true; }
   else if (Math.random() < TALK.qa) { const pool = QAS.filter(q => (!q.who || q.who === 'shop') && q !== lastQA); qa = who.vendor && Math.random() < 0.5 ? QAS[0] : pool[Math.floor(Math.random() * pool.length)]; }
@@ -3051,9 +3059,11 @@ function updatePeds(dt) {
       continue;
     }
     if (p.angry) { if (npcs.indexOf(p.angry) >= 0) { p.per.g.visible = false; continue; } p.angry = null; p.bi = pedBlock(); p.t = Math.random() * 160; p.per.g.visible = true; } // おこって追いかけている間は、別の人(npcs)として動く
-    const fleeing = G.wanted >= 2, stop = p.talkT > 0; // 話している間は立ち止まる
+    if (p.scareT > 0) p.scareT -= dt; if (p.faceT > 0) p.faceT -= dt;
+    const fleeing = G.wanted >= 2 || p.scareT > 0, stop = p.talkT > 0 && !(p.scareT > 0); // 話している間は立ち止まる。手配度が高い・びっくりしたときは走って逃げる
+    setFace(p.per, fleeing || p.faceT > 0 ? 15 : undefined); // 逃げている間・話しかけられてびっくりした間は、びっくりした顔
     if (stop) p.talkT -= dt; else { p.t += p.dir * p.speed * (fleeing ? 2.2 : 1) * dt; const q = pedPos(p); p.x = q[0]; p.z = q[1]; p.h = q[2]; }
-    if (player.mode === 'car') { const c = player.car; const d = carDist(c, p.x, p.z); if (d < 2.4 && Math.abs(c.v) > 5) { p.down = 7; p.per.g.rotation.x = -Math.PI / 2; p.push.x = Math.sin(c.h) * c.v * 0.6; p.push.z = Math.cos(c.h) * c.v * 0.6; addWanted(1); raceWanted('人をひいた！ 警察に追われている！'); continue; } }
+    if (player.mode === 'car') { const c = player.car; const d = carDist(c, p.x, p.z); if (d < 2.4 && Math.abs(c.v) > 5) { p.down = 7; p.per.g.rotation.x = -Math.PI / 2; p.push.x = Math.sin(c.h) * c.v * 0.6; p.push.z = Math.cos(c.h) * c.v * 0.6; addWanted(1); raceWanted('人をひいた！ 警察に追われている！'); continue; } if (d < SCARE.car && Math.abs(c.v) > SCARE.carSpeed) p.scareT = Math.max(p.scareT || 0, SCARE.carT); }
     p.per.g.position.set(p.x, 0.3, p.z); p.per.g.rotation.y = p.h; animPerson(p.per, stop ? 0 : p.speed * (fleeing ? 2.2 : 1), dt);
   }
 }
