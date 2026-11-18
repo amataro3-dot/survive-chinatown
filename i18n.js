@@ -29,9 +29,9 @@
     '📱 このゲームは<b>横向き</b>で遊びます': ['📱 This game is played in <b>landscape</b>', '📱 이 게임은 <b>가로 화면</b>으로 플레이합니다'],
     'ひとりで遊ぶ(ミッション)': ['Play Solo (Missions)', '혼자 하기(미션)'],
     '操作': ['Controls', '조작'],
-    '左下のスティック：歩く／車のハンドル(左右)<br>それ以外の場所をドラッグ：カメラを回す<br>「乗る／降りる」：車の乗り降り<br>「ダッシュ」：走る<br>「話す」：近くの街の人に話しかける<br>「こうげき」：銃はボタンを倒してねらい、離して撃つ<br>ライフル：押すとスコープ。ドラッグでねらって、離すと撃つ<br>緑の光：高いビルの屋上に上がる・おりる<br>車では「アクセル」「ブレーキ」「バック」のボタンで走る': [
-      'Stick (bottom left): walk / steer the car (left and right)<br>Drag anywhere else: turn the camera<br>"Get in / Get out": get in and out of cars<br>"Dash": run<br>"Talk": talk to a person nearby<br>"Attack": with a gun, drag the button to aim and release to shoot<br>Rifle: press for the scope, drag to aim, release to shoot<br>Green light: go up to or down from the roof of a tall building<br>In a car, drive with the "Gas", "Brake" and "Reverse" buttons',
-      '왼쪽 아래 스틱: 걷기 / 자동차 핸들(좌우)<br>그 밖의 곳을 드래그: 카메라 돌리기<br>"타기 / 내리기": 차 타고 내리기<br>"대시": 달리기<br>"말 걸기": 근처의 사람에게 말 걸기<br>"공격": 총은 버튼을 끌어서 조준하고, 떼면 쏜다<br>라이플: 누르면 스코프. 드래그해서 조준하고, 떼면 쏜다<br>초록 빛: 높은 빌딩의 옥상으로 올라가기・내려가기<br>차에서는 "액셀" "브레이크" "후진" 버튼으로 달린다'],
+    '左下のスティック：歩く／車のハンドル(左右)<br>それ以外の場所をドラッグ：カメラを回す<br>「乗る／降りる」：車の乗り降り<br>「ダッシュ」：走る<br>「話す」：近くの街の人に話しかける<br>「こうげき」：銃はボタンを倒してねらい、離して撃つ<br>ライフル：押すとスコープ。ドラッグかスティックでねらって「撃つ」、✕で閉じる<br>緑の光：高いビルの屋上に上がる・おりる<br>車では「アクセル」「ブレーキ」「バック」のボタンで走る': [
+      'Stick (bottom left): walk / steer the car (left and right)<br>Drag anywhere else: turn the camera<br>"Get in / Get out": get in and out of cars<br>"Dash": run<br>"Talk": talk to a person nearby<br>"Attack": with a gun, drag the button to aim and release to shoot<br>Rifle: press for the scope, drag or use the stick to aim, then "Shoot". ✕ closes it<br>Green light: go up to or down from the roof of a tall building<br>In a car, drive with the "Gas", "Brake" and "Reverse" buttons',
+      '왼쪽 아래 스틱: 걷기 / 자동차 핸들(좌우)<br>그 밖의 곳을 드래그: 카메라 돌리기<br>"타기 / 내리기": 차 타고 내리기<br>"대시": 달리기<br>"말 걸기": 근처의 사람에게 말 걸기<br>"공격": 총은 버튼을 끌어서 조준하고, 떼면 쏜다<br>라이플: 누르면 스코프. 드래그나 스틱으로 조준하고 "쏘기", ✕로 닫는다<br>초록 빛: 높은 빌딩의 옥상으로 올라가기・내려가기<br>차에서는 "액셀" "브레이크" "후진" 버튼으로 달린다'],
     'ひとりで遊ぶ': ['Play Solo', '혼자 하기'],
     'マフィアのお使いをこなして、お金をかせごう。人をはねたり、車にぶつけたりすると手配度(★)が上がって警察が追ってくる。警察官につかまると逮捕！<br>光るマークの店で、武器(赤)や薬(緑)が買える。<br>家(青い光)に入るとセーブして、体力が全回復する。ミッションをクリアしたときも、自動でセーブする。': [
       'Run errands for the mafia and earn money. Hit people or crash into cars and your wanted level (★) goes up and the police come after you. If an officer catches you, you get arrested!<br>At shops with a glowing mark you can buy weapons (red) and medicine (green).<br>Step into your home (blue light) to save and fully recover. The game also saves automatically when you clear a mission.',
@@ -217,7 +217,8 @@
     'ライフルがない': ['You need a rifle', '라이플이 없음'],
     'ライフルの弾 {n}': ['Rifle ammo {n}', '라이플 탄약 {n}'],
     '装てん中…': ['Reloading…', '장전 중…'],
-    '弾 {n}・離すと撃つ': ['Ammo {n} · release to shoot', '탄약 {n} · 떼면 쏜다'],
+    '弾 {n}・ドラッグかスティックでねらう': ['Ammo {n} · drag or use the stick to aim', '탄약 {n} · 드래그나 스틱으로 조준'],
+    '撃つ': ['Shoot', '쏘기'],
     '屋上に上がった': ['You went up to the rooftop', '옥상으로 올라왔다'],
     '下におりた': ['You went back down', '아래로 내려왔다'],
     '警察が屋上に上がってきた！': ['The police are coming up to the roof!', '경찰이 옥상으로 올라왔다!'],

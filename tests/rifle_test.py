@@ -54,35 +54,49 @@ with sync_playwright() as p:
     check(not ev("SC.pointBlocked(30, 0)") and not ev("SC.pointBlocked(70, 0)"), "テストの場所は道の上")
     place_target(40, 0)
     bb = pg.locator("#atkBtn").bounding_box(); cx, cy = bb["x"] + bb["width"] / 2, bb["y"] + bb["height"] / 2
-    pg.dispatch_event("#atkBtn", "pointerdown", {"pointerId": 5, "clientX": cx, "clientY": cy, "bubbles": True}); pg.wait_for_timeout(150)
-    check(ev("document.body.classList.contains('scoped')") and pg.is_visible("#scopeFx") and "離すと撃つ" in pg.inner_text("#scopeInfo"), "押すとスコープの画面(「弾 10・離すと撃つ」)")
+    PD = lambda sel, pid, x, y, t="pointerdown": pg.dispatch_event(sel, t, {"pointerId": pid, "clientX": x, "clientY": y, "bubbles": True})
+    PD("#atkBtn", 5, cx, cy); pg.wait_for_timeout(150)
+    check(ev("document.body.classList.contains('scoped')") and pg.is_visible("#scopeFx") and "ねらう" in pg.inner_text("#scopeInfo") and pg.inner_text("#atkBtn") == "撃つ" and pg.is_visible("#scopeX"), "押すとスコープの画面(「弾 10・ドラッグかスティックでねらう」・ボタンが「撃つ」・✕)")
     y0 = ev("SC.G.scope.yaw")
-    pg.dispatch_event("#atkBtn", "pointermove", {"pointerId": 5, "clientX": cx + 100, "clientY": cy + 50, "bubbles": True}); pg.wait_for_timeout(50)
+    PD("#atkBtn", 5, cx + 100, cy + 50, "pointermove"); pg.wait_for_timeout(50)
     sc = ev("[SC.G.scope.yaw, SC.G.scope.pitch]")
     check(abs(sc[0] - (y0 - 100 * 0.0011)) < 1e-6 and sc[1] < -0.02, "右へドラッグで右を向く・下へで下を向く")
-    # ねらいをマフィアの胸に合わせて、離す
+    PD("#atkBtn", 5, cx + 100, cy + 50, "pointerup"); pg.wait_for_timeout(150)
+    check(ev("document.body.classList.contains('scoped')") and ev("SC.player.rf") == 10, "離してもスコープは開いたまま・撃たない(v=40)")
+    # 画面のほかの所をドラッグしてねらう。指をつけ直して、何回でも下へ
+    p0 = ev("SC.G.scope.pitch")
+    for k in range(2):
+        PD("#touch", 9, 422, 60); PD("#touch", 9, 422, 260, "pointermove"); PD("#touch", 9, 422, 260, "pointerup"); pg.wait_for_timeout(50)
+    p1 = ev("SC.G.scope.pitch")
+    check(abs(p1 - (p0 - 400 * 0.0011)) < 1e-6, "画面のどこでもドラッグでねらえる・指をつけ直して下まで向ける")
+    # 左のスティックでねらう(歩かない)
+    x0, z0 = ev("SC.player.x"), ev("SC.player.z"); jcy = 390 - 80
+    PD("#touch", 10, 80, jcy); PD("#touch", 10, 80, jcy - 50, "pointermove"); pg.wait_for_timeout(500)
+    p2 = ev("SC.G.scope.pitch"); y2 = ev("SC.G.scope.yaw")
+    PD("#touch", 10, 130, jcy, "pointermove"); pg.wait_for_timeout(400)
+    y3 = ev("SC.G.scope.yaw"); PD("#touch", 10, 130, jcy, "pointerup"); pg.wait_for_timeout(50)
+    check(p2 > p1 + 0.05 and y3 < y2 - 0.05 and abs(ev("SC.player.x") - x0) < 0.01 and abs(ev("SC.player.z") - z0) < 0.01, "スティックを上で上を向く・右で右を向く・歩かない")
+    # ねらいをマフィアの胸に合わせて、「撃つ」を押す
     ev("(()=>{ const g = SC.gangs[0], o = SC.scopeEye(); SC.G.scope.yaw = Math.atan2(g.x - o.x, g.z - o.z); SC.G.scope.pitch = Math.atan2(1.3 - o.y, Math.hypot(g.x - o.x, g.z - o.z)); return 0 })()")
-    pg.wait_for_timeout(400)
-    pg.dispatch_event("#atkBtn", "pointerup", {"pointerId": 5, "clientX": cx, "clientY": cy, "bubbles": True}); pg.wait_for_timeout(150)
-    check(ev("SC.gangs[0].hp <= 0") and ev("SC.player.rf") == 9, "離すと撃つ。40m先のマフィアを1発でたおす(弾 9)")
-    check(not ev("document.body.classList.contains('scoped')") and ev("SC.player.per.g.visible"), "離すとスコープが閉じる")
+    pg.wait_for_timeout(200)
+    PD("#atkBtn", 6, cx, cy); pg.wait_for_timeout(150); PD("#atkBtn", 6, cx, cy, "pointerup")
+    check(ev("SC.gangs[0].hp <= 0") and ev("SC.player.rf") == 9, "「撃つ」で撃つ。40m先のマフィアを1発でたおす(弾 9)")
+    check(ev("document.body.classList.contains('scoped')"), "撃ったあともスコープは開いたまま")
     # 装てん中
     place_target(40, 0)
-    pg.dispatch_event("#atkBtn", "pointerdown", {"pointerId": 6, "clientX": cx, "clientY": cy, "bubbles": True}); pg.wait_for_timeout(50)
-    check("装てん中" in pg.inner_text("#scopeInfo"), "撃ったすぐあとは「装てん中…」")
-    pg.wait_for_timeout(400); pg.dispatch_event("#atkBtn", "pointerup", {"pointerId": 6, "clientX": cx, "clientY": cy, "bubbles": True}); pg.wait_for_timeout(100)
-    check(ev("SC.player.rf") == 9 and ev("SC.gangs[0].hp") == 100, "装てん中は撃てない(弾もへらない)")
+    PD("#atkBtn", 7, cx, cy); pg.wait_for_timeout(50); PD("#atkBtn", 7, cx, cy, "pointerup"); pg.wait_for_timeout(50)
+    check("装てん中" in pg.inner_text("#scopeInfo") and ev("SC.player.rf") == 9 and ev("SC.gangs[0].hp") == 100, "撃ったすぐあとは「装てん中…」で撃てない(弾もへらない)")
     pg.wait_for_timeout(1500)
-    # 短く押すだけでは撃たない
-    pg.dispatch_event("#atkBtn", "pointerdown", {"pointerId": 7, "clientX": cx, "clientY": cy, "bubbles": True}); pg.wait_for_timeout(60)
-    pg.dispatch_event("#atkBtn", "pointerup", {"pointerId": 7, "clientX": cx, "clientY": cy, "bubbles": True}); pg.wait_for_timeout(100)
-    check(ev("SC.player.rf") == 9, "短く押しただけなら撃たない")
+    # ✕ で閉じる
+    pg.dispatch_event("#scopeX", "pointerdown"); pg.wait_for_timeout(100)
+    check(not ev("document.body.classList.contains('scoped')") and ev("SC.player.per.g.visible") and pg.inner_text("#atkBtn") == "こうげき" and ev("SC.player.rf") == 9, "✕ でスコープが閉じる(撃たない・ボタンが「こうげき」にもどる)")
     # すぐにのぞくと、前のねらいのまま
     prev = ev("SC.G.scAim.yaw")
-    pg.dispatch_event("#atkBtn", "pointerdown", {"pointerId": 8, "clientX": cx, "clientY": cy, "bubbles": True}); pg.wait_for_timeout(60)
+    PD("#atkBtn", 8, cx, cy); pg.wait_for_timeout(60)
     keep = ev("SC.G.scope.yaw") == prev
-    pg.dispatch_event("#atkBtn", "pointercancel", {"pointerId": 8, "clientX": cx, "clientY": cy, "bubbles": True}); pg.wait_for_timeout(100)
-    check(keep and ev("SC.player.rf") == 9 and not ev("SC.G.scope"), "すぐにのぞくと前のねらいのまま・キャンセルでは撃たない")
+    PD("#atkBtn", 8, cx, cy, "pointercancel"); pg.wait_for_timeout(100)
+    check(keep and ev("SC.player.rf") == 9 and ev("SC.G.scope"), "すぐにのぞくと前のねらいのまま・キャンセルでは撃たない")
+    pg.dispatch_event("#scopeX", "pointerdown"); pg.wait_for_timeout(100)
     # ビルのうしろには当たらない(大きなビルの北がわに立って、南の道のマフィアをねらう)
     rf0 = R[0]
     ev(f"(()=>{{ SC.player.x = {rf0['ent']['x']}; SC.player.z = {rf0['ent']['z']} - 40; SC.player.atkCd = 0; return 0 }})()")

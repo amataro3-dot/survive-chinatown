@@ -43,7 +43,7 @@ const TUNE = {
   raceAt: { day: 150, eve: 350, night: 560 },
   // ライフル(v=29): 値段・弾の値段・弾の数(買うと・弾だけ)・撃ったあと次を撃てない秒・スコープの見える広さ(度)・ドラッグの速さ・当たる太さ
   //   boss = 幹部・大ボスへのダメージ(手下・警察官は1発)、pvp = サバイバルでのダメージ(2発)、tap = これより短く押しただけなら撃たない(秒)
-  rifle: { price: 3000, ammoPrice: 300, ammo: 5, cd: 1.5, fov: 14, sens: 0.0011, hitR: 0.6, boss: 100, pvp: 50, tap: 0.3 },
+  rifle: { price: 3000, ammoPrice: 300, ammo: 5, cd: 1.5, fov: 14, sens: 0.0011, stick: 0.45, hitR: 0.6, boss: 100, pvp: 50 }, // stick = スコープの間、スティックをいっぱいに倒したときに回る速さ(1秒に。v=40)
   // 屋上(v=29): 上がれるビルの数(高い順)・下からマフィアが撃ってくる距離と当たる割合・警察官が上がってくる★・何秒ごと・何人まで
   roof: { count: 4, gangRange: 40, gangHit: 0.35, copWanted: 3, copEvery: 8, copMax: 2 },
 };
@@ -1289,7 +1289,7 @@ const WEAPONS = {
   // 市場で拾う武器(v=31): 中華なべ = 持っている間、前からの弾が半分(guard)。棒 = 当たると大きくふっとぶ(knock = ふっとばす強さの倍)
   wok: { name: '中華なべ', dmg: 20, range: 2.0, cd: 0.5, melee: true, guard: 0.5 },
   pole: { name: '棒', dmg: 25, range: 2.4, cd: 0.6, melee: true, knock: 2.8 },
-  rifle: { name: 'ライフル', dmg: 100, range: 170, cd: TUNE.rifle.cd, melee: false, scope: true }, // v=29: 押すとスコープ。ドラッグでねらって、離すと撃つ
+  rifle: { name: 'ライフル', dmg: 100, range: 170, cd: TUNE.rifle.cd, melee: false, scope: true }, // v=29: 押すとスコープ。v=40 から: 開いたまま、ドラッグかスティックでねらって「撃つ」で撃つ。✕で閉じる
 };
 // 市場の武器: 持てる数・また出てくるまでの秒・豚の頭で前が見えない秒・ヘビで止まる秒・投げる速さ・当たる近さ
 const MKT = { max: 3, respawn: 60, blind: 4, freeze: 5, speed: 18, hitR: 1.0, hide: 2, guardAng: 1.05 }; // hide = 市場の中で★がへる速さの倍(v=31)、guardAng = 中華なべで防げる前の向きの広さ(ラジアン。約60度)
@@ -1920,7 +1920,10 @@ function atkDown(e) {
   e.preventDefault(); e.stopPropagation();
   try { $('atkBtn').setPointerCapture(e.pointerId); } catch (_) { /* なくてもよい */ }
   if (!isGun(curWeapon())) { playerAttack(); return; } // 素手・刀は、押したらすぐ
-  if (WEAPONS[curWeapon()].scope) { startScope(e); return; } // ライフル(v=29): スコープ
+  if (WEAPONS[curWeapon()].scope) { // ライフル(v=29): スコープ。開いているときは撃つ(その指でドラッグしてもねらえる)(v=40)
+    if (G.scope) { const sc = G.scope; sc.id = e.pointerId; sc.lx = e.clientX; sc.ly = e.clientY; fireRifle(sc.yaw, sc.pitch); } else startScope(e);
+    return;
+  }
   atk = { id: e.pointerId, sx: e.clientX, sy: e.clientY, dx: 0, dy: 0, aim: false };
 }
 function atkMove(e) {
@@ -1931,7 +1934,7 @@ function atkMove(e) {
   if (l > AIM.max) { dx *= AIM.max / l; dy *= AIM.max / l; } setAtkKnob(dx, dy);
 }
 function atkUp(e) {
-  if (G.scope && e.pointerId === G.scope.id) { upScope(e); return; }
+  if (G.scope && e.pointerId === G.scope.id) { G.scope.id = null; return; } // 離してもスコープは開いたまま(v=40)
   if (!atk || e.pointerId !== atk.id) return;
   const wk = curWeapon();
   if ((wk === 'pistol' || isThrown(wk)) && e.type === 'pointerup') pendShot = atk.aim ? { dir: aimDir(), assist: AIM.assist, turn: false, t: AIM.wait } : { dir: null, assist: AIM.tapAssist, turn: true, t: AIM.wait };
@@ -1941,7 +1944,14 @@ function atkUp(e) {
 function updateAim(dt) {
   noAmmoT -= dt;
   const wk = curWeapon(), gun = isGun(wk), ok = canAttack();
-  if (G.scope) { if (!ok || !WEAPONS[wk].scope) endScope(); else { player.h = G.scope.yaw; player.per.g.rotation.y = G.scope.yaw; $('scopeInfo').textContent = player.atkCd > 0 ? tr('装てん中…') : tr('弾 {n}・離すと撃つ', { n: player.rf }); } }
+  if (G.scope) {
+    if (!ok || !WEAPONS[wk].scope || (player.rf <= 0 && player.atkCd < TUNE.rifle.cd - 0.6)) endScope(); // 弾がなくなったら、撃った少しあとで閉じる
+    else {
+      const sc = G.scope, k = TUNE.rifle.stick * dt, jx = scopeJoy.x, jy = scopeJoy.y; // スティックでねらう(倒した量の2乗。少し倒すと、ゆっくり)
+      if (jx || jy) { sc.yaw -= Math.sign(jx) * jx * jx * k; sc.pitch = clamp(sc.pitch + Math.sign(jy) * jy * jy * k, -1.55, 0.5); }
+      player.h = sc.yaw; player.per.g.rotation.y = sc.yaw; $('scopeInfo').textContent = player.atkCd > 0 ? tr('装てん中…') : tr('弾 {n}・ドラッグかスティックでねらう', { n: player.rf });
+    }
+  }
   if (atk && (!gun || !ok)) { if (!ok) endAim(); else hideAim(); }
   if (atk && atk.aim && gun && ok) {
     const dir = aimDir(), W = WEAPONS[wk]; player.h = dir; player.per.g.rotation.y = dir; player.per.armR.rotation.x = -1.5;
@@ -1966,25 +1976,24 @@ function updateAim(dt) {
   if (pendShot) { pendShot.t -= dt; if (pendShot.t <= 0 || !gun) pendShot = null; }
 }
 /* ===== ライフル(v=29) =====
-   こうげきボタンを押すとスコープ(拡大した丸い画面)。押したままドラッグでねらって、離すと撃つ(短く押しただけなら撃たない)
+   こうげきボタンを押すとスコープ(拡大した丸い画面)。v=40 から: 離しても開いたまま。画面のどこでもドラッグ・左のスティックでねらって、
+   こうげきボタン(「撃つ」になる)を押すと撃つ。右上の ✕ で閉じる(車・やられる・弾がなくなる・武器を変えるでも閉じる)
    弾はカメラのまん中へまっすぐ飛ぶ。かべ(高さは、ビルは本当の高さ・ほかは7m)と地面で止まる */
+const scopeJoy = { x: 0, y: 0 }; // スコープの間のスティック(readInput が入れる)
 function startScope(e) {
   if (!canAttack()) return;
+  if (player.rf <= 0) { toast(tr('弾がない！'), 1); return; }
   const k = G.scAim && T - G.scAim.t < 4 && G.scAim.roof === player.roof && Math.hypot(G.scAim.x - player.x, G.scAim.z - player.z) < 2; // すぐにもう一度のぞくと、前のねらいのまま
   G.scope = { id: e.pointerId, lx: e.clientX, ly: e.clientY, t0: T, yaw: k ? G.scAim.yaw : G.camYaw, pitch: k ? G.scAim.pitch : player.roof ? -0.3 : -0.02 };
-  document.body.classList.add('scoped'); player.per.g.visible = false; pendShot = null;
+  document.body.classList.add('scoped'); player.per.g.visible = false; pendShot = null; $('atkBtn').textContent = tr('撃つ');
 }
-function moveScope(e) {
-  const sc = G.scope, dx = e.clientX - sc.lx, dy = e.clientY - sc.ly; sc.lx = e.clientX; sc.ly = e.clientY;
-  sc.yaw -= dx * TUNE.rifle.sens; sc.pitch = clamp(sc.pitch - dy * TUNE.rifle.sens, -1.55, 0.5); // 右へドラッグ = 右を向く、下へ = 下を向く
-}
-function upScope(e) {
-  const sc = G.scope; endScope();
-  if (e.type === 'pointerup' && T - sc.t0 >= TUNE.rifle.tap) fireRifle(sc.yaw, sc.pitch);
+function moveScope(e) { const sc = G.scope; scopeDrag(e.clientX - sc.lx, e.clientY - sc.ly); sc.lx = e.clientX; sc.ly = e.clientY; }
+function scopeDrag(dx, dy) { // こうげきボタンの指でも、画面のほかの所の指でもねらえる(v=40)
+  const sc = G.scope; sc.yaw -= dx * TUNE.rifle.sens; sc.pitch = clamp(sc.pitch - dy * TUNE.rifle.sens, -1.55, 0.5); // 右へドラッグ = 右を向く、下へ = 下を向く
 }
 function endScope() {
   if (!G.scope) return; const sc = G.scope; G.scope = null; G.scAim = { yaw: sc.yaw, pitch: sc.pitch, t: T, x: player.x, z: player.z, roof: player.roof };
-  document.body.classList.remove('scoped'); if (player.mode === 'foot') player.per.g.visible = true; G.camYaw = sc.yaw;
+  document.body.classList.remove('scoped'); if (player.mode === 'foot') player.per.g.visible = true; G.camYaw = sc.yaw; $('atkBtn').textContent = tr('こうげき');
 }
 // 目の位置。屋上では、ふちの近く(2.4m まで)なら、ねらう方へ身をのり出す(下の道まで見える)
 function scopeEye(yaw) {
@@ -2995,14 +3004,15 @@ function moveJoy(e) { let dx = e.clientX - joy.sx, dy = e.clientY - joy.sy; cons
 touchEl.addEventListener('pointerdown', e => {
   if (!G.started) return; const cx = JX, cy = innerHeight - JB;
   if (!joy && Math.hypot(e.clientX - cx, e.clientY - cy) < 130) { joy = { id: e.pointerId, sx: cx, sy: cy, dx: 0, dy: 0 }; moveJoy(e); }
-  else if (!camTouch) { camTouch = { id: e.pointerId, x: e.clientX }; }
+  else if (!camTouch) { camTouch = { id: e.pointerId, x: e.clientX, y: e.clientY }; }
   try { touchEl.setPointerCapture(e.pointerId); } catch (_) { /* なくてもよい */ }
 });
-touchEl.addEventListener('pointermove', e => { if (joy && e.pointerId === joy.id) moveJoy(e); else if (camTouch && e.pointerId === camTouch.id) { G.camDrag -= (e.clientX - camTouch.x) * 0.008; camTouch.x = e.clientX; } });
+touchEl.addEventListener('pointermove', e => { if (joy && e.pointerId === joy.id) moveJoy(e); else if (camTouch && e.pointerId === camTouch.id) { if (G.scope) scopeDrag(e.clientX - camTouch.x, e.clientY - camTouch.y); else G.camDrag -= (e.clientX - camTouch.x) * 0.008; camTouch.x = e.clientX; camTouch.y = e.clientY; } }); // スコープの間は、画面のドラッグでねらう(v=40)
 function endPtr(e) { if (joy && e.pointerId === joy.id) { joy = null; setKnob(0, 0); } if (camTouch && e.pointerId === camTouch.id) camTouch = null; }
 touchEl.addEventListener('pointerup', endPtr); touchEl.addEventListener('pointercancel', endPtr);
 $('enterBtn').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); toggleCar(); });
 $('atkBtn').addEventListener('pointerdown', atkDown);
+$('scopeX').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); endScope(); }); // スコープを閉じる(v=40)
 $('atkBtn').addEventListener('pointermove', atkMove);
 ['pointerup', 'pointercancel', 'lostpointercapture'].forEach(t => $('atkBtn').addEventListener(t, atkUp));
 $('wpnBtn').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); switchWeapon(); });
@@ -3024,6 +3034,7 @@ function readInput() {
   let jx = 0, jy = 0;
   if (joy) { jx += joy.dx / 50; jy -= joy.dy / 50; }
   input.jx = clamp(jx, -1, 1); input.jy = clamp(jy, -1, 1);
+  scopeJoy.x = scopeJoy.y = 0; if (G.scope) { scopeJoy.x = input.jx; scopeJoy.y = input.jy; input.jx = input.jy = 0; } // スコープの間は、スティックでねらう(歩かない)(v=40)
   input.dash = held.dash;
   // 車: アクセル・ブレーキ・バックのボタン(スティックは左右のハンドルだけ)
   input.acc = held.acc; input.rev = held.rev; input.brake = held.brk;

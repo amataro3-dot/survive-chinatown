@@ -180,6 +180,8 @@ body.story #optBtn { display: none !important; }
 #scopeFx { position: fixed; inset: 0; pointer-events: none; z-index: 5; display: none; background: radial-gradient(circle at 50% 50%, transparent 0, transparent 160px, rgba(0, 0, 0, .35) 162px, #000 166px); }
 body.scoped #scopeFx { display: block; }
 body.scoped #atkBox { z-index: 6; }
+#scopeX { position: fixed; right: 18px; top: 18px; width: 56px; height: 56px; z-index: 6; display: none; font-size: 26px; background: rgba(0, 0, 0, .55); } /* スコープを閉じる(v=40) */
+body.scoped #scopeX { display: flex; }
 body.scoped .hud, body.scoped #mm, body.scoped #optBtn, body.scoped #mission { visibility: hidden; }
 #scopeFx .ring { position: absolute; left: 50%; top: 50%; width: 332px; height: 332px; margin: -166px 0 0 -166px; border-radius: 50%; box-shadow: inset 0 0 40px rgba(0, 0, 0, .7); }
 #scopeFx .h { position: absolute; left: calc(50% - 150px); top: 50%; width: 300px; height: 1.5px; background: rgba(0, 0, 0, .85); }
