@@ -79,6 +79,203 @@ const matCache = {};
 function M(color) { if (!matCache[color]) matCache[color] = new THREE.MeshLambertMaterial({ color }); return matCache[color]; }
 const geoCache = {};
 function BG(w, h, d) { const k = w + '_' + h + '_' + d; if (!geoCache[k]) geoCache[k] = new THREE.BoxGeometry(w, h, d); return geoCache[k]; }
+/* ===== 人の見た目(v=36): 丸みのある形。顔・手・くつ・かみ型・帽子・服の絵 =====
+   重くならないように: 人1人を「体+頭」「かみ(帽子)」「うで2本」「足2本」の6つで描く(前は8つ)。
+   色は頂点の色、細かい模様(顔・えり・ボタン・しわ)は全員で1まいの絵(PERSON.atlas)を使う。同じ形はつかい回す(PERSON.geo)。
+   見た目の乱数は personSeq(街の乱数 rnd は使わない。使うと街の形が変わる) */
+const PERSON = { atlas: null, mat: null, geo: {} };
+let personSeq = 0;
+const pHash = n => { let x = (n + 1) * 2654435761 >>> 0; x ^= x >>> 15; x = Math.imul(x, 2246822519) >>> 0; x ^= x >>> 13; return (x >>> 0) / 4294967296; };
+const HAIR_COLS = [0x16110d, 0x16110d, 0x2a1d14, 0x4a3020, 0x6e6a66];
+const HAT_COLS = [0xb8322a, 0x1f2f55, 0x5a5f66, 0x2f6a3e, 0xc89a2a, 0x222222];
+const SHOE_COLS = [0x1a1a1a, 0x4a2e1c, 0xe8e8e8, 0x1a1a1a];
+const FACE_M = [0, 0, 1, 1, 2, 6, 7, 8], FACE_F = [3, 4, 5, 5, 9], FACE_GANG = [10, 11, 12, 1, 2, 6];
+// 絵の場所(8×4 のます。1ます 256)。顔 0〜15 は左の 4×4(faces.png。ジェミニに作ってもらったレゴ風の顔を、ます目に合わせて切りぬいたもの)
+//   右の 4×2: 4 = Tシャツ、5 = シャツ、6 = ジャケット、7 = 制服、12 = かみ、13 = ズボン、14 = 白(模様なし)、15 = くつ
+//   顔の番号: 0 えがお・1 ふつう・2 ニヤリ(男) / 3 口紅・4 ふつう・5 まつげ(女) / 6 そりあと・7 口ひげ / 8 おじいさん・9 おばあさん / 10 おこる・11 きず・12 こわい笑い(マフィア) / 13 まじめ(警察官) / 14 どなる・15 びっくり
+const FC = f => f % 4 + (f >> 2) * 8;
+const SC_VER = ((document.currentScript && document.currentScript.src || '').match(/[?&]v=([^&]+)/) || [])[1] || '';
+function personAtlas() {
+  if (PERSON.atlas) return PERSON.atlas;
+  const S = 128, c = document.createElement('canvas'); c.width = 2048; c.height = 1024; const x = c.getContext('2d');
+  x.fillStyle = '#fff'; x.fillRect(0, 0, 2048, 1024);
+  const cell = (i, f) => { x.save(); x.translate((i % 8) * 256, Math.floor(i / 8) * 256); x.scale(2, 2); f(); x.restore(); };
+  const line = (pts, w, col) => { x.strokeStyle = col; x.lineWidth = w; x.lineCap = 'round'; x.beginPath(); pts.forEach((p, k) => k ? x.lineTo(p[0], p[1]) : x.moveTo(p[0], p[1])); x.stroke(); };
+  const dot = (px, py, rx, ry, col) => { x.fillStyle = col; x.beginPath(); x.ellipse(px, py, rx, ry, 0, 0, Math.PI * 2); x.fill(); };
+  const t = new THREE.CanvasTexture(c);
+  if (typeof Image !== 'undefined') { const img = new Image(); img.onload = () => { x.drawImage(img, 0, 0, 1024, 1024); t.needsUpdate = true; }; img.src = 'faces.png' + (SC_VER ? '?v=' + SC_VER : ''); } // 顔(読みこめるまでは、はだの色だけ)
+  // 服(横 = まわり。まん中が正面、はしがせなか。上 = えり、下 = すそ)
+  const wrinkle = () => { for (const [a, b, l] of [[40, 70, 14], [84, 76, 12], [52, 96, 10], [78, 50, 10]]) line([[a, b], [a + l * 0.6, b + l * 0.4]], 2, 'rgba(0,0,0,0.10)'); };
+  const side = () => { line([[32, 4], [32, 124]], 2, 'rgba(0,0,0,0.18)'); line([[96, 4], [96, 124]], 2, 'rgba(0,0,0,0.18)'); };
+  cell(4, () => { side(); wrinkle(); line([[48, 6], [64, 16], [80, 6]], 3, 'rgba(0,0,0,0.35)'); line([[0, 122], [128, 122]], 3, 'rgba(0,0,0,0.25)'); });
+  const belt = () => { x.fillStyle = 'rgba(0,0,0,0.62)'; x.fillRect(0, 112, 128, 11); x.fillStyle = '#fff'; x.fillRect(58, 112, 12, 11); x.fillStyle = 'rgba(0,0,0,0.62)'; x.fillRect(61, 115, 6, 5); };
+  cell(5, () => { side(); wrinkle(); line([[44, 2], [64, 18], [84, 2]], 4, 'rgba(0,0,0,0.4)'); line([[64, 18], [64, 110]], 2, 'rgba(0,0,0,0.2)'); for (let k = 0; k < 4; k++) dot(67, 30 + k * 20, 2.2, 2.2, 'rgba(0,0,0,0.5)'); belt(); });
+  cell(6, () => { side(); wrinkle(); line([[46, 2], [62, 60]], 4, 'rgba(0,0,0,0.45)'); line([[82, 2], [66, 60]], 4, 'rgba(0,0,0,0.45)'); line([[64, 60], [64, 124]], 3, 'rgba(0,0,0,0.4)'); dot(69, 74, 3, 3, 'rgba(0,0,0,0.55)'); dot(69, 96, 3, 3, 'rgba(0,0,0,0.55)'); line([[38, 98], [54, 98]], 3, 'rgba(0,0,0,0.3)'); line([[74, 98], [90, 98]], 3, 'rgba(0,0,0,0.3)'); line([[76, 38], [88, 38]], 2, 'rgba(0,0,0,0.3)'); line([[0, 124], [128, 124]], 4, 'rgba(0,0,0,0.3)'); });
+  cell(7, () => { side(); line([[44, 2], [64, 18], [84, 2]], 4, 'rgba(0,0,0,0.4)'); line([[64, 18], [64, 110]], 2, 'rgba(0,0,0,0.25)'); for (let k = 0; k < 4; k++) dot(67, 30 + k * 20, 2.2, 2.2, 'rgba(0,0,0,0.5)'); for (const s of [-1, 1]) { x.strokeStyle = 'rgba(0,0,0,0.35)'; x.lineWidth = 2; x.strokeRect(64 + s * 18 - 8, 36, 16, 16); line([[64 + s * 18 - 8, 40], [64 + s * 18 + 8, 40]], 2, 'rgba(0,0,0,0.35)'); } belt(); });
+  cell(12, () => { for (let k = 0; k < 40; k++) { const px = (k * 37) % 128, py = (k * 53) % 128; line([[px, py], [px + 3, py + 18]], 2, 'rgba(0,0,0,0.16)'); line([[px + 6, py + 4], [px + 8, py + 16]], 1.5, 'rgba(255,255,255,0.10)'); } });
+  cell(13, () => { line([[64, 0], [64, 128]], 2, 'rgba(0,0,0,0.18)'); line([[0, 0], [0, 128]], 3, 'rgba(0,0,0,0.2)'); x.fillStyle = 'rgba(0,0,0,0.18)'; x.fillRect(0, 118, 128, 10); line([[44, 30], [56, 34]], 2, 'rgba(0,0,0,0.1)'); line([[72, 70], [84, 66]], 2, 'rgba(0,0,0,0.1)'); });
+  cell(15, () => { x.fillStyle = 'rgba(0,0,0,0.45)'; x.fillRect(0, 84, 128, 18); line([[0, 70], [128, 70]], 2, 'rgba(255,255,255,0.25)'); });
+  PERSON.atlas = t;
+  PERSON.mat = new THREE.MeshLambertMaterial({ map: t, vertexColors: true });
+  return t;
+}
+function personMat() { personAtlas(); return PERSON.mat; }
+// 形を1つの絵の場所(cell)にあわせて、色をつける。uvf(u, v, x, y, z) = その場所の中の位置(0〜1)
+function pPiece(geo, col, cellI, uvf) {
+  const g = geo.index ? geo.toNonIndexed() : geo, pos = g.attributes.position, uv = g.attributes.uv, n = pos.count;
+  const cx = cellI % 8, cy = Math.floor(cellI / 8), c = new THREE.Color(col), cols = new Float32Array(n * 3);
+  for (let i = 0; i < n; i++) {
+    let u = uv ? uv.getX(i) : 0.5, v = uv ? uv.getY(i) : 0.5;
+    if (uvf) { const r = uvf(u, v, pos.getX(i), pos.getY(i), pos.getZ(i)); u = r[0]; v = r[1]; }
+    u = Math.min(Math.max(u, 0), 1); v = Math.min(Math.max(v, 0), 1);
+    if (uv) uv.setXY(i, (cx + 0.01 + u * 0.98) / 8, 1 - (cy + 1) / 4 + (0.01 + v * 0.98) / 4);
+    cols[i * 3] = c.r; cols[i * 3 + 1] = c.g; cols[i * 3 + 2] = c.b;
+  }
+  g.setAttribute('color', new THREE.BufferAttribute(cols, 3)); return g;
+}
+const PLAIN = () => [0.5, 0.5];
+// いくつかの形を1つにまとめる(描く回数を減らす)
+function pMerge(list) {
+  let n = 0; for (const g of list) n += g.attributes.position.count;
+  const out = new THREE.BufferGeometry(), A = { position: 3, normal: 3, uv: 2, color: 3 };
+  for (const k in A) { const arr = new Float32Array(n * A[k]); let o = 0; for (const g of list) { const a = g.attributes[k]; if (a) arr.set(a.array, o); o += g.attributes.position.count * A[k]; } out.setAttribute(k, new THREE.BufferAttribute(arr, A[k])); }
+  out.computeBoundingSphere(); return out;
+}
+const pT = (g, x, y, z) => { g.translate(x, y, z); return g; };
+const pS = (g, x, y, z) => { g.scale(x, y, z); return g; };
+const pR = (g, rx) => { g.rotateX(rx); return g; };
+const pSph = (r, w, h, ts, tl) => new THREE.SphereGeometry(r, w || 10, h || 8, 0, Math.PI * 2, ts || 0, tl === undefined ? Math.PI : tl);
+// まるい棒(上から下へ)。prof = [[半径, 高さ], …](下から上の順)。うしろにつなぎ目
+const pLathe = (prof, seg) => new THREE.LatheGeometry(prof.map(p => new THREE.Vector2(p[0], p[1])), seg || 10, Math.PI, Math.PI * 2);
+const yUV = (y0, y1) => (u, v, x, y) => [u, (y - y0) / (y1 - y0)];
+// 体と頭(1つにまとめる)
+const TORSO = [[0.001, 0.78], [0.2, 0.79], [0.29, 0.86], [0.3, 0.98], [0.28, 1.16], [0.31, 1.4], [0.35, 1.62], [0.34, 1.76], [0.27, 1.86], [0.13, 1.92], [0.001, 1.94]];
+const PCLOTH = { tee: 4, shirt: 5, jacket: 6, uniform: 7 };
+function trunkGeo(shirt, skin, face, cloth, front) {
+  const k = 'T' + shirt + '_' + skin + '_' + face + '_' + cloth + '_' + front;
+  if (PERSON.geo[k]) return PERSON.geo[k];
+  const L = [];
+  L.push(pPiece(pS(pLathe(TORSO, 12), 1.14, 1, 0.64), shirt, PCLOTH[cloth], yUV(0.78, 1.94)));
+  L.push(pPiece(pT(new THREE.CylinderGeometry(0.1, 0.11, 0.18, 8, 1, true), 0, 1.95, 0), skin, 14, PLAIN)); // くび
+  const HR = 0.3, HY = 2.17;
+  const head = pS(pSph(HR, 14, 10), 0.98, 1.04, 0.96);
+  L.push(pPiece(pT(head, 0, HY, 0), skin, FC(face), (u, v, x, y, z) => z >= -0.02 ? [0.5 + x / (2 * HR * 0.98), 0.5 + (y - HY) / (2 * HR * 1.04)] : [0.5 + x / (2 * HR * 0.98), 0.02]));
+  for (const s of [-1, 1]) L.push(pPiece(pT(pS(pSph(0.07, 6, 5), 0.6, 1, 0.9), s * 0.29, HY - 0.01, 0), skin, 14, PLAIN)); // 耳
+  if (cloth === 'jacket' || cloth === 'uniform') { // むねのシャツ(ジャケット)・バッジ(制服)
+    if (cloth === 'jacket') { const sh = new THREE.Shape(); sh.moveTo(-0.115, 0); sh.lineTo(0.115, 0); sh.lineTo(0, -0.34); sh.closePath(); const g = new THREE.ShapeGeometry(sh); g.rotateX(-0.22); L.push(pPiece(pT(g, 0, 1.9, 0.205), front, 14, PLAIN)); }
+    else L.push(pPiece(pT(new THREE.BoxGeometry(0.07, 0.09, 0.02), 0, 0, 0), 0xe8c040, 14, PLAIN).translate(-0.16, 1.62, 0.235));
+  }
+  return PERSON.geo[k] = pMerge(L);
+}
+function armGeo(shirt, skin) {
+  const k = 'A' + shirt + '_' + skin; if (PERSON.geo[k]) return PERSON.geo[k];
+  const arm = pLathe([[0.001, -0.7], [0.07, -0.69], [0.095, -0.64], [0.1, -0.4], [0.115, -0.12], [0.11, -0.02], [0.08, 0.05], [0.001, 0.08]], 8);
+  const hand = pT(pS(pSph(0.095, 8, 6), 0.85, 1.15, 0.8), 0, -0.76, 0.01);
+  return PERSON.geo[k] = pMerge([pPiece(arm, shirt, 13, yUV(-0.7, 0.08)), pPiece(hand, skin, 14, PLAIN)]);
+}
+function legGeo(pants, shoe) {
+  const k = 'L' + pants + '_' + shoe; if (PERSON.geo[k]) return PERSON.geo[k];
+  const leg = pLathe([[0.001, -0.78], [0.1, -0.76], [0.11, -0.6], [0.12, -0.42], [0.145, -0.2], [0.155, -0.02], [0.12, 0.05], [0.001, 0.07]], 8);
+  const sh = pT(pS(pSph(0.1, 10, 6), 1.25, 0.85, 1.9), 0, -0.775, 0.06);
+  return PERSON.geo[k] = pMerge([pPiece(leg, pants, 13, yUV(-0.78, 0.07)), pPiece(sh, shoe, 15)]);
+}
+// かみ型: 0 みじかい・1 前がみ・2 ぼうず・3 ポニーテール・4 おだんご・5 長い。帽子: 0 なし・1 キャップ・2 ニット帽
+// かみ型(v=36。レゴの髪のように、頭より一回り大きい1つの部品に見える形)
+//   男: 0 みじかい・1 横に流した前がみ・2 ぼうず・6 つんつん・7 オールバック・8 アフロ / 女: 3 ポニーテール・4 おだんご・5 ボブ・9 ロング
+//   帽子: 0 なし・1 キャップ・2 ニット帽(帽子の下は、えりあしのかみだけ)
+const HAIR_M = [0, 0, 1, 1, 2, 6, 7, 8], HAIR_F = [3, 4, 5, 9];
+function hairGeo(style, col, hat, hatCol) {
+  const k = 'H' + style + '_' + col + '_' + hat + '_' + hatCol; if (PERSON.geo[k]) return PERSON.geo[k];
+  const HY = 2.17, L = [], hp = g => L.push(pPiece(g, col, 12)), hc = (g, c) => L.push(pPiece(g, c === undefined ? hatCol : c, 14, PLAIN));
+  // cap: 頭をつつむかみ。前の生えぎわは まゆの上(r·cos(tl − tilt))、うしろは えりあしまで
+  const cap = (r, tl, tilt, sy, sz) => pT(pS(pR(pSph(r, 16, 8, 0, tl), -tilt), 1, sy || 1, sz || 1), 0, HY + 0.01, -0.02);
+  const blob = (r, sx, sy, sz, x, y, z, rz, rx) => { const g = pS(pSph(r, 10, 7), sx, sy, sz); if (rx) g.rotateX(rx); if (rz) g.rotateZ(rz); return pT(g, x, HY + y, z); };
+  const bangs = () => hp(blob(0.2, 1.45, 0.42, 0.75, 0, 0.21, 0.19)); // 前がみ(女の人)
+  const shell = (top, bot, open) => { const h = top - bot; return pT(new THREE.CylinderGeometry(0.345, 0.37, h, 16, 1, true, open, Math.PI * 2 - open * 2), 0, HY + bot + h / 2, -0.01); }; // 横とうしろにたれるかみ
+  if (hat === 0) {
+    if (style === 2) hp(cap(0.312, 1.38, 0.5));
+    else if (style === 8) { hp(pT(pR(pS(pSph(0.43, 16, 10, 0, 2.0), 1.05, 0.95, 1), -0.62), 0, HY + 0.1, -0.06)); }
+    else if (style === 7) { hp(cap(0.335, 1.3, 0.66, 1.06, 1.08)); hp(blob(0.27, 1.12, 0.62, 1.1, 0, 0.22, -0.05)); hp(blob(0.24, 1.1, 0.8, 0.7, 0, 0.02, -0.17)); }
+    else {
+      hp(cap(0.335, 1.42, 0.52, 1.04, 1.06)); hp(blob(0.27, 1.12, 0.56, 1.1, 0, 0.23, -0.02)); // 頭のてっぺんのボリューム
+      if (style === 1) { hp(blob(0.19, 1.55, 0.6, 0.95, 0.07, 0.25, 0.17, -0.3)); hp(blob(0.12, 1, 0.8, 1, -0.2, 0.2, 0.12)); }
+      if (style === 6) for (let i = 0; i < 9; i++) { const a = i / 9 * Math.PI * 2, rr = i ? 0.17 : 0; const c = new THREE.ConeGeometry(0.075, 0.2, 6); c.rotateX(Math.sin(a) * 0.7 * (i ? 1 : 0) + 0.25); c.rotateZ(-Math.cos(a) * 0.7 * (i ? 1 : 0)); hp(pT(c, Math.cos(a) * rr, HY + 0.36 - (i ? 0.05 : 0), Math.sin(a) * rr + 0.02)); }
+      if (style === 3) { bangs(); hp(blob(0.07, 1, 1, 1, 0, 0.12, -0.33)); hp(blob(0.09, 0.95, 2.6, 0.95, 0, -0.12, -0.39, 0, 0.25)); }
+      if (style === 4) { bangs(); hp(blob(0.14, 1, 0.95, 1, 0, 0.36, -0.14)); }
+      if (style === 5) { bangs(); hp(shell(0.13, -0.17, 0.95)); hp(blob(0.3, 1.15, 0.55, 0.6, 0, -0.12, -0.17)); }
+      if (style === 9) { bangs(); hp(shell(0.13, -0.5, 0.9)); hp(blob(0.3, 1.15, 1.3, 0.45, 0, -0.2, -0.2)); }
+    }
+  } else {
+    hp(pT(pR(pSph(0.32, 12, 6, 0.9, 0.95), -0.45), 0, HY, -0.02)); // 帽子の下のえりあしのかみ
+    if (hat === 1) { hc(cap(0.338, 1.45, 0.25)); hc(pT(pR(pS(new THREE.CylinderGeometry(0.21, 0.21, 0.025, 14, 1), 1.05, 1, 1.15), 0.12), 0, HY + 0.14, 0.27)); hc(pT(pSph(0.035, 6, 4), 0, HY + 0.36, 0)); }
+    else { hc(pT(pS(cap(0.345, 1.55, 0.35), 1, 1.12, 1), 0, -0.27, 0)); hc(pT(pR(new THREE.CylinderGeometry(0.355, 0.355, 0.1, 16, 1, true), -0.35), 0, HY + 0.08, -0.03)); hc(pT(pSph(0.075, 8, 6), 0, HY + 0.44, -0.1)); }
+  }
+  return PERSON.geo[k] = pMerge(L);
+}
+// o = { cloth: 'tee'|'shirt'|'jacket'|'uniform', front(ジャケットのむねの色), hair(かみ型), hairCol, hat(0〜2), hatCol, face(0〜3), shoe }。なければ人ごとにばらばら
+function makePerson(shirt, pants, skin, o) {
+  o = o || {}; const s = personSeq++, r = k => pHash(s * 7 + k);
+  const look = {
+    shirt, pants, skin,
+    cloth: o.cloth || ['tee', 'tee', 'shirt', 'jacket'][Math.floor(r(1) * 4)],
+    front: o.front !== undefined ? o.front : 0xf2f2f2,
+    hair: o.hair !== undefined ? o.hair : r(3) < 0.4 ? HAIR_F[Math.floor(r(9) * HAIR_F.length)] : HAIR_M[Math.floor(r(9) * HAIR_M.length)],
+    hairCol: o.hairCol !== undefined ? o.hairCol : HAIR_COLS[Math.floor(r(4) * HAIR_COLS.length)],
+    hat: o.hat !== undefined ? o.hat : r(5) < 0.2 ? 1 + Math.floor(r(6) * 2) : 0,
+    hatCol: o.hatCol !== undefined ? o.hatCol : HAT_COLS[Math.floor(r(7) * HAT_COLS.length)],
+    shoe: o.shoe !== undefined ? o.shoe : SHOE_COLS[Math.floor(r(8) * SHOE_COLS.length)],
+  };
+  const pick = a => a[Math.floor(r(2) * a.length)]; // 顔: かみ型が女の人なら女の顔、ほかは男の顔(ときどきお年寄り)
+  look.face = o.face !== undefined ? (Array.isArray(o.face) ? pick(o.face) : o.face) : pick(HAIR_F.includes(look.hair) ? FACE_F : FACE_M);
+  const mat = personMat(), g = new THREE.Group();
+  const body = new THREE.Mesh(trunkGeo(shirt, skin, look.face, look.cloth, look.front), mat); g.add(body);
+  const hair = new THREE.Mesh(hairGeo(look.hair, look.hairCol, look.hat, look.hatCol), mat); g.add(hair);
+  function limb(x, y, geo) { const p = new THREE.Group(); p.position.set(x, y, 0); const m = new THREE.Mesh(geo, mat); p.add(m); g.add(p); return p; }
+  const legL = limb(-0.16, 0.85, legGeo(pants, look.shoe)), legR = limb(0.16, 0.85, legGeo(pants, look.shoe)), armL = limb(-0.49, 1.78, armGeo(shirt, skin)), armR = limb(0.49, 1.78, armGeo(shirt, skin));
+  scene.add(g); return { g, body, head: body, hair, legL, legR, armL, armR, phase: 0, look };
+}
+// 服の色を変える(白虎幇に着せかえるときなど)
+function dressPerson(per, shirt, pants, cloth) {
+  const l = per.look; l.shirt = shirt; l.pants = pants; if (cloth) l.cloth = cloth;
+  per.body.geometry = trunkGeo(shirt, l.skin, l.face, l.cloth, l.front);
+  per.armL.children[0].geometry = per.armR.children[0].geometry = armGeo(shirt, l.skin);
+  per.legL.children[0].geometry = per.legR.children[0].geometry = legGeo(pants, l.shoe);
+}
+// かみの色を変える(おやじの白髪など)
+function hairColor(per, col) { const l = per.look; l.hairCol = col; per.hair.geometry = hairGeo(l.hair, col, l.hat, l.hatCol); }
+// まるいサングラス(1つにまとめる)
+function shades(per, col, y) {
+  y = y || 2.2; const L = [];
+  for (const s of [-1, 1]) L.push(pPiece(pT(pS(pSph(0.075, 8, 6), 1.15, 0.8, 0.35), s * 0.1, y, 0.275), col || 0x050505, 14, PLAIN));
+  L.push(pPiece(pT(new THREE.BoxGeometry(0.08, 0.02, 0.02), 0, y + 0.02, 0.29), col || 0x050505, 14, PLAIN));
+  const m = new THREE.Mesh(pMerge(L), personMat()); per.g.add(m); return m;
+}
+// 主人公・マフィアの見た目
+const PLAYER_LOOK = { cloth: 'tee', hair: 1, hairCol: 0x2a1d14, hat: 0, face: 1, shoe: 0xe8e8e8 };
+const GANG_FRONT = 0x3a3a40;
+const GANG_LOOK = white => ({ cloth: 'jacket', front: white ? 0xdedede : GANG_FRONT, hat: 0, hair: [0, 1, 2, 7, 7, 6][personSeq % 6], shoe: 0x111111, face: FACE_GANG });
+// 部品(まるい形。1つにまとめて、人と同じ絵を使う)
+function pMesh(per, list) { const m = new THREE.Mesh(pMerge(list), personMat()); per.g.add(m); return m; }
+function tiePart(per, col) { // ネクタイ(むすび目+先がとがった形)
+  const sh = new THREE.Shape(); sh.moveTo(-0.045, 0); sh.lineTo(0.045, 0); sh.lineTo(0.07, -0.42); sh.lineTo(0, -0.5); sh.lineTo(-0.07, -0.42); sh.closePath();
+  const g = new THREE.ShapeGeometry(sh); g.rotateX(-0.12);
+  return pMesh(per, [pPiece(pT(g, 0, 1.82, 0.222), col, 14, PLAIN), pPiece(pT(pS(pSph(0.05, 6, 5), 1.1, 0.9, 0.6), 0, 1.83, 0.215), col, 14, PLAIN)]);
+}
+function capPart(per, col, band) { // つばのある帽子(警察官・船員)
+  const HY = 2.17;
+  return pMesh(per, [
+    pPiece(pT(pS(new THREE.CylinderGeometry(0.36, 0.33, 0.24, 16), 1, 1, 1.05), 0, HY + 0.25, 0.0), col, 14, PLAIN), // 頭を上からつつむ高さ(すき間ができないように)
+    pPiece(pT(new THREE.CylinderGeometry(0.335, 0.335, 0.06, 16, 1, true), 0, HY + 0.165, 0.0), band, 14, PLAIN),
+    pPiece(pT(pR(pS(new THREE.CylinderGeometry(0.2, 0.2, 0.025, 12), 1.05, 1, 0.8), 0.18), 0, HY + 0.15, 0.3), 0x111111, 14, PLAIN),
+  ]);
+}
+// kind: 'apron'(エプロン) 'sash'(こしの帯) 'scarf'(えりまき) 'coat'(長いコートのすそ)
+function roundPart(per, kind, col) {
+  if (kind === 'apron') { const sh = new THREE.Shape(); sh.moveTo(-0.24, 0); sh.lineTo(0.24, 0); sh.lineTo(0.3, -0.9); sh.quadraticCurveTo(0, -0.96, -0.3, -0.9); sh.closePath(); const g = new THREE.ShapeGeometry(sh); g.rotateX(0.05); return pMesh(per, [pPiece(pT(g, 0, 1.64, 0.23), col, 14, PLAIN), pPiece(pT(pS(new THREE.CylinderGeometry(0.3, 0.3, 0.06, 14, 1, true), 1.14, 1, 0.66), 0, 1.24, 0), col, 14, PLAIN)]); }
+  if (kind === 'sash') return pMesh(per, [pPiece(pT(pS(new THREE.CylinderGeometry(0.305, 0.31, 0.14, 14, 1, true), 1.15, 1, 0.68), 0, 0.93, 0), col, 14, PLAIN), pPiece(pT(new THREE.BoxGeometry(0.12, 0.36, 0.03), -0.2, 0.74, 0.21), col, 14, PLAIN)]);
+  if (kind === 'scarf') return pMesh(per, [pPiece(pT(pS(pR(new THREE.TorusGeometry(0.15, 0.065, 6, 14), Math.PI / 2), 1.2, 1, 1), 0, 1.89, 0), col, 14, PLAIN), pPiece(pT(pS(pSph(0.07, 6, 6), 1, 3.4, 0.6), 0.14, 1.62, 0.225), col, 14, PLAIN)]);
+  if (kind === 'coat') return pMesh(per, [pPiece(pLathe([[0.001, 0.32], [0.37, 0.34], [0.34, 0.6], [0.305, 0.86], [0.001, 0.88]], 12).scale(1.15, 1, 0.68), col, 6, yUV(0.34, 0.88))]);
+}
 function addBox(w, h, d, x, y, z, mat) { const m = new THREE.Mesh(BG(w, h, d), mat); m.position.set(x, y, z); scene.add(m); return m; }
 
 /* ===== 街 ===== */
@@ -599,8 +796,8 @@ function club() {
   scene.add(g); colRot(x, z, w, d, 0);
   GLOWS.push([x, z + f + 2.2, 7, 3], [x - 7, z + f + 1.6, 4.5, 3], [x + 7, z + f + 1.6, 4.5, 3]);
   // 見はり(黒い服・サングラス。立っているだけ)
-  const per = makePerson(0x15151a, 0x15151a, 0xc89870), bx = x - 2.5, bz = z + f + 0.75;
-  part(per, 0.58, 0.13, 0.08, 0x050505, 0, 2.2, 0.28); part(per, 0.22, 0.55, 0.05, 0xf2f2f2, 0, 1.52, 0.24); part(per, 0.1, 0.5, 0.06, 0x15151a, 0, 1.5, 0.26); // サングラス・白いシャツ・黒いネクタイ
+  const per = makePerson(0x15151a, 0x15151a, 0xc89870, { cloth: 'jacket', front: 0xf2f2f2, hat: 0, hair: 2, shoe: 0x111111, face: 10 }), bx = x - 2.5, bz = z + f + 0.75;
+  shades(per); tiePart(per, 0x15151a); // サングラス・白いシャツ・黒いネクタイ
   per.g.position.set(bx, 0.3, bz); per.armL.rotation.z = -0.12; per.armR.rotation.z = 0.12; addCol(bx - 0.35, bx + 0.35, bz - 0.3, bz + 0.3);
 }
 // ホームのアパート(v=17)。正面は北(道路)。4階だて・クリーム色のかべ・ベランダと洗たく物・入口の明かり。乱数は使わない
@@ -906,15 +1103,6 @@ function makeCarMesh(color, police, type) {
   if (police) { const r = new THREE.Mesh(BG(0.6, 0.25, 0.4), new THREE.MeshBasicMaterial({ color: 0xff2020 })); r.position.set(-0.35, 2.18, -0.2); const b = new THREE.Mesh(BG(0.6, 0.25, 0.4), new THREE.MeshBasicMaterial({ color: 0x2050ff })); b.position.set(0.35, 2.18, -0.2); g.add(r); g.add(b); lights = [r, b]; }
   scene.add(g); return { g, lights };
 }
-function makePerson(shirt, pants, skin) {
-  const g = new THREE.Group();
-  const body = new THREE.Mesh(BG(0.8, 1.0, 0.45), M(shirt)); body.position.y = 1.35; g.add(body);
-  const head = new THREE.Mesh(BG(0.55, 0.55, 0.55), M(skin)); head.position.y = 2.15; g.add(head);
-  const hair = new THREE.Mesh(BG(0.58, 0.18, 0.58), M(0x2a1d14)); hair.position.y = 2.45; g.add(hair);
-  function limb(x, y, w, h, col) { const p = new THREE.Group(); p.position.set(x, y, 0); const m = new THREE.Mesh(BG(w, h, w + 0.03), M(col)); m.position.y = -h / 2; p.add(m); g.add(p); return p; }
-  const legL = limb(-0.2, 0.85, 0.32, 0.85, pants), legR = limb(0.2, 0.85, 0.32, 0.85, pants), armL = limb(-0.53, 1.82, 0.24, 0.85, shirt), armR = limb(0.53, 1.82, 0.24, 0.85, shirt);
-  scene.add(g); return { g, body, head, hair, legL, legR, armL, armR, phase: 0 };
-}
 function animPerson(p, speed, dt) { p.phase += dt * (2 + speed * 1.6); const s = Math.sin(p.phase) * Math.min(speed / 4, 1) * 0.9; p.legL.rotation.x = s; p.legR.rotation.x = -s; p.armL.rotation.x = -s * 0.8; p.armR.rotation.x = s * 0.8; }
 
 /* ===== 車・歩行者・自分 ===== */
@@ -952,7 +1140,7 @@ for (let i = 0; i < TUNE.peds; i++) {
   const look = [shirts[i % shirts.length], [0x2a3550, 0x333333, 0x5a4030][i % 3], [0xf0c9a0, 0xc89870, 0x8a5a3a][i % 3]], per = makePerson(look[0], look[1], look[2]);
   peds.push({ per, look, bi: pedBlock(), t: rnd() * 160, dir: rnd() < 0.5 ? 1 : -1, speed: 1.2 + rnd() * 0.8, down: 0, x: 0, z: 0, h: 0, push: { x: 0, z: 0 } });
 }
-const player = { mode: 'foot', x: startX, z: startZ, h: startH, car: null, per: makePerson(0xffd23f, 0x23324f, 0xf0c9a0) };
+const player = { mode: 'foot', x: startX, z: startZ, h: startH, car: null, per: makePerson(0xffd23f, 0x23324f, 0xf0c9a0, PLAYER_LOOK) };
 /* ===== 体力・こうげき・ギャング(ひとり用) ===== */
 // 主人公の武器(ダメージ・とどく距離・次に使えるまでの秒)
 const WEAPONS = {
@@ -1119,8 +1307,8 @@ function gangSpot() {
 }
 // vip = 幹部・大ボスの見た目(makeVip で作ったもの)。なければ、ふつうの黒い服とサングラス
 function newGang(x, z, vip) {
-  const per = vip || makePerson(0x141414, 0x1a1a1a, [0xf0c9a0, 0xc89870, 0x8a5a3a][Math.floor(rnd() * 3)]);
-  if (!vip) { const gl = new THREE.Mesh(BG(0.5, 0.1, 0.05), M(0x050505)); gl.position.set(0, 2.2, 0.29); per.g.add(gl); }
+  const per = vip || makePerson(0x141414, 0x1a1a1a, [0xf0c9a0, 0xc89870, 0x8a5a3a][Math.floor(rnd() * 3)], GANG_LOOK());
+  if (!vip) shades(per);
   const r = rnd(), weapon = gangWeapon(r, false);
   const g = { per, x, z, h: rnd() * 6.28, home: { x, z }, hp: TUNE.gang.hp, weapon, state: 'idle', cd: 0, dead: -1, wt: 0, tx: x, tz: z, swing: 0, hitCd: 0, kx: 0, kz: 0, item: vip ? vip.item || null : null, r, white: false, foe: null, scan: Math.random(), mob: true, talkT: 0 };
   if (!vip) setHand(per, g, weapon); gangs.push(g); return g;
@@ -1131,9 +1319,8 @@ function gangWeapon(r, white) { return white ? (r < 0.25 ? 'fist' : r < 0.5 ? 'k
 const inCT = (x, z) => x > roadC(CT.i0) && x < roadC(CT.i1 + 1) && z > roadC(CT.j0) && z < roadC(CT.j1 + 1);
 function setTeam(g, white, weapon) {
   white = !!white; if (g.white === white && !weapon) return; g.white = white;
-  const per = g.per, c = M(white ? 0xf2f2f2 : 0x141414), p = M(white ? 0xf2f2f2 : 0x1a1a1a);
-  per.body.material = c; per.armL.children[0].material = c; per.armR.children[0].material = c; per.legL.children[0].material = p; per.legR.children[0].material = p;
-  if (white && !g.tie) g.tie = part(per, 0.12, 0.55, 0.04, 0x111111, 0, 1.52, 0.24); if (g.tie) g.tie.visible = white;
+  const per = g.per; per.look.front = white ? 0xdedede : GANG_FRONT; dressPerson(per, white ? 0xf2f2f2 : 0x141414, white ? 0xf2f2f2 : 0x1a1a1a, 'jacket');
+  if (white && !g.tie) g.tie = tiePart(per, 0x111111); if (g.tie) g.tie.visible = white;
   g.weapon = weapon || gangWeapon(g.r, white); g.foe = null; if (g.hp > 0) setHand(per, g, g.weapon);
 }
 // 街のマフィアを、いまの進み具合に合わせて黒か白にする(ミッションの間だけ出る相手は変えない)
@@ -1256,12 +1443,12 @@ const npcs = [];
 const SKINS = [0xf0c9a0, 0xc89870, 0x8a5a3a];
 function newNpc(kind, x, z, h, look) { // look = [服, ズボン, はだ]。おこった街の人は、元と同じ見た目にする(屋台の人は { vip, shirt, apron, skin })
   const cop = kind === 'cop', skin = SKINS[Math.floor(Math.random() * 3)];
-  const per = cop ? makeCop(skin) : look ? (look.vip ? makeVip('vendor', look) : makePerson(look[0], look[1], look[2])) : makePerson(shirts[Math.floor(Math.random() * shirts.length)], [0x2a3550, 0x333333, 0x5a4030][Math.floor(Math.random() * 3)], skin);
+  const per = cop ? makeCop(skin) : look ? (look.vip ? makeVip('vendor', look) : makePerson(look[0], look[1], look[2], look.pl)) : makePerson(shirts[Math.floor(Math.random() * shirts.length)], [0x2a3550, 0x333333, 0x5a4030][Math.floor(Math.random() * 3)], skin);
   const n = { npc: true, kind, per, x, z, h, hp: cop ? TUNE.police.copHp : TUNE.driver.hp, state: cop ? 'chase' : 'flee', cd: 0.6, down: 0, stagger: 0, kx: 0, kz: 0, life: 0, dead: -1, swing: 0, hitCd: 0, pull: 0, car: null };
   npcs.push(n); return n;
 }
 // 警察官の見た目(青い服と帽子)。配達競争で、ほかの人の警察官を出すときにも使う
-function makeCop(skin) { const per = makePerson(0x2c56b8, 0x1a2a55, skin); const cap = new THREE.Mesh(BG(0.64, 0.16, 0.72), M(0x14224a)); cap.position.set(0, 2.52, 0.05); per.g.add(cap); return per; }
+function makeCop(skin) { const per = makePerson(0x2c56b8, 0x1a2a55, skin, { cloth: 'uniform', hat: 0, hair: personSeq % 2 ? 0 : 2, shoe: 0x111111, face: 13 }); capPart(per, 0x14224a, 0xe8c040); return per; }
 function removeNpc(n) { const i = npcs.indexOf(n); if (i >= 0) npcs.splice(i, 1); scene.remove(n.per.g); }
 // 車を奪ったとき: 運転手が車から転がり出る。たいていは逃げるが、おそってくる人もいる
 function ejectDriver(c) {
@@ -1730,35 +1917,39 @@ function part(per, w, h, d, col, x, y, z) { const m = new THREE.Mesh(BG(w, h, d)
 // kind: 'vendor'(屋台の人) 'oyaji'(屋台のおやじ) 'info'(情報屋) 'bossB'(黒の幹部) 'white'(白の手下) 'bossW'(白の幹部) 'bossO'(大ボス) 'sis'(妹)
 //   o = { shirt, apron, skin }(屋台の人の服・エプロンの色、はだの色)。情報屋・幹部・白の手下が街に出てくるのは、あとの回(⑤⑥)
 function makeVip(kind, o) {
-  o = o || {}; const skin = o.skin || 0xc89870; let per;
-  const hat = (col, band) => { part(per, 0.98, 0.07, 0.98, col, 0, 2.52, 0); part(per, 0.62, 0.32, 0.62, col, 0, 2.7, 0); if (band !== undefined) part(per, 0.64, 0.09, 0.64, band, 0, 2.6, 0); };
-  const beard = col => { part(per, 0.48, 0.14, 0.1, col, 0, 1.92, 0.3); part(per, 0.32, 0.06, 0.06, col, 0, 2.05, 0.29); }; // あごひげ・口ひげ
-  const glasses = () => part(per, 0.5, 0.1, 0.05, 0x050505, 0, 2.2, 0.29);
-  const tie = () => part(per, 0.12, 0.55, 0.04, 0x111111, 0, 1.52, 0.24);
+  o = o || {}; const skin = o.skin || 0xc89870; let per; const HY = 2.17;
+  const P = (sh, pa, lk) => makePerson(sh, pa, skin, Object.assign({ hat: 0, hair: 0, face: 1 }, lk));
+  const hat = (col, band) => pMesh(per, [ // つばの広い帽子
+    pPiece(pT(new THREE.CylinderGeometry(0.52, 0.52, 0.035, 20), 0, HY + 0.17, -0.01), col, 14, PLAIN),
+    pPiece(pT(new THREE.CylinderGeometry(0.31, 0.345, 0.26, 16), 0, HY + 0.3, -0.01), col, 14, PLAIN),
+    pPiece(pT(pS(pSph(0.31, 16, 5, 0, Math.PI / 2), 1, 0.4, 1), 0, HY + 0.43, -0.01), col, 14, PLAIN),
+  ].concat(band !== undefined ? [pPiece(pT(new THREE.CylinderGeometry(0.348, 0.352, 0.07, 16, 1, true), 0, HY + 0.22, -0.01), band, 14, PLAIN)] : [])); // 頭を上からつつむ高さ
+  const beard = col => pMesh(per, [pPiece(pT(pS(pSph(0.16, 10, 7), 1.25, 0.8, 0.6), 0, HY - 0.2, 0.2), col, 12), pPiece(pT(pS(pSph(0.06, 6, 5), 2.2, 0.55, 0.7), 0, HY - 0.09, 0.27), col, 12)]); // あごひげ・口ひげ
+  const tie = () => tiePart(per, 0x111111);
+  const chef = () => pMesh(per, [pPiece(pT(new THREE.CylinderGeometry(0.34, 0.345, 0.3, 16), 0, HY + 0.28, -0.01), 0xf4f2ea, 14, PLAIN), pPiece(pT(pS(pSph(0.38, 14, 8), 1, 0.62, 1), 0, HY + 0.5, -0.01), 0xffffff, 14, PLAIN)]); // コック帽
   if (kind === 'vendor' || kind === 'oyaji') {
     const ap = kind === 'oyaji' ? 0xf4f2ea : (o.apron || 0xc8261e);
-    per = makePerson(kind === 'oyaji' ? 0x4a4f5a : (o.shirt || 0x3f7fd0), 0x2a2a30, skin);
-    part(per, 0.66, 0.98, 0.06, ap, 0, 1.18, 0.26); part(per, 0.84, 0.1, 0.5, ap, 0, 1.3, 0); // エプロンと、こしのひも
-    if (kind === 'oyaji') { part(per, 0.52, 0.24, 0.52, 0xf4f2ea, 0, 2.62, 0); part(per, 0.72, 0.34, 0.72, 0xffffff, 0, 2.9, 0); per.hair.material = M(0x9a9a9a); } // コック帽
-    else part(per, 0.62, 0.14, 0.62, ap, 0, 2.5, 0); // エプロンと同じ色の頭巾
+    per = P(kind === 'oyaji' ? 0x4a4f5a : (o.shirt || 0x3f7fd0), 0x2a2a30, { cloth: 'shirt', hair: kind === 'oyaji' ? 2 : 0, hairCol: kind === 'oyaji' ? 0x9a9a9a : undefined, face: kind === 'oyaji' ? 7 : [0, 3, 5, 1][personSeq % 4] });
+    roundPart(per, 'apron', ap); // エプロンと、こしのひも
+    if (kind === 'oyaji') chef();
+    else pMesh(per, [pPiece(pT(pR(pSph(0.325, 14, 7, 0, 1.55), -0.35), 0, HY + 0.01, -0.01), ap, 14, PLAIN), pPiece(pT(pS(pSph(0.07, 6, 5), 1, 0.7, 1.4), 0, HY + 0.1, -0.33), ap, 14, PLAIN)]); // エプロンと同じ色の頭巾
   } else if (kind === 'info') { // 情報屋: 大きな黄色い帽子・茶色の長いコート・赤いスカーフ
-    per = makePerson(0xa8733a, 0x3a3028, skin);
-    part(per, 0.86, 0.7, 0.5, 0xa8733a, 0, 0.72, 0);
-    part(per, 0.64, 0.16, 0.52, 0xd42a2a, 0, 1.86, 0); part(per, 0.16, 0.5, 0.06, 0xd42a2a, 0.2, 1.58, 0.27);
-    hat(0xf2c230);
+    per = P(0xa8733a, 0x3a3028, { cloth: 'jacket', front: 0xe8dcc0, face: 2 });
+    roundPart(per, 'coat', 0xa8733a); roundPart(per, 'scarf', 0xd42a2a);
+    hat(0xf2c230, 0x7a5a10);
   } else if (kind === 'bossB') { // 黒の幹部: 1.3倍・はげ頭・ひげ・赤い帯・青龍刀
-    per = makePerson(0x141414, 0x1a1a1a, skin); per.hair.visible = false; beard(0x1a1410);
-    part(per, 0.84, 0.16, 0.5, 0xc8261e, 0, 0.93, 0); part(per, 0.16, 0.42, 0.06, 0xc8261e, -0.25, 0.7, 0.27);
+    per = P(0x141414, 0x1a1a1a, { cloth: 'jacket', front: 0x2a2a2e, face: 10 }); per.hair.visible = false; beard(0x1a1410);
+    roundPart(per, 'sash', 0xc8261e);
     per.g.scale.setScalar(1.3); setHand(per, per, 'dao');
   } else if (kind === 'bossO') { // 大ボス(v=19。屋台のおやじが、エプロンをぬいだすがた): コック帽・白髪・赤い帯・1.1倍
-    per = makePerson(0x4a4f5a, 0x2a2a30, skin); part(per, 0.52, 0.24, 0.52, 0xf4f2ea, 0, 2.62, 0); part(per, 0.72, 0.34, 0.72, 0xffffff, 0, 2.9, 0); per.hair.material = M(0x9a9a9a);
-    part(per, 0.84, 0.14, 0.5, 0x8a1a1a, 0, 0.93, 0); per.g.scale.setScalar(1.1);
+    per = P(0x4a4f5a, 0x2a2a30, { cloth: 'shirt', hair: 2, hairCol: 0x9a9a9a, face: 12 }); chef();
+    roundPart(per, 'sash', 0x8a1a1a); per.g.scale.setScalar(1.1);
   } else if (kind === 'sis') { // 妹(v=19。終わりの絵だけに出る): 長い髪
-    per = makePerson(0x6fa8c8, 0x3a3a48, 0xf0c9a0); part(per, 0.56, 0.7, 0.12, 0x2a1d14, 0, 2.05, -0.3);
+    per = makePerson(0x6fa8c8, 0x3a3a48, 0xf0c9a0, { cloth: 'tee', hat: 0, hair: 5, hairCol: 0x2a1d14, face: 5, shoe: 0xe8e8e8 });
   } else if (kind === 'white') { // 白の手下: 白いスーツ・黒いネクタイ・サングラス
-    per = makePerson(0xf2f2f2, 0xf2f2f2, skin); tie(); glasses();
+    per = P(0xf2f2f2, 0xf2f2f2, { cloth: 'jacket', front: 0xdedede, hair: 7, face: FACE_GANG }); tie(); shades(per);
   } else { // 白の幹部: 1.15倍・白い帽子・ひげ・マシンガン
-    per = makePerson(0xf2f2f2, 0xf2f2f2, skin); tie(); beard(0x55504a); hat(0xf7f7f7, 0x111111);
+    per = P(0xf2f2f2, 0xf2f2f2, { cloth: 'jacket', front: 0xdedede, face: 11 }); tie(); beard(0x55504a); hat(0xf7f7f7, 0x111111);
     per.g.scale.setScalar(1.15); setHand(per, per, 'mg');
   }
   per.kind = kind; return per;
@@ -1917,7 +2108,7 @@ function tellRumor(who) {
   setBubble(tr(RUMORS[G.askI++ % RUMORS.length].text)); toast(G.left > 0 ? tr('うわさを聞いた！ のこり {n}人', { n: G.left }) : tr('うわさを聞いた！'), 1.6);
 }
 // 街の人・屋台の人がおこって、おそってくる(車を奪われておこった運転手と同じ動き。元の人は、いなくなるまで消しておく)
-function makeAngry(who) { const n = newNpc('driver', who.x, who.z, who.h, who.look); n.state = 'angry'; n.cd = 0.8; who.angry = n; who.talkT = 0; who.per.g.visible = false; return n; }
+function makeAngry(who) { if (Array.isArray(who.look) && who.per.look) who.look.pl = Object.assign({}, who.per.look, { face: 14 }); const n = newNpc('driver', who.x, who.z, who.h, who.look); /* 同じ見た目で、どなる顔 */ n.state = 'angry'; n.cd = 0.8; who.angry = n; who.talkT = 0; who.per.g.visible = false; return n; }
 // Q&A のこたえをえらぶ(i = 0 か 1)
 function answerTalk(i) {
   if (!talk || !talk.qa || !talk.opts[i]) return;
@@ -2103,7 +2294,7 @@ addCol(INFO.x - 4.3, INFO.x - 3.55, INFO.z - 1.3, INFO.z + 1.3);
 const BOAT = { id: 'boat', title: '船で街を出る', desc: '船代をはらうと、街を出てゲームが終わる。セーブは消える。', pay: FARE, yes: 'はらう', at: PORT.boat, onYes: () => { G.money -= FARE; story(STORY.end1, () => finish(1)); } };
 Object.assign(BOAT, glowMark(0x7fe8ff, BOAT.at.x, BOAT.at.z));
 // 港の船員(立っているだけ)
-const sailorPer = makePerson(0x1f3a6e, 0x1a1a2a, 0xc89870); part(sailorPer, 0.62, 0.16, 0.62, 0xffffff, 0, 2.5, 0); sailorPer.g.position.set(PORT.sailor.x + 1.8, 0.3, PORT.sailor.z - 1.6); sailorPer.g.rotation.y = -Math.PI / 2; sailorPer.g.visible = false;
+const sailorPer = makePerson(0x1f3a6e, 0x1a1a2a, 0xc89870, { cloth: 'jacket', front: 0xf2f2f2, hat: 0, hair: 0, hairCol: 0x6e6a66, face: 6, shoe: 0x1a1a1a }); capPart(sailorPer, 0xffffff, 0x111111); sailorPer.g.position.set(PORT.sailor.x + 1.8, 0.3, PORT.sailor.z - 1.6); sailorPer.g.rotation.y = -Math.PI / 2; sailorPer.g.visible = false;
 // mode: 'menu'(画面の後ろで街が動いている) / 'solo'(ひとり用) / 'race'(配達競争)
 //   lent = 情報屋に 0: まだ会っていない、1: 貸した、2: 貸さなかった。tru = トゥルーエンドの順番で貸した。sis = 倉庫で妹を見た
 const G = { twrDown: false, askId: 1, askI: 0, huntT: 0, mode: 'menu', started: false, over: false, money: 0, wanted: 0, mi: 0, si: 0, timeLeft: -1, play: 0, evade: 0, bust: 0, downT: 0, stunT: 0, shop: null, shopLock: null, hitCd: 0, spawnCd: 0, failWait: 0, waitMsg: '', free: null, done: {}, offer: null, markLock: null, freeT: 0, bosses: [], lent: 0, tru: 0, sis: 0, left: 0, bumps: 0, bumpCd: 0, ramCd: 0, busy: false, tp: null, story: null, sleep: false, camYaw: Math.PI, camDrag: 0, clock: DAY.race, phase: 'night', out: false, watchYaw: 0, rule: 'deliver', tagUntil: 0 };
@@ -2152,7 +2343,7 @@ const INTRO = { y: -80, g: null, dancers: [], tiles: [], beams: [], ball: null, 
 function buildIntro() {
   const g = INTRO.g = new THREE.Group(); g.position.set(0, INTRO.y, 0); scene.add(g);
   const add = (geo, mat, x, y, z) => { const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); g.add(m); return m; };
-  const person = (shirt, pants, skin, x, z, r) => { const p = makePerson(shirt, pants, skin); g.add(p.g); p.g.position.set(x, 0, z); p.g.rotation.y = r; return p; };
+  const person = (shirt, pants, skin, x, z, r, o) => { const p = makePerson(shirt, pants, skin, o); g.add(p.g); p.g.position.set(x, 0, z); p.g.rotation.y = r; return p; };
   let sd = 7; const rd = () => { sd = (sd * 16807) % 2147483647; return sd / 2147483647; }; // この部屋だけの乱数(街の乱数は使わない)
   const H = 5.2, ZB = -13.4, ZF = 9, ZC = (ZB + ZF) / 2, ZD = ZF - ZB, wall = M(0x241a30), dark = M(0x0e0b13), wood = M(0x4a2e1e), pink = MB(0xff4ad0), purple = MB(0x9a5cff), dim = MB(0x2a1c52);
   // 部屋(ゆか・天井・かべ)
@@ -2173,9 +2364,9 @@ function buildIntro() {
   for (let k = 0; k < 14; k++) add(gg, glass, -8.15 - (k % 3) * 0.27, 1.33, 5.3 - k * 0.3);
   add(BG(0.18, 0.55, 0.18), MB(0xffb347), -8.9, 1.48, 2.2);
   // バーテンダー・主人公(うしろ姿)・クラブの男(黒い服・サングラス・赤いネクタイ)
-  const bar = person(0xf2f2f2, 0x15151a, 0xe0b890, -10.3, 1.2, Math.PI / 2); part(bar, 0.84, 0.7, 0.2, 0x15151a, 0, 1.3, 0.14); part(bar, 0.24, 0.1, 0.06, 0x15151a, 0, 1.8, 0.26);
-  const me = person(0xffd23f, 0x23324f, 0xf0c9a0, -6.3, 4.0, Math.PI + 0.3); part(me, 0.58, 0.42, 0.1, 0x2a1d14, 0, 2.2, -0.26); // うしろ姿(うしろ頭に髪)
-  const man = person(0x15151a, 0x15151a, 0xc89870, -5.5, 1.3, -0.15); part(man, 0.58, 0.13, 0.08, 0x050505, 0, 2.2, 0.28); part(man, 0.22, 0.55, 0.05, 0xf2f2f2, 0, 1.52, 0.24); part(man, 0.1, 0.5, 0.06, 0xc8261e, 0, 1.5, 0.26);
+  const bar = person(0xf2f2f2, 0x15151a, 0xe0b890, -10.3, 1.2, Math.PI / 2); roundPart(bar, 'apron', 0x15151a); part(bar, 0.24, 0.1, 0.06, 0x15151a, 0, 1.8, 0.24);
+  const me = person(0xffd23f, 0x23324f, 0xf0c9a0, -6.3, 4.0, Math.PI + 0.3, PLAYER_LOOK); // うしろ姿
+  const man = person(0x15151a, 0x15151a, 0xc89870, -5.5, 1.3, -0.15, { cloth: 'jacket', front: 0xf2f2f2, hat: 0, hair: 1, hairCol: 0x16110d, shoe: 0x111111, face: 2 }); shades(man); tiePart(man, 0xc8261e);
   // まん中: 丸いテーブルと、立って飲んでいる人
   for (const [x, z, c] of [[-0.6, 2.6, 0x3bf0ff], [3.8, 4.6, 0xff7ae0], [9.5, 3.2, 0x9a5cff]]) { add(new THREE.CylinderGeometry(0.09, 0.09, 1.05, 8), M(0x55505a), x, 0.52, z); add(new THREE.CylinderGeometry(0.62, 0.62, 0.07, 16), new THREE.MeshBasicMaterial({ color: c }), x, 1.08, z); add(gg, glass, x + 0.2, 1.25, z - 0.1); }
   person(0xd9483a, 0x23232c, 0xe0b890, 0.5, 2.9, -1.9); person(0x3f7fd0, 0x3a3048, 0xc89870, 4.8, 4.2, -2.2); person(0xf2f2f2, 0x23232c, 0xf0c9a0, 2.9, 5.2, 2.2);
@@ -2294,7 +2485,7 @@ function beginStep() {
   }
   if (st.hunt) G.huntT = 2; // 追っ手の車は、少ししてから出る
   if (st.type === 'sneak') for (const s of [1, -1]) { // 見はりの警察官(ライトを持って、行ったり来たりする)
-    const per = makePerson(0x2c56b8, 0x1a2a55, 0xc89870), cap = new THREE.Mesh(BG(0.64, 0.16, 0.72), M(0x14224a)); cap.position.set(0, 2.52, 0.05); per.g.add(cap);
+    const per = makeCop(0xc89870);
     const cg = new THREE.CircleGeometry(SNEAK.see, 14, -Math.PI / 2 - SNEAK.half, SNEAK.half * 2); cg.rotateX(-Math.PI / 2);
     const cone = new THREE.Mesh(cg, new THREE.MeshBasicMaterial({ color: 0xffe14a, transparent: true, opacity: 0.5, depthWrite: false, side: THREE.DoubleSide })); cone.position.y = 0.3; per.g.add(cone);
     MX.guards.push({ per, x: SNEAK.x, z: s > 0 ? SNEAK.z1 : SNEAK.z0, dir: -s, h: 0 });
@@ -2484,7 +2675,7 @@ function endScene(n) {
   if (player.mode === 'car') exitCar(); player.per.g.rotation.x = 0;
   if (n === 3) {
     setClock(DAY.night + 80);
-    if (!END.crowd) { END.crowd = []; for (let i = 0; i < 12; i++) { const white = (i + (i >= 6 ? 1 : 0)) % 2, c = white ? 0xf2f2f2 : 0x141414, per = makePerson(c, white ? 0xf2f2f2 : 0x1a1a1a, SKINS[i % 3]); standAt(per, PGD.x - 7.5 + (i % 6) * 3, 0.34, PGD.z + 12 + (i >= 6 ? 3 : 0), Math.PI); per.g.rotation.x = -0.55; END.crowd.push(per); } } // 黒と白が、塔に向かって頭を下げる
+    if (!END.crowd) { END.crowd = []; for (let i = 0; i < 12; i++) { const white = (i + (i >= 6 ? 1 : 0)) % 2, c = white ? 0xf2f2f2 : 0x141414, per = makePerson(c, white ? 0xf2f2f2 : 0x1a1a1a, SKINS[i % 3], GANG_LOOK(white)); standAt(per, PGD.x - 7.5 + (i % 6) * 3, 0.34, PGD.z + 12 + (i >= 6 ? 3 : 0), Math.PI); per.g.rotation.x = -0.55; END.crowd.push(per); } } // 黒と白が、塔に向かって頭を下げる
     standAt(player.per, PGD.x, 6.2, PGD.z + 5.4, 0);
     camAt(PGD.x - 7, 7.5, PGD.z + 27, PGD.x + 1, 6, PGD.z + 4);
   } else if (n === 5) camAt(149, 3.2, WAREHOUSE.z + 13, WAREHOUSE.x, 6.5, WAREHOUSE.z);
