@@ -66,7 +66,7 @@ const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x0b1028);
-scene.fog = new THREE.Fog(0x0b1028, 90, 290);
+scene.fog = new THREE.Fog(0x252f5c, 10, 110);
 const camera = new THREE.PerspectiveCamera(62, 1, 0.5, 700);
 let baseFov = 62;
 function resize() { const w = innerWidth, h = innerHeight; renderer.setSize(w, h, false); camera.aspect = w / h; baseFov = w < h ? 78 : 62; camera.fov = baseFov; camera.updateProjectionMatrix(); }
@@ -2926,18 +2926,29 @@ const ENV_KEYS = [
   [0, 0xe8a98a, 0xffd9c0, 0x5a4a44, 0.9, 0xffc9a0, 0.45, 0.5, 100, 310],   // 朝やけ
   [40, 0x8fc4ec, 0xffffff, 0x8a8272, 0.95, 0xfff4dc, 0.7, 0, 120, 360],    // 昼
   [270, 0x8fc4ec, 0xffffff, 0x8a8272, 0.95, 0xfff4dc, 0.7, 0, 120, 360],
-  [330, 0xf08a4a, 0xffc79a, 0x5a3c30, 0.9, 0xff9a5a, 0.5, 0.6, 105, 320],  // 夕やけ(明かりがつきはじめる)
-  [395, 0x3a2a5a, 0x9a90cc, 0x3f2e2c, 0.85, 0xb0a0e0, 0.38, 1, 95, 300],   // 日がくれる
-  [440, 0x0b1028, 0x8a98d0, 0x3a2c26, 0.85, 0x9fb0e0, 0.35, 1, 90, 290],   // 夜(v=11 までと同じ)
-  [690, 0x0b1028, 0x8a98d0, 0x3a2c26, 0.85, 0x9fb0e0, 0.35, 1, 90, 290],
+  [330, 0xd8805a, 0xffc79a, 0x5a3c30, 0.9, 0xff9a5a, 0.5, 0.6, 45, 200],   // 夕やけ(明かりがつきはじめる。霧が濃くなりはじめる v=39)
+  [395, 0x3e3466, 0x9a90cc, 0x3f2e2c, 0.85, 0xb0a0e0, 0.38, 1, 20, 140],   // 日がくれる
+  [440, 0x252f5c, 0x8a98d0, 0x3a2c26, 0.85, 0x9fb0e0, 0.35, 1, 10, 110],   // 夜(v=39 から霧が濃い・少し明るい紺)
+  [690, 0x252f5c, 0x8a98d0, 0x3a2c26, 0.85, 0x9fb0e0, 0.35, 1, 10, 110],
   [720, 0xe8a98a, 0xffd9c0, 0x5a4a44, 0.9, 0xffc9a0, 0.45, 0.5, 100, 310],
 ];
+/* 霧(v=39): 夕方と夜は濃い。チャイナタウンの中は赤むらさき。スコープの間とスタート画面はうすい */
+const FOG = { base: new THREE.Color(0x252f5c), near: 10, far: 110, lit: 1, ct: new THREE.Color(0x6a2650), ctMix: 0.9, edge: 30, clear: [110, 340], w: 0, s: 0, col: new THREE.Color() };
+function fogTick(dt) {
+  const cx = camera.position.x, cz = camera.position.z, x0 = roadC(CT.i0), x1 = roadC(CT.i1 + 1), z0 = roadC(CT.j0), z1 = roadC(CT.j1 + 1);
+  const out = Math.hypot(Math.max(0, x0 - cx, cx - x1), Math.max(0, z0 - cz, cz - z1)); // チャイナタウンからの距離(中は0)
+  const wt = G.started && !G.intro ? clamp(1 - out / FOG.edge, 0, 1) : 0, st = G.scope || !G.started ? 1 : 0;
+  const k = dt > 0 ? 1 - Math.exp(-3 * dt) : 1; FOG.w += (wt - FOG.w) * k; FOG.s += (st - FOG.s) * (dt > 0 ? 1 - Math.exp(-10 * dt) : 1);
+  FOG.col.copy(FOG.base).lerp(FOG.ct, FOG.w * FOG.ctMix * FOG.lit);
+  scene.fog.color.copy(FOG.col); scene.background.copy(FOG.col);
+  const s = FOG.s * FOG.lit; scene.fog.near = FOG.near + (Math.max(FOG.near, FOG.clear[0]) - FOG.near) * s; scene.fog.far = FOG.far + (Math.max(FOG.far, FOG.clear[1]) - FOG.far) * s;
+}
 const phaseOf = t => t < DAY.eve ? 'day' : t < DAY.night ? 'eve' : 'night';
 function applyEnv(t) {
   let i = 0; while (i < ENV_KEYS.length - 2 && t >= ENV_KEYS[i + 1][0]) i++;
   const a = ENV_KEYS[i], b = ENV_KEYS[i + 1], f = clamp((t - a[0]) / (b[0] - a[0]), 0, 1), L = k => a[k] + (b[k] - a[k]) * f;
   const C = (k, col) => { const ch = sh => { const p = a[k] >> sh & 255, q = b[k] >> sh & 255; return (p + (q - p) * f) / 255; }; col.setRGB(ch(16), ch(8), ch(0)); };
-  C(1, scene.background); C(1, scene.fog.color); scene.fog.near = L(8); scene.fog.far = L(9);
+  C(1, FOG.base); FOG.near = L(8); FOG.far = L(9); FOG.lit = L(7); fogTick(0); // 霧は fogTick が毎フレーム決める(v=39)
   C(2, hemi.color); C(3, hemi.groundColor); hemi.intensity = L(4); C(5, sun.color); sun.intensity = L(6);
   const lit = L(7);
   for (const m of NIGHT_MATS) m.emissive.setScalar(lit); // 窓の明かり
@@ -3612,7 +3623,7 @@ function frame(now) {
     updatePeds(dt); updateVendors(dt); updateGangs(dt); updateNpcs(dt);
     const a = T * 0.08; camera.position.set(Math.sin(a) * 150, 70, Math.cos(a) * 150); camera.lookAt(0, 0, 0); player.per.g.position.set(player.x, 0.3, player.z);
   }
-  decorCull(); renderer.render(scene, camera); requestAnimationFrame(frame);
+  fogTick(dt); decorCull(); renderer.render(scene, camera); requestAnimationFrame(frame);
 }
 
 /* ===== 画面の切りかえ ===== */
